@@ -1,3 +1,15 @@
 [workspace]
-
 members = ["fsync", "fsyncd", "gdrive"]
+resolver = "2"
+
+[workspace.dependencies]
+async-trait = "0.1.74"
+tokio = { version = "1.33.0", features = [
+    "fs",
+    "macros",
+    "rt",
+    "rt-multi-thread",
+    "time",
+    "tracing",
+] }
+tokio-stream = { version = "0.1", features = ["fs"] }

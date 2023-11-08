@@ -1,6 +1,16 @@
-use gdrive::list_my_files;
+use tokio_stream::StreamExt;
+
+use fsync::Result;
+use fsync::fs;
+use fsync::storage::Storage;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Ok(list_my_files().await)
+async fn main() -> Result<()> {
+    let st = fs::Storage::new("/home/remi");
+    let entries = st.entries(Some("dev")).await?;
+    tokio::pin!(entries); 
+    while let Some(entry) = entries.next().await {
+        println!("{:?}", entry?);
+    }
+    Ok(())
 }
