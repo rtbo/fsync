@@ -1,13 +1,83 @@
 use std::fs::FileType;
-use std::path::{Path, PathBuf, Component};
+use std::path::{Path, PathBuf};
+use std::result;
 use std::str;
 
+use camino::{FromPathBufError, Utf8Component, Utf8Path, Utf8PathBuf};
 use tokio::fs::{self, DirEntry};
 use tokio_stream::wrappers::ReadDirStream;
 use tokio_stream::{Stream, StreamExt};
 
 use crate::storage;
 use crate::Result;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("name is not Utf8")]
+    NotUtf8Name(#[from] FromPathBufError),
+    #[error("symlink {path:?} -> {target:?} points out of tree")]
+    OutOfTreeSymlink { path: String, target: String },
+}
+
+impl From<FromPathBufError> for crate::Error {
+    fn from(err: FromPathBufError) -> crate::Error {
+        Error::NotUtf8Name(err).into()
+    }
+}
+
+fn check_symlink<P1, P2>(link: P1, target: P2) -> result::Result<(), Error>
+where
+    P1: AsRef<Utf8Path>,
+    P2: AsRef<Utf8Path>,
+{
+    let link = link.as_ref();
+    let target = target.as_ref();
+
+    debug_assert!(
+        !link.is_absolute(),
+        "must be called with link relative to storage root"
+    );
+    if target.is_absolute() {
+        return Err(Error::OutOfTreeSymlink {
+            path: link.to_string(),
+            target: target.to_string(),
+        });
+    }
+
+    let mut num_comps = 0;
+
+    for comp in link
+        .parent()
+        .unwrap()
+        .components()
+        .chain(target.components())
+    {
+        match comp {
+            Utf8Component::Prefix(pref) => panic!("unexpected prefix component: {pref:?}"),
+            Utf8Component::RootDir => panic!("unexpected root component in {link:?} -> {target:?}"),
+            Utf8Component::CurDir => (),
+            Utf8Component::ParentDir if num_comps <= 0 => {
+                return Err(Error::OutOfTreeSymlink {
+                    path: link.to_string(),
+                    target: target.to_string(),
+                });
+            }
+            Utf8Component::ParentDir => num_comps -= 1,
+            Utf8Component::Normal(_) => num_comps += 1,
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_check_symlink() {
+    check_symlink("dir/symlink", "actual_file").unwrap();
+    check_symlink("dir/symlink", "../actual_file").unwrap();
+    check_symlink("dir/symlink", "../other_dir/actual_file").unwrap();
+    check_symlink("dir/symlink", "../../actual_file").expect_err("");
+    check_symlink("dir/symlink", "/actual_file").expect_err("");
+}
 
 #[derive(Debug, Clone)]
 pub struct Entry {
@@ -76,85 +146,33 @@ impl Storage {
         &self.root
     }
 
-    async fn map_entry(&self, entry: &DirEntry, base: Option<&str>) -> Entry {
+    async fn map_entry(&self, entry: &DirEntry, base: Option<&str>) -> Result<Entry> {
+        let file_name = Utf8PathBuf::try_from(PathBuf::from(entry.file_name()))?;
+        let file_name = file_name.as_str();
         let path = match base {
-            Some(base) => [base, entry.file_name().to_str().unwrap()].join("/"),
-            None => entry.file_name().to_str().unwrap().into(),
+            Some(base) => [base, file_name].join("/"),
+            None => file_name.to_owned(),
         };
-        let name_len = entry.file_name().len();
+        let name_len = file_name.len();
         let name_start = path.len() - name_len;
-        let metadata = entry.metadata().await.unwrap();
+        let metadata = entry.metadata().await?;
         let symlink_target = if metadata.is_symlink() {
-            let link = entry.path();
-            let target = tokio::fs::read_link(&link).await.unwrap();
-            Some(self.symlink_target(&link, &target).to_str().unwrap().into())
+            let target = tokio::fs::read_link(entry.path()).await?;
+            let target = Utf8PathBuf::try_from(target)?;
+            check_symlink(&path, &target)?;
+            Some(target.into_string())
         } else {
             None
         };
 
-        Entry {
+        Ok(Entry {
             path,
             name_start,
             file_type: metadata.file_type(),
             symlink_target,
             mime_type: None,
-        }
+        })
     }
-
-    fn symlink_target<P>(&self, link: P, target: P) -> PathBuf
-    where
-        P: AsRef<Path>,
-    {
-        let link = link.as_ref();
-        let target = target.as_ref();
-
-        if target.is_absolute() {
-            match target.strip_prefix(self.root()) {
-                Ok(path) => path.to_owned(),
-                Err(_) => panic!("unsupported out of tree symlink"),
-            }
-        } else {
-            let mut from_root: Vec<Component> = vec![];
-            for comp in link.parent().unwrap().components().chain(target.components()) {
-                match comp {
-                    Component::Prefix(pref) => panic!("unexpected prefix component: {pref:?}"),
-                    Component::RootDir =>panic!("unexpected root component"),
-                    Component::CurDir => (),
-                    Component::ParentDir => {
-                        assert!(from_root.pop().is_some(), "unsupported out of tree symlink");
-                    },
-                    Component::Normal(comp) => {
-                        from_root.push(Component::Normal(comp))
-                    }
-                }
-            }
-            from_root.iter().map(|c| c.as_os_str()).collect()
-        }
-    }
-}
-
-#[test]
-fn test_symlink_target() {
-    #[cfg(target_os = "windows")]
-    let root_path = "C:\\storage";
-    #[cfg(not(target_os = "windows"))]
-    let root_path = "/storage";
-
-    let storage = Storage{
-        root: PathBuf::from(root_path), // bypass canonicalize
-    };
-    assert_eq!(
-        storage.symlink_target("dir/symlink", "actual_file"),
-        Path::new("dir/actual_file")
-    );
-    assert_eq!(
-        storage.symlink_target("dir/symlink", "../actual_file"),
-        Path::new("actual_file")
-    );
-    assert_eq!(
-        storage.symlink_target("dir/symlink", "../other_dir/actual_file"),
-        Path::new("other_dir/actual_file")
-    );
 }
 
 impl storage::Storage for Storage {
@@ -168,7 +186,7 @@ impl storage::Storage for Storage {
         let stream = fs::read_dir(base).await?;
         let stream = ReadDirStream::new(stream).then(move |e| async move {
             match e {
-                Ok(entry) => Ok(self.map_entry(&entry, dir_id).await),
+                Ok(entry) => Ok(self.map_entry(&entry, dir_id).await?),
                 Err(err) => Err(err.into()),
             }
         });
