@@ -9,6 +9,7 @@ edition = "2021"
 async-trait = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
+futures = { workspace = true }
 
 base64 = "0.21"
 rand = "0.8"

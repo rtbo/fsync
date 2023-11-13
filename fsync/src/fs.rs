@@ -2,6 +2,7 @@ use std::fs::FileType;
 use std::path::{Path, PathBuf};
 use std::result;
 use std::str;
+use std::pin::Pin;
 
 use camino::{FromPathBufError, Utf8Component, Utf8Path, Utf8PathBuf};
 use tokio::fs::{self, DirEntry};
@@ -149,7 +150,7 @@ impl Storage {
     async fn map_entry(&self, entry: &DirEntry, base: Option<&str>) -> Result<Entry> {
         let file_name = Utf8PathBuf::try_from(PathBuf::from(entry.file_name()))?;
         let file_name = file_name.as_str();
-        let path = match base {
+        let path = match &base {
             Some(base) => [base, file_name].join("/"),
             None => file_name.to_owned(),
         };
@@ -175,21 +176,21 @@ impl Storage {
     }
 }
 
-impl storage::Storage for Storage {
-    type E = Entry;
+// impl storage::Storage for Storage {
+//     type E = Entry;
 
-    async fn entries(&self, dir_id: Option<&str>) -> Result<impl Stream<Item = Result<Self::E>>> {
-        let base = match dir_id {
-            Some(dir) => self.root.join(dir),
-            None => self.root.clone(),
-        };
-        let stream = fs::read_dir(base).await?;
-        let stream = ReadDirStream::new(stream).then(move |e| async move {
-            match e {
-                Ok(entry) => Ok(self.map_entry(&entry, dir_id).await?),
-                Err(err) => Err(err.into()),
-            }
-        });
-        Ok(stream)
-    }
-}
+//     async fn entries(&self, dir_id: Option<&str>) -> Result<impl Stream<Item = Result<Self::E>>> {
+//         let base = match dir_id {
+//             Some(dir) => self.root.join(dir),
+//             None => self.root.clone(),
+//         };
+//         let stream = fs::read_dir(base).await?;
+//         let stream = ReadDirStream::new(stream).then(move |e| async move {
+//             match e {
+//                 Ok(entry) => Ok(self.map_entry(&entry, dir_id).await?),
+//                 Err(err) => Err(err.into()),
+//             }
+//         });
+//         Ok(stream)
+//     }
+// }
