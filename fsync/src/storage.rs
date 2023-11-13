@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use futures::future::{BoxFuture, FutureExt};
+use futures::future::{FutureExt, LocalBoxFuture};
 use tokio::sync::mpsc::Sender;
 use tokio_stream::{Stream, StreamExt};
 
@@ -38,10 +38,42 @@ pub trait Entry: Send + Sync {
 pub trait Storage: Send + Sync {
     type E: Entry;
 
-    fn entries(
-        &self,
+    async fn entries(
+        self: Pin<&Self>,
         dir_id: Option<&str>,
-    ) -> impl std::future::Future<Output = Result<impl Stream<Item = Result<Self::E>>>> + Send;
+    ) -> Result<impl Iterator<Item = Result<Self::E>>>;
+
+    fn discover<'a>(
+        self: Pin<&'a Self>,
+        dir_id: Option<&'a str>,
+        tx: Sender<Result<Self::E>>,
+    ) -> LocalBoxFuture<Result<()>> {
+        Box::pin(async move {
+            let entries = self.entries(dir_id).await?;
+
+            for entry in entries {
+                let dir_id = {
+                    let mut dir_id: Option<String> = None;
+                    if let Ok(entry) = &entry {
+                        if entry.is_dir() {
+                            dir_id = Some(entry.id().to_owned());
+                        }
+                    }
+                    dir_id
+                };
+
+                tx.send(entry).await.unwrap();
+
+                if let Some(dir_id) = dir_id {
+                    let tx = tx.clone();
+                    tokio::spawn(async move { 
+                        self.discover(Some(&dir_id), tx).await;
+                    });
+                }
+            }
+            Ok(())
+        })
+    }
 
     // fn discover<'a>(
     //     self: Pin<&'a Self>,
@@ -74,24 +106,24 @@ pub trait Storage: Send + Sync {
     // }
 }
 
-fn discover_wrapper<S>(storage: &'static S, dir_id: Option<String>, tx: Sender<Result<<S as Storage>::E>>) -> BoxFuture<'static, ()> 
-where
-    S: Storage
-{
-    Box::pin(async move {
-        let entries = storage.entries(dir_id.as_deref()).await.unwrap();
-        let mut entries = Box::pin(entries);
-        // tokio::pin!(entries);
-        while let Some(entry) = entries.next().await {
-            if let Ok(entry) = &entry {
-                if entry.is_dir() {
-                    let dir_id = entry.id().to_owned();
-                    let tx2 = tx.clone();
-                    // tokio::spawn(async move {
+// fn discover_wrapper<S>(storage: &'static S, dir_id: Option<String>, tx: Sender<Result<<S as Storage>::E>>) -> BoxFuture<'static, ()>
+// where
+//     S: Storage
+// {
+//     Box::pin(async move {
+//         let entries = storage.entries(dir_id.as_deref()).await.unwrap();
+//         let mut entries = Box::pin(entries);
+//         // tokio::pin!(entries);
+//         while let Some(entry) = entries.next().await {
+//             if let Ok(entry) = &entry {
+//                 if entry.is_dir() {
+//                     let dir_id = entry.id().to_owned();
+//                     let tx2 = tx.clone();
+//                     // tokio::spawn(async move {
 
-                    // });
-                }
-            }
-        }
-    })
-}
+//                     // });
+//                 }
+//             }
+//         }
+//     })
+// }
