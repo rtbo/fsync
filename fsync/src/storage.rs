@@ -1,6 +1,7 @@
 use std::pin::Pin;
+use std::sync::Arc;
 
-use futures::future::{FutureExt, LocalBoxFuture};
+use futures::future::{Future, FutureExt, BoxFuture};
 use tokio::sync::mpsc::Sender;
 use tokio_stream::{Stream, StreamExt};
 
@@ -14,7 +15,7 @@ pub enum EntryType {
     Special,
 }
 
-pub trait Entry: Send + Sync {
+pub trait Entry {
     fn id(&self) -> &str;
     fn name(&self) -> &str;
     fn path(&self) -> &str;
@@ -35,45 +36,57 @@ pub trait Entry: Send + Sync {
     }
 }
 
-pub trait Storage: Send + Sync {
+pub trait Storage {
     type E: Entry;
 
     async fn entries(
-        self: Pin<&Self>,
+        &self,
         dir_id: Option<&str>,
     ) -> Result<impl Iterator<Item = Result<Self::E>>>;
 
-    fn discover<'a>(
-        self: Pin<&'a Self>,
-        dir_id: Option<&'a str>,
-        tx: Sender<Result<Self::E>>,
-    ) -> LocalBoxFuture<Result<()>> {
-        Box::pin(async move {
-            let entries = self.entries(dir_id).await?;
+    async fn discover(&self, dir_id: Option<&str>, tx: Sender<Result<Self::E>>) -> Result<()> {
+        async fn one_level(dir_id: Option<String>, to_visit: ) {
 
-            for entry in entries {
-                let dir_id = {
-                    let mut dir_id: Option<String> = None;
-                    if let Ok(entry) = &entry {
-                        if entry.is_dir() {
-                            dir_id = Some(entry.id().to_owned());
-                        }
-                    }
-                    dir_id
-                };
-
-                tx.send(entry).await.unwrap();
-
-                if let Some(dir_id) = dir_id {
-                    let tx = tx.clone();
-                    tokio::spawn(async move { 
-                        self.discover(Some(&dir_id), tx).await;
-                    });
-                }
-            }
-            Ok(())
-        })
+        }
     }
+
+    // fn discover<'a>(
+    //     self: Arc<Self>,
+    //     dir_id: Option<&'a str>,
+    //     tx: Sender<Result<Self::E>>,
+    // ) -> BoxFuture<'a, Result<()>> 
+    // where 
+    //     Self: 'a,
+    //     <Self as Storage>::E: 'static
+    // {
+    //     Box::pin(async move {
+    //         let entries = self.clone().entries(dir_id).await?;
+
+    //         for entry in entries {
+    //             let dir_id = {
+    //                 let mut dir_id: Option<String> = None;
+    //                 if let Ok(entry) = &entry {
+    //                     if entry.is_dir() {
+    //                         dir_id = Some(entry.id().to_owned());
+    //                     }
+    //                 }
+    //                 dir_id
+    //             };
+
+    //             tx.send(entry).await.unwrap();
+
+    //             if let Some(dir_id) = dir_id {
+    //                 let tx = tx.clone();
+    //                 let this = self.clone();
+    //                 tokio::spawn(async move { 
+    //                     this.discover(Some(&dir_id), tx).await;
+    //                 });
+    //             }
+    //         }
+    //         Ok(())
+    //     })
+    // }
+
 
     // fn discover<'a>(
     //     self: Pin<&'a Self>,

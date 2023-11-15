@@ -1,5 +1,5 @@
 [workspace]
-members = ["fsync", "fsyncd", "gdrive"]
+members = ["fsync", "fsyncd"]
 resolver = "2"
 
 [workspace.dependencies]
