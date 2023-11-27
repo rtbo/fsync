@@ -5,7 +5,7 @@ use rand::{rngs::OsRng, RngCore};
 use std::str;
 
 const IV_LEN: usize = 16;
-const KEY: &'static [u8; 32] = include_bytes!("cipher.binkey");
+const KEY: &[u8; 32] = include_bytes!("cipher.binkey");
 
 pub fn cipher_text(cleartext: &str) -> String {
     let mut ciphertext = vec![0u8; IV_LEN + cleartext.len()];
