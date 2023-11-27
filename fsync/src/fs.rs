@@ -1,4 +1,3 @@
-use std::fs::FileType;
 use std::path::{Path, PathBuf};
 use std::result;
 use std::str;
@@ -6,7 +5,7 @@ use std::str;
 use camino::{FromPathBufError, Utf8Component, Utf8Path, Utf8PathBuf};
 use tokio::fs::{self, DirEntry};
 
-use crate::storage;
+use crate::storage::{self, Entry, EntryType};
 use crate::Result;
 
 #[derive(Debug, thiserror::Error)]
@@ -77,49 +76,6 @@ fn test_check_symlink() {
     check_symlink("dir/symlink", "/actual_file").expect_err("");
 }
 
-#[derive(Debug, Clone)]
-pub struct Entry {
-    path: String,
-    name_start: usize,
-    file_type: FileType,
-    symlink_target: Option<String>,
-    mime_type: Option<String>,
-}
-
-impl storage::Entry for Entry {
-    fn id(&self) -> &str {
-        &self.path
-    }
-
-    fn name(&self) -> &str {
-        &self.path[self.name_start..]
-    }
-
-    fn path(&self) -> &str {
-        &self.path
-    }
-
-    fn entry_type(&self) -> storage::EntryType {
-        if self.file_type.is_file() {
-            storage::EntryType::Regular
-        } else if self.file_type.is_dir() {
-            storage::EntryType::Directory
-        } else if self.file_type.is_symlink() {
-            storage::EntryType::Symlink
-        } else {
-            storage::EntryType::Special
-        }
-    }
-
-    fn mime_type(&self) -> Option<&str> {
-        self.mime_type.as_deref()
-    }
-
-    fn symlink_target(&self) -> Option<&str> {
-        self.symlink_target.as_deref()
-    }
-}
-
 pub struct Storage {
     root: PathBuf,
 }
@@ -151,35 +107,38 @@ impl Storage {
             Some(base) => [base, file_name].join("/"),
             None => file_name.to_owned(),
         };
-        let name_len = file_name.len();
-        let name_start = path.len() - name_len;
         let metadata = entry.metadata().await?;
-        let symlink_target = if metadata.is_symlink() {
+        let typ = if metadata.is_symlink() {
             let target = tokio::fs::read_link(entry.path()).await?;
             let target = Utf8PathBuf::try_from(target)?;
             check_symlink(&path, &target)?;
-            Some(target.into_string())
+            EntryType::Symlink {
+                target: target.into_string(),
+                mime_type: String::new(),
+            }
+        } else if metadata.is_file() {
+            EntryType::Regular {
+                mime_type: String::new(),
+            }
+        } else if metadata.is_dir() {
+            EntryType::Directory
         } else {
-            None
+            EntryType::Special
         };
 
         Ok(Entry {
+            id: path.clone(),
             path,
-            name_start,
-            file_type: metadata.file_type(),
-            symlink_target,
-            mime_type: None,
+            typ,
         })
     }
 }
 
 impl storage::Storage for Storage {
-    type E = Entry;
-
     fn entries(
         &self,
         dir_id: Option<&str>,
-    ) -> impl std::future::Future<Output = Result<impl Iterator<Item = Result<Self::E>> + Send>> + Send
+    ) -> impl std::future::Future<Output = Result<impl Iterator<Item = Result<Entry>> + Send>> + Send
     {
         let base = match dir_id {
             Some(dir) => self.root.join(dir),

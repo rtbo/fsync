@@ -1,5 +1,5 @@
 use fsync::fs;
-use fsync::storage::{Entry, Storage};
+use fsync::storage::Storage;
 use fsync::Result;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -11,7 +11,7 @@ async fn main() -> Result<()> {
     st.discover(None, Some(2), tx).await?;
     while let Some(entry) = rx.recv().await {
         match &entry {
-            Ok(entry) => println!("{}", Entry::path(entry)),
+            Ok(entry) => println!("{}", entry.path),
             Err(err) => println!("error: {err}"),
         }
     }
