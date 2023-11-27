@@ -1,16 +1,19 @@
-use tokio_stream::StreamExt;
-
-use fsync::Result;
 use fsync::fs;
-use fsync::storage::Storage;
+use fsync::storage::{Entry, Storage};
+use fsync::Result;
+use std::sync::Arc;
+use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let st = fs::Storage::new("/home/remi");
-    let entries = st.entries(Some("dev")).await?;
-    tokio::pin!(entries); 
-    while let Some(entry) = entries.next().await {
-        println!("{:?}", entry?);
+    let (tx, mut rx) = mpsc::channel(32);
+    let st = Arc::new(fs::Storage::new("/home/remi/dev"));
+    st.discover(None, Some(2), tx).await?;
+    while let Some(entry) = rx.recv().await {
+        match &entry {
+            Ok(entry) => println!("{}", Entry::path(entry)),
+            Err(err) => println!("error: {err}"),
+        }
     }
     Ok(())
 }

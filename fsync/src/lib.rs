@@ -1,10 +1,9 @@
 #![allow(async_fn_in_trait)]
 #![feature(async_closure)]
 
-
 pub mod cipher;
-pub mod storage;
 pub mod fs;
+pub mod storage;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
