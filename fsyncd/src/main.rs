@@ -1,7 +1,8 @@
+use std::sync::Arc;
+
 use fsync::fs;
 use fsync::storage::Storage;
 use fsync::Result;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 #[tokio::main]

@@ -1,7 +1,7 @@
-use google_drive3::{oauth2, DriveHub};
-
 use std::path;
 use std::str;
+
+use google_drive3::{oauth2, DriveHub};
 
 fn token_cache_path() -> String {
     let p = path::Path::new(env!("CARGO_MANIFEST_DIR"));

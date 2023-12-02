@@ -1,5 +1,6 @@
-use futures::future::BoxFuture;
 use std::{sync::Arc, time::SystemTime};
+
+use futures::future::BoxFuture;
 use tokio::sync::mpsc::Sender;
 
 use crate::Result;

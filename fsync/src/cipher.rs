@@ -1,8 +1,8 @@
+use std::str;
+
 use base64::prelude::{Engine, BASE64_STANDARD_NO_PAD};
 use crypto::{aes, aes::KeySize};
 use rand::{rngs::OsRng, RngCore};
-
-use std::str;
 
 const IV_LEN: usize = 16;
 const KEY: &[u8; 32] = include_bytes!("cipher.binkey");

@@ -128,7 +128,7 @@ impl Storage {
             EntryType::Special
         };
 
-        Ok(Entry::new(path.clone(), path, typ)) 
+        Ok(Entry::new(path.clone(), path, typ))
     }
 }
 
