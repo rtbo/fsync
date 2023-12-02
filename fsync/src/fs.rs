@@ -114,11 +114,13 @@ impl Storage {
             check_symlink(&path, &target)?;
             EntryType::Symlink {
                 target: target.into_string(),
-                mime_type: String::new(),
+                size: metadata.len(),
+                mtime: metadata.modified().unwrap(),
             }
         } else if metadata.is_file() {
             EntryType::Regular {
-                mime_type: String::new(),
+                size: metadata.len(),
+                mtime: metadata.modified().unwrap(),
             }
         } else if metadata.is_dir() {
             EntryType::Directory
@@ -126,11 +128,7 @@ impl Storage {
             EntryType::Special
         };
 
-        Ok(Entry {
-            id: path.clone(),
-            path,
-            typ,
-        })
+        Ok(Entry::new(path.clone(), path, typ)) 
     }
 }
 

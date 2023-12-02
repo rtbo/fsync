@@ -1,22 +1,98 @@
 use futures::future::BoxFuture;
-use std::sync::Arc;
+use std::{sync::Arc, time::SystemTime};
 use tokio::sync::mpsc::Sender;
 
 use crate::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntryType {
-    Regular { mime_type: String },
     Directory,
-    Symlink { target: String, mime_type: String },
+    Regular {
+        size: u64,
+        mtime: SystemTime,
+    },
+    Symlink {
+        target: String,
+        size: u64,
+        mtime: SystemTime,
+    },
     Special,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
-    pub id: String,
-    pub path: String,
-    pub typ: EntryType,
+    id: String,
+    path: String,
+    typ: EntryType,
+}
+
+impl Entry {
+    pub fn new(id: String, path: String, typ: EntryType) -> Entry {
+        Entry { id, path, typ }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn typ(&self) -> &EntryType {
+        &self.typ
+    }
+
+    pub fn is_dir(&self) -> bool {
+        match self.typ {
+            EntryType::Directory => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_file(&self) -> bool {
+        match self.typ {
+            EntryType::Regular { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_symlink(&self) -> bool {
+        match self.typ {
+            EntryType::Symlink { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_special(&self) -> bool {
+        match self.typ {
+            EntryType::Special => true,
+            _ => false,
+        }
+    }
+
+    pub fn size(&self) -> Option<u64> {
+        match self.typ {
+            EntryType::Regular { size, .. } => Some(size),
+            EntryType::Symlink { size, .. } => Some(size),
+            _ => None,
+        }
+    }
+
+    pub fn mtime(&self) -> Option<SystemTime> {
+        match self.typ {
+            EntryType::Regular { mtime, .. } => Some(mtime),
+            EntryType::Symlink { mtime, .. } => Some(mtime),
+            _ => None,
+        }
+    }
+
+    pub fn symlink_target(&self) -> Option<&str> {
+        match &self.typ {
+            EntryType::Symlink { target, .. } => Some(target),
+            _ => None,
+        }
+    }
 }
 
 pub trait Storage: Send + Sync + 'static {
