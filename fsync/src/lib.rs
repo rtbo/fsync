@@ -1,6 +1,7 @@
 #![allow(async_fn_in_trait)]
 #![feature(async_closure)]
 
+pub mod cache;
 pub mod cipher;
 pub mod fs;
 pub mod storage;
