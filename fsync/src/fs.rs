@@ -102,10 +102,9 @@ impl Storage {
 
     async fn map_entry(&self, entry: &DirEntry, base: Option<&str>) -> Result<Entry> {
         let file_name = Utf8PathBuf::try_from(PathBuf::from(entry.file_name()))?;
-        let file_name = file_name.as_str();
         let path = match &base {
-            Some(base) => [base, file_name].join("/"),
-            None => file_name.to_owned(),
+            Some(base) => Utf8PathBuf::from([base, file_name.as_str()].join("/")),
+            None => file_name,
         };
         let metadata = entry.metadata().await?;
         let typ = if metadata.is_symlink() {
@@ -128,7 +127,7 @@ impl Storage {
             EntryType::Special
         };
 
-        Ok(Entry::new(path.clone(), path, typ))
+        Ok(Entry::new(path.clone().into(), path, typ))
     }
 }
 

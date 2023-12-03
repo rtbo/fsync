@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use camino::Utf8PathBuf;
 use dashmap::DashMap;
 use futures::future::BoxFuture;
 use tokio::task::JoinSet;
@@ -13,7 +14,7 @@ pub struct Cache {
 
 pub struct CacheEntry {
     entry: Entry,
-    parent: Option<String>,
+    _parent: Option<String>,
     children: Vec<String>,
 }
 
@@ -32,8 +33,8 @@ impl Cache {
         self.entries.insert(
             "".into(),
             CacheEntry {
-                entry: Entry::new("".to_string(), "".to_string(), EntryType::Directory),
-                parent: None,
+                entry: Entry::new("".to_string(), Utf8PathBuf::new(), EntryType::Directory),
+                _parent: None,
                 children,
             },
         );
@@ -90,7 +91,7 @@ where
                     ent_id,
                     CacheEntry {
                         entry: ent,
-                        parent,
+                        _parent: parent,
                         children,
                     },
                 );

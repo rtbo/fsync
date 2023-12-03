@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::SystemTime};
 
+use camino::{Utf8Path, Utf8PathBuf};
 use futures::future::BoxFuture;
 use tokio::sync::mpsc::Sender;
 
@@ -23,12 +24,12 @@ pub enum EntryType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     id: String,
-    path: String,
+    path: Utf8PathBuf,
     typ: EntryType,
 }
 
 impl Entry {
-    pub fn new(id: String, path: String, typ: EntryType) -> Entry {
+    pub fn new(id: String, path: Utf8PathBuf, typ: EntryType) -> Entry {
         Entry { id, path, typ }
     }
 
@@ -36,8 +37,12 @@ impl Entry {
         &self.id
     }
 
-    pub fn path(&self) -> &str {
+    pub fn path(&self) -> &Utf8Path {
         &self.path
+    }
+
+    pub fn name(&self) -> &str {
+        self.path.file_name().unwrap_or("")
     }
 
     pub fn typ(&self) -> &EntryType {
