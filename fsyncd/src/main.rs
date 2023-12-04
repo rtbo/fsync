@@ -1,5 +1,6 @@
 mod cache;
 mod config;
+mod tree;
 
 use std::sync::Arc;
 
