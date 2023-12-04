@@ -236,7 +236,6 @@ dependencies = [
  "async-trait",
  "base64 0.21.5",
  "camino",
- "dashmap",
  "futures",
  "rand 0.8.5",
  "rust-crypto",
@@ -249,7 +248,10 @@ dependencies = [
 name = "fsyncd"
 version = "0.1.0"
 dependencies = [
+ "camino",
+ "dashmap",
  "fsync",
+ "futures",
  "gdrive",
  "tokio",
  "tokio-stream",

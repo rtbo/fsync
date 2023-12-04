@@ -4,6 +4,8 @@ resolver = "2"
 
 [workspace.dependencies]
 async-trait = "0.1.74"
+camino = "1.1.6"
+futures = "0.3.29"
 tokio = { version = "1.33.0", features = [
     "fs",
     "macros",
@@ -13,4 +15,3 @@ tokio = { version = "1.33.0", features = [
     "tracing",
 ] }
 tokio-stream = { version = "0.1", features = ["fs"] }
-futures = "0.3.29"

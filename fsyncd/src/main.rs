@@ -1,8 +1,11 @@
+mod cache;
+
 use std::sync::Arc;
 
-use fsync::cache::Cache;
 use fsync::fs;
 use fsync::Result;
+
+use crate::cache::Cache;
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use camino::Utf8PathBuf;
 use dashmap::DashMap;
+use fsync::storage::{Entry, EntryType, Storage};
+use fsync::{Error, Result};
 use futures::future::BoxFuture;
 use tokio::task::JoinSet;
-
-use crate::storage::{Entry, EntryType, Storage};
-use crate::{Error, Result};
 
 pub struct Cache {
     entries: Arc<DashMap<String, CacheEntry>>,

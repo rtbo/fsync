@@ -9,5 +9,9 @@ edition = "2021"
 fsync = { path = "../fsync" }
 gdrive = { path = "../gdrive" }
 
+camino = { workspace = true }
+futures = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
+
+dashmap = "5.5.3"
