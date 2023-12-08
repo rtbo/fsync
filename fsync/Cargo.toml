@@ -6,9 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-stream = { workspace = true }
 async-trait = { workspace = true }
 camino = { workspace = true }
+chrono = { workspace = true }
 futures = { workspace = true }
+google-drive3 = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 

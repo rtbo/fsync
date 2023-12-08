@@ -7,7 +7,12 @@ edition = "2021"
 
 [dependencies]
 fsync = { path = "../fsync" }
+async-stream = { workspace = true }
+camino = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+google-drive3 = { workspace = true }
+tokio = { workspace = true }
 
-google-drive3 = "^5.0"
 hyper = "0.14.27"
 hyper-rustls = "0.24.2"

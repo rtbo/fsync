@@ -1,6 +1,6 @@
 
 use camino::Utf8PathBuf;
-use fsync::storage::{EntryType, Entry};
+use fsync::{EntryType, Entry};
 
 pub enum TreeEntry {
     Local {

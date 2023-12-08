@@ -4,19 +4,16 @@ mod tree;
 
 use std::sync::Arc;
 
-use fsync::fs;
 use fsync::Result;
 
 use crate::cache::Cache;
-use crate::config::Config;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let config = Config::new();
-
-    let st = Arc::new(fs::Storage::new("/home/remi/Documents"));
-    let cache = Cache::new();
-    cache.populate(st).await?;
+    let auth = gdrive::Storage::auth(None).await;
+    let st1 = Arc::new(gdrive::Storage::new(auth));
+    let st = st1;
+    let cache = Cache::new_from_storage(st).await?;
     cache.print_tree();
     Ok(())
 }

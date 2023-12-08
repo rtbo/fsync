@@ -2,11 +2,13 @@ use std::path::{Path, PathBuf};
 use std::result;
 use std::str;
 
+use async_stream::try_stream;
 use camino::{FromPathBufError, Utf8Component, Utf8Path, Utf8PathBuf};
+use futures::{Future, Stream};
 use tokio::fs::{self, DirEntry};
+use tokio::sync::mpsc::Sender;
 
-use crate::storage::{self, Entry, EntryType};
-use crate::Result;
+use crate::{Entry, EntryType, PathId, Result};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -114,12 +116,12 @@ impl Storage {
             EntryType::Symlink {
                 target: target.into_string(),
                 size: metadata.len(),
-                mtime: metadata.modified().unwrap(),
+                mtime: metadata.modified().ok().map(|mt| mt.into()),
             }
         } else if metadata.is_file() {
             EntryType::Regular {
                 size: metadata.len(),
-                mtime: metadata.modified().unwrap(),
+                mtime: metadata.modified().ok().map(|mt| mt.into()),
             }
         } else if metadata.is_dir() {
             EntryType::Directory
@@ -131,28 +133,49 @@ impl Storage {
     }
 }
 
-impl storage::Storage for Storage {
-    fn entries(
-        &self,
-        dir_id: Option<&str>,
-    ) -> impl std::future::Future<Output = Result<impl Iterator<Item = Result<Entry>> + Send>> + Send
-    {
+impl crate::Storage for Storage {
+    async fn entries<'a>(&self, dir_id: Option<PathId<'a>>, sender: Sender<Entry>) -> Result<()> {
         let base = match dir_id {
-            Some(dir) => self.root.join(dir),
+            Some(dir) => self.root.join(dir.path),
+            None => self.root.clone(),
+        };
+        let mut read_dir = fs::read_dir(base).await?;
+        loop {
+            match read_dir.next_entry().await? {
+                None => break,
+                Some(e) => {
+                    sender
+                        .send(self.map_entry(&e, dir_id.map(|di| di.path)).await?)
+                        .await
+                        .expect("Receive half closed");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn entries2(
+        &self,
+        dir_id: Option<PathId>,
+    ) -> impl Future<Output = impl Stream<Item = Result<Entry>> + Send> + Send {
+        let base = match dir_id {
+            Some(dir) => self.root.join(dir.path),
             None => self.root.clone(),
         };
         async move {
-            let mut read_dir = fs::read_dir(base).await?;
-            let mut entries = Vec::new();
-            loop {
-                match read_dir.next_entry().await? {
-                    None => break,
-                    Some(e) => {
-                        entries.push(self.map_entry(&e, dir_id).await);
+            try_stream! {
+                let mut read_dir = fs::read_dir(base).await?;
+                let base = dir_id.map(|di| di.path);
+                loop {
+                    match read_dir.next_entry().await? {
+                        None => break,
+                        Some(e) => {
+                            let entry = self.map_entry(&e, base).await?;
+                            yield entry;
+                        }
                     }
                 }
             }
-            Ok(entries.into_iter())
         }
     }
 }

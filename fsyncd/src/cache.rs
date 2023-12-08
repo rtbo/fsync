@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use camino::Utf8PathBuf;
 use dashmap::DashMap;
-use fsync::storage::{Entry, EntryType, Storage};
+use fsync::{Entry, EntryType, PathId, Storage};
 use fsync::{Error, Result};
 use futures::future::BoxFuture;
 use tokio::task::JoinSet;
+use tokio_stream::StreamExt;
 
 pub struct Cache {
     entries: Arc<DashMap<String, CacheEntry>>,
@@ -18,18 +19,14 @@ pub struct CacheEntry {
 }
 
 impl Cache {
-    pub fn new() -> Self {
-        Self {
-            entries: Arc::new(DashMap::new()),
-        }
-    }
-
-    pub async fn populate<S>(&self, storage: Arc<S>) -> Result<()>
+    pub async fn new_from_storage<S>(storage: Arc<S>) -> Result<Self>
     where
-        S: Storage,
+        S: Storage + Send + Sync + 'static,
     {
-        let children = populate_recurse(None, self.entries.clone(), storage).await?;
-        self.entries.insert(
+        let entries = Arc::new(DashMap::new());
+
+        let children = populate_recurse(None, None, entries.clone(), storage).await?;
+        entries.insert(
             "".into(),
             CacheEntry {
                 entry: Entry::new("".to_string(), Utf8PathBuf::new(), EntryType::Directory),
@@ -37,7 +34,9 @@ impl Cache {
                 children,
             },
         );
-        Ok(())
+        println!("return final loop");
+
+        Ok(Self { entries })
     }
 
     pub fn print_tree(&self) {
@@ -59,30 +58,40 @@ impl Cache {
 
 fn populate_recurse<'a, S>(
     dir_id: Option<String>,
+    dir_path: Option<String>,
     entries: Arc<DashMap<String, CacheEntry>>,
     storage: Arc<S>,
 ) -> BoxFuture<'a, Result<Vec<String>>>
 where
-    S: Storage,
+    S: Storage + Send + Sync + 'static,
 {
     Box::pin(async move {
-        let dirent = storage.entries(dir_id.as_deref()).await?;
+        let dir_id = match (&dir_id, &dir_path) {
+            (Some(dir_id), Some(dir_path)) => {
+                Some(PathId{id: dir_id, path: dir_path})
+            }
+            _ => None,
+        };
+        let dirent = storage.entries2(dir_id).await;
+        tokio::pin!(dirent);
 
         let mut children = Vec::new();
         let mut set = JoinSet::new();
 
-        for ent in dirent {
+        while let Some(ent) = dirent.next().await {
             let ent = ent?;
             let ent_id = ent.id().to_owned();
+            let ent_path = ent.path().to_owned();
+
             children.push(ent_id.clone());
 
-            let parent = dir_id.clone();
+            let parent = dir_id.map(|pid| pid.id.to_owned());
             let entries = entries.clone();
             let storage = storage.clone();
             set.spawn(async move {
                 let children = match ent.typ() {
                     EntryType::Directory => {
-                        populate_recurse(Some(ent_id.clone()), entries.clone(), storage).await?
+                        populate_recurse(Some(ent_id.clone()), Some(ent_path.clone().into()), entries.clone(), storage).await?
                     }
                     _ => Vec::new(),
                 };

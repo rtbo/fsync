@@ -1,8 +1,8 @@
-use std::{sync::Arc, time::SystemTime};
-
 use camino::{Utf8Path, Utf8PathBuf};
-use futures::future::BoxFuture;
-use tokio::sync::mpsc::Sender;
+use chrono::{DateTime, Utc};
+use futures::{Future, Stream};
+use tokio::sync::mpsc::{self, Sender};
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::Result;
 
@@ -11,12 +11,12 @@ pub enum EntryType {
     Directory,
     Regular {
         size: u64,
-        mtime: SystemTime,
+        mtime: Option<DateTime<Utc>>,
     },
     Symlink {
         target: String,
         size: u64,
-        mtime: SystemTime,
+        mtime: Option<DateTime<Utc>>,
     },
     Special,
 }
@@ -85,10 +85,10 @@ impl Entry {
         }
     }
 
-    pub fn mtime(&self) -> Option<SystemTime> {
+    pub fn mtime(&self) -> Option<DateTime<Utc>> {
         match self.typ {
-            EntryType::Regular { mtime, .. } => Some(mtime),
-            EntryType::Symlink { mtime, .. } => Some(mtime),
+            EntryType::Regular { mtime, .. } => mtime,
+            EntryType::Symlink { mtime, .. } => mtime,
             _ => None,
         }
     }
@@ -101,47 +101,35 @@ impl Entry {
     }
 }
 
-pub trait Storage: Send + Sync + 'static {
+#[derive(Debug, Copy, Clone)]
+pub struct PathId<'a> {
+    pub id: &'a str,
+    pub path: &'a str,
+}
+
+pub trait Storage {
     fn entries(
         &self,
-        dir_id: Option<&str>,
-    ) -> impl std::future::Future<Output = Result<impl Iterator<Item = Result<Entry>> + Send>> + Send;
+        dir_id: Option<PathId>,
+        sender: Sender<Entry>,
+    ) -> impl Future<Output = Result<()>> + Send;
 
-    fn discover(
-        self: Arc<Self>,
-        dir_id: Option<&str>,
-        depth: Option<u32>,
-        tx: Sender<Result<Entry>>,
-    ) -> BoxFuture<'_, Result<()>> {
-        Box::pin(async move {
-            if let Some(0) = depth {
-                return Ok(());
-            }
+    fn entries2(
+        &self,
+        dir_id: Option<PathId>,
+    ) -> impl Future<Output = impl Stream<Item = Result<Entry>> + Send> + Send;
 
-            let entries = self.entries(dir_id).await?;
-            for entry in entries {
-                let dir_id = match &entry {
-                    Ok(Entry {
-                        id,
-                        typ: EntryType::Directory,
-                        ..
-                    }) => Some(id.clone()),
-                    _ => None,
-                };
-
-                tx.send(entry).await.unwrap();
-
-                if let Some(dir_id) = dir_id {
-                    let tx = tx.clone();
-                    let this = self.clone();
-                    tokio::spawn(async move {
-                        this.discover(Some(&dir_id), depth.map(|depth| depth - 1), tx)
-                            .await
-                            .unwrap();
-                    });
-                }
-            }
-            Ok(())
-        })
+    fn entries_stream<'a>(
+        &self,
+        dir_id: Option<PathId<'a>>,
+    ) -> impl Future<Output = Result<impl Stream<Item = Entry> + Send>> + Send
+    where
+        Self: Sync,
+    {
+        async move {
+            let (snd, rcv) = mpsc::channel(512);
+            self.entries(dir_id, snd).await?;
+            Ok(ReceiverStream::new(rcv))
+        }
     }
 }
