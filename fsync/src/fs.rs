@@ -4,9 +4,8 @@ use std::str;
 
 use async_stream::try_stream;
 use camino::{FromPathBufError, Utf8Component, Utf8Path, Utf8PathBuf};
-use futures::{Future, Stream};
+use futures::Stream;
 use tokio::fs::{self, DirEntry};
-use tokio::sync::mpsc::Sender;
 
 use crate::{Entry, EntryType, PathId, Result};
 
@@ -134,45 +133,20 @@ impl Storage {
 }
 
 impl crate::Storage for Storage {
-    async fn entries<'a>(&self, dir_id: Option<PathId<'a>>, sender: Sender<Entry>) -> Result<()> {
+    fn entries(&self, dir_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send {
         let base = match dir_id {
             Some(dir) => self.root.join(dir.path),
             None => self.root.clone(),
         };
-        let mut read_dir = fs::read_dir(base).await?;
-        loop {
-            match read_dir.next_entry().await? {
-                None => break,
-                Some(e) => {
-                    sender
-                        .send(self.map_entry(&e, dir_id.map(|di| di.path)).await?)
-                        .await
-                        .expect("Receive half closed");
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn entries2(
-        &self,
-        dir_id: Option<PathId>,
-    ) -> impl Future<Output = impl Stream<Item = Result<Entry>> + Send> + Send {
-        let base = match dir_id {
-            Some(dir) => self.root.join(dir.path),
-            None => self.root.clone(),
-        };
-        async move {
-            try_stream! {
-                let mut read_dir = fs::read_dir(base).await?;
-                let base = dir_id.map(|di| di.path);
-                loop {
-                    match read_dir.next_entry().await? {
-                        None => break,
-                        Some(e) => {
-                            let entry = self.map_entry(&e, base).await?;
-                            yield entry;
-                        }
+        try_stream! {
+            let mut read_dir = fs::read_dir(base).await?;
+            let base = dir_id.map(|di| di.path);
+            loop {
+                match read_dir.next_entry().await? {
+                    None => break,
+                    Some(e) => {
+                        let entry = self.map_entry(&e, base).await?;
+                        yield entry;
                     }
                 }
             }

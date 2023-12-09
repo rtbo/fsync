@@ -34,8 +34,6 @@ impl Cache {
                 children,
             },
         );
-        println!("return final loop");
-
         Ok(Self { entries })
     }
 
@@ -72,7 +70,7 @@ where
             }
             _ => None,
         };
-        let dirent = storage.entries2(dir_id).await;
+        let dirent = storage.entries(dir_id);
         tokio::pin!(dirent);
 
         let mut children = Vec::new();

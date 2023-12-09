@@ -1,8 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Utc};
-use futures::{Future, Stream};
-use tokio::sync::mpsc::{self, Sender};
-use tokio_stream::wrappers::ReceiverStream;
+use futures::Stream;
 
 use crate::Result;
 
@@ -108,28 +106,5 @@ pub struct PathId<'a> {
 }
 
 pub trait Storage {
-    fn entries(
-        &self,
-        dir_id: Option<PathId>,
-        sender: Sender<Entry>,
-    ) -> impl Future<Output = Result<()>> + Send;
-
-    fn entries2(
-        &self,
-        dir_id: Option<PathId>,
-    ) -> impl Future<Output = impl Stream<Item = Result<Entry>> + Send> + Send;
-
-    fn entries_stream<'a>(
-        &self,
-        dir_id: Option<PathId<'a>>,
-    ) -> impl Future<Output = Result<impl Stream<Item = Entry> + Send>> + Send
-    where
-        Self: Sync,
-    {
-        async move {
-            let (snd, rcv) = mpsc::channel(512);
-            self.entries(dir_id, snd).await?;
-            Ok(ReceiverStream::new(rcv))
-        }
-    }
+    fn entries(&self, dir_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send;
 }
