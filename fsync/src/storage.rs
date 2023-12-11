@@ -102,7 +102,7 @@ impl Entry {
 #[derive(Debug, Copy, Clone)]
 pub struct PathId<'a> {
     pub id: &'a str,
-    pub path: &'a str,
+    pub path: &'a Utf8Path,
 }
 
 pub trait Storage {

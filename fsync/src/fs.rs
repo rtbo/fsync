@@ -1,6 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::result;
-use std::str;
 
 use async_stream::try_stream;
 use camino::{FromPathBufError, Utf8Component, Utf8Path, Utf8PathBuf};
@@ -78,7 +77,7 @@ fn test_check_symlink() {
 }
 
 pub struct Storage {
-    root: PathBuf,
+    root: Utf8PathBuf,
 }
 
 impl Storage {
@@ -86,25 +85,25 @@ impl Storage {
     /// Panics if [root] is not an absolute path.
     pub fn new<P>(root: P) -> Self
     where
-        P: AsRef<Path>,
+        P: AsRef<Utf8Path>,
     {
         let root = root.as_ref();
 
         assert!(root.is_absolute());
 
         Storage {
-            root: root.canonicalize().unwrap(),
+            root: root.canonicalize_utf8().unwrap(),
         }
     }
 
-    pub fn root(&self) -> &Path {
+    pub fn root(&self) -> &Utf8Path {
         &self.root
     }
 
-    async fn map_entry(&self, entry: &DirEntry, base: Option<&str>) -> Result<Entry> {
+    async fn map_entry(&self, entry: &DirEntry, base: Option<&Utf8Path>) -> Result<Entry> {
         let file_name = Utf8PathBuf::try_from(PathBuf::from(entry.file_name()))?;
-        let path = match &base {
-            Some(base) => Utf8PathBuf::from([base, file_name.as_str()].join("/")),
+        let path = match base {
+            Some(base) => Utf8PathBuf::from([base.as_str(), file_name.as_str()].join("/")),
             None => file_name,
         };
         let metadata = entry.metadata().await?;

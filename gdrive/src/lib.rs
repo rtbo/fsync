@@ -90,7 +90,7 @@ impl fsync::Storage for Storage {
     }
 }
 
-fn map_file(base_dir: Option<&str>, f: api::File) -> Entry {
+fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> Entry {
     let id = f.id.unwrap_or(String::new());
     let path = match base_dir {
         Some(di) => Utf8Path::new(di).join(f.name.as_deref().unwrap()),
