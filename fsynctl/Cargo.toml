@@ -1,0 +1,9 @@
+[package]
+name = "fsynctl"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.4.11", features = ["derive"] }
+

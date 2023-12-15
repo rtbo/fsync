@@ -1,5 +1,5 @@
 [workspace]
-members = ["fsync", "fsyncd", "gdrive"]
+members = ["fsync", "fsyncd", "gdrive", "fsynctl"]
 resolver = "2"
 
 [workspace.package]
