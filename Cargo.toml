@@ -1,6 +1,11 @@
 [workspace]
-members = ["fsync", "fsyncd"]
+members = ["fsync", "fsyncd", "gdrive"]
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Rémi THEBAULT"]
+description = "A file synchronization service"
 
 [workspace.dependencies]
 async-stream = "0.3.5"
