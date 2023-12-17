@@ -4,7 +4,7 @@ use glob::{MatchOptions, Pattern, PatternError};
 pub struct PatternList(Vec<Pattern>, MatchOptions);
 
 impl PatternList {
-    pub fn new<I>(patterns: I, opts: MatchOptions) -> Result<PatternList, PatternError>
+    pub fn _new<I>(patterns: I, opts: MatchOptions) -> Result<PatternList, PatternError>
     where
         I: Iterator,
         I::Item: AsRef<str>,
