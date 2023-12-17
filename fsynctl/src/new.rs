@@ -113,9 +113,9 @@ async fn create_config(config_dir: &Utf8Path, opts: InitOptions) -> Result<(), E
     match opts.provider_opts {
         ProviderOpts::GoogleDrive(app_secret_opts) => {
             let app_secret =  app_secret_opts.get()?;
-            let cache_dir = gdrive::CacheDir::new(config_dir.to_path_buf());
+            let cache_dir = fsync::oauth2::CacheDir::new(config_dir.to_path_buf());
             cache_dir.cache_secret(&app_secret).await?;
-            cache_dir.auth_and_cache_tokens(app_secret).await?;
+            // cache_dir.auth_and_cache_tokens(app_secret).await?;
         }
     }
 

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use config::PatternList;
 use difftree::DiffTree;
-use fsync::{fs, Config, Error, Provider, Result};
+use fsync::{fs, Config, Error, Provider, Result, oauth2};
 
 use crate::cache::Cache;
 
@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
 
     match &config.provider {
         Provider::GoogleDrive => {
-            let remote = Arc::new(gdrive::Storage::new(config_dir).await?);
+            let remote = Arc::new(gdrive::Storage::new(oauth2::CacheDir::new(config_dir)).await?);
             let remote = Cache::new_from_storage(remote, ignored);
             let (local, remote) = tokio::join!(local, remote);
             let local = local?;

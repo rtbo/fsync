@@ -13,10 +13,9 @@ camino = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 google-drive3 = { workspace = true }
+hyper = { workspace = true }
+hyper-rustls = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 yup-oauth2 = { workspace = true }
-
-hyper = "0.14.27"
-hyper-rustls = "0.24.2"

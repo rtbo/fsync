@@ -4,14 +4,11 @@ use std::str;
 use async_stream::try_stream;
 use camino::{Utf8Path, Utf8PathBuf};
 use fsync::cipher::decipher_text;
-use fsync::{Entry, EntryType, PathId};
+use fsync::{oauth2, Entry, EntryType, PathId};
 use futures::Stream;
 use google_drive3::api;
-use google_drive3::client::GetToken;
 use google_drive3::oauth2::ApplicationSecret;
-use google_drive3::{oauth2, DriveHub};
-use hyper::client::HttpConnector;
-use hyper_rustls::HttpsConnector;
+use google_drive3::DriveHub;
 
 #[derive(Debug, Clone)]
 pub enum AppSecretOpts {
@@ -50,15 +47,15 @@ impl AppSecretOpts {
                     "VYxlRVhRH8+Vv15boyRT0/9WmlELhI9vCjpqmoAiLbxFHYfS91PXtetZx+LpSmMcz5wkSfJPdkAB3L0"
                 );
                 let secret_json = decipher_text(CIPHERED_SECRET);
-                Ok(oauth2::parse_application_secret(secret_json)?)
+                Ok(yup_oauth2::parse_application_secret(secret_json)?)
             }
             AppSecretOpts::JsonPath(path) => {
                 let secret_json = std::fs::read(path)?;
                 let secret_json = str::from_utf8(&secret_json)?;
-                Ok(oauth2::parse_application_secret(secret_json)?)
+                Ok(yup_oauth2::parse_application_secret(secret_json)?)
             }
             AppSecretOpts::JsonContent(secret_json) => {
-                Ok(oauth2::parse_application_secret(&secret_json)?)
+                Ok(yup_oauth2::parse_application_secret(&secret_json)?)
             }
             AppSecretOpts::Credentials {
                 client_id,
@@ -80,70 +77,15 @@ impl AppSecretOpts {
     }
 }
 
-pub struct CacheDir(Utf8PathBuf);
-
-impl CacheDir {
-    pub fn new(path: Utf8PathBuf) -> Self {
-        Self(path)
-    }
-
-    pub async fn cache_secret(&self, app_secret: &ApplicationSecret) -> fsync::Result<()> {
-        let json = serde_json::to_string(app_secret)?;
-        let path = self.0.join("client_secret.json");
-        tokio::fs::write(&path, &json).await?;
-        Ok(())
-    }
-
-    /// This will actually ask the user to open a webpage and authorize the app to access Drive
-    pub async fn auth_and_cache_tokens(
-        &self,
-        app_secret: ApplicationSecret,
-    ) -> fsync::Result<impl 'static + GetToken> {
-        let path = self.0.join("tokens_cache.json");
-        let auth = oauth2::InstalledFlowAuthenticator::builder(
-            app_secret,
-            oauth2::InstalledFlowReturnMethod::Interactive,
-        )
-        .persist_tokens_to_disk(&path)
-        .build()
-        .await
-        .unwrap();
-
-        let scopes = &["https://www.googleapis.com/auth/drive.file"];
-        auth.token(scopes).await?;
-        Ok(auth)
-    }
-
-    pub async fn load_secret(&self) -> fsync::Result<ApplicationSecret> {
-        let path = self.0.join("client_secret.json");
-        let json = tokio::fs::read(&path).await?;
-        let json = str::from_utf8(&json)?;
-        Ok(serde_json::from_str(json)?)
-    }
-}
-
-type Connector = HttpsConnector<HttpConnector>;
-
 pub struct Storage {
-    hub: DriveHub<Connector>,
+    hub: DriveHub<oauth2::Connector>,
+    _cache_dir: oauth2::CacheDir,
 }
 
 impl Storage {
-    pub async fn new(cache_dir: Utf8PathBuf) -> fsync::Result<Self> {
-        let app_secret = cache_dir.join("client_secret.json");
-        let app_secret = tokio::fs::read(&app_secret).await?;
-        let app_secret = str::from_utf8(&app_secret)?;
-        let app_secret: ApplicationSecret = serde_json::from_str(app_secret)?;
-
-        let token_cache = cache_dir.join("token_cache.json");
-
-        let auth = oauth2::InstalledFlowAuthenticator::builder(
-            app_secret,
-            oauth2::InstalledFlowReturnMethod::HTTPRedirect,
-        )
-        .persist_tokens_to_disk(&token_cache)
-        .build()
-        .await?;
+    pub async fn new(cache_dir: oauth2::CacheDir) -> fsync::Result<Self> {
+        let app_secret = cache_dir.load_secret().await?;
+        let auth = cache_dir.oauth2_installed_flow(app_secret).await?;
 
         let hub = DriveHub::new(
             hyper::Client::builder().build(
@@ -155,7 +97,7 @@ impl Storage {
             ),
             auth,
         );
-        Ok(Self { hub })
+        Ok(Self { hub, _cache_dir: cache_dir })
     }
 }
 

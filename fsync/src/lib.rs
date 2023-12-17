@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod cipher;
 pub mod fs;
+pub mod oauth2;
 mod storage;
 
 pub use crate::storage::*;
