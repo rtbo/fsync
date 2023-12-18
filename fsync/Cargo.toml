@@ -12,7 +12,6 @@ async-trait = { workspace = true }
 camino = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-google-drive3 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -21,6 +20,9 @@ tokio-stream = { workspace = true }
 yup-oauth2 = { workspace = true }
 
 base64 = "0.21"
+google-drive3 = "^5.0"
+hyper = "0.14.27"
+hyper-rustls = "0.24.2"
 rand = "0.8"
 rust-crypto = "0.2"
 webbrowser = "0.8.12"

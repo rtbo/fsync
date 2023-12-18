@@ -455,6 +455,8 @@ dependencies = [
  "dirs",
  "futures",
  "google-drive3",
+ "hyper",
+ "hyper-rustls",
  "rand 0.8.5",
  "rust-crypto",
  "serde",
@@ -474,7 +476,6 @@ dependencies = [
  "dashmap",
  "fsync",
  "futures",
- "gdrive",
  "glob",
  "serde_json",
  "tokio",
@@ -488,7 +489,6 @@ dependencies = [
  "camino",
  "clap",
  "fsync",
- "gdrive",
  "inquire",
  "serde",
  "serde_json",
@@ -597,24 +597,6 @@ name = "gcc"
 version = "0.3.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
-
-[[package]]
-name = "gdrive"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "camino",
- "chrono",
- "fsync",
- "futures",
- "google-drive3",
- "hyper",
- "hyper-rustls",
- "serde_json",
- "thiserror",
- "tokio",
- "yup-oauth2",
-]
 
 [[package]]
 name = "getrandom"

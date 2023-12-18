@@ -3,12 +3,13 @@ use std::str;
 // use std::task::{Context, Poll};
 use async_stream::try_stream;
 use camino::{Utf8Path, Utf8PathBuf};
-use fsync::cipher::decipher_text;
-use fsync::{oauth2, Entry, EntryType, PathId};
 use futures::Stream;
 use google_drive3::api;
 use google_drive3::oauth2::ApplicationSecret;
 use google_drive3::DriveHub;
+
+use crate::cipher::decipher_text;
+use crate::{oauth2, Entry, EntryType, PathId};
 
 #[derive(Debug, Clone)]
 pub enum AppSecretOpts {
@@ -32,7 +33,7 @@ pub enum SecretError {
 }
 
 impl AppSecretOpts {
-    pub fn get(self) -> fsync::Result<ApplicationSecret> {
+    pub fn get(self) -> crate::Result<ApplicationSecret> {
         match self {
             AppSecretOpts::Fsync => {
                 const CIPHERED_SECRET: &'static str = concat!(
@@ -83,7 +84,7 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub async fn new(cache_dir: oauth2::CacheDir) -> fsync::Result<Self> {
+    pub async fn new(cache_dir: oauth2::CacheDir) -> crate::Result<Self> {
         let app_secret = cache_dir.load_secret().await?;
         let auth = cache_dir.oauth2_installed_flow(app_secret).await?;
 
@@ -97,12 +98,15 @@ impl Storage {
             ),
             auth,
         );
-        Ok(Self { hub, _cache_dir: cache_dir })
+        Ok(Self {
+            hub,
+            _cache_dir: cache_dir,
+        })
     }
 }
 
-impl fsync::Storage for Storage {
-    fn entries(&self, dir_id: Option<PathId>) -> impl Stream<Item = fsync::Result<Entry>> + Send {
+impl crate::Storage for Storage {
+    fn entries(&self, dir_id: Option<PathId>) -> impl Stream<Item = crate::Result<Entry>> + Send {
         let parent_id = dir_id.map(|di| di.id).unwrap_or("root");
         let base_dir = dir_id.map(|di| di.path);
         let q = format!("'{}' in parents", parent_id);

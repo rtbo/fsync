@@ -4,8 +4,8 @@
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 
+pub mod backend;
 pub mod cipher;
-pub mod fs;
 pub mod oauth2;
 mod storage;
 
@@ -38,9 +38,6 @@ pub enum Error {
     #[error("I/O error")]
     Io(#[from] std::io::Error),
 
-    #[error("file system related error")]
-    Fs(#[from] crate::fs::Error),
-
     #[error("Utf-8 error")]
     Utf8(#[from] std::str::Utf8Error),
 
@@ -52,6 +49,9 @@ pub enum Error {
 
     #[error("OAuth2")]
     OAuth2(#[from] yup_oauth2::Error),
+
+    #[error("file system related error")]
+    Fs(#[from] crate::backend::fs::Error),
 
     #[error("Google Drive error")]
     GoogleDrive(#[from] google_drive3::Error),

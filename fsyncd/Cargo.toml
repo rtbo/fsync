@@ -8,7 +8,6 @@ edition = "2021"
 
 [dependencies]
 fsync = { path = "../fsync" }
-gdrive = { path = "../gdrive" }
 
 camino = { workspace = true }
 futures = { workspace = true }

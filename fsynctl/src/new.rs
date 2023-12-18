@@ -1,5 +1,5 @@
-
 use camino::{Utf8Path, Utf8PathBuf};
+use fsync::backend;
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Editor, Select, Text};
 
@@ -22,7 +22,7 @@ struct InitOptions {
 }
 
 enum ProviderOpts {
-    GoogleDrive(gdrive::AppSecretOpts),
+    GoogleDrive(backend::gdrive::AppSecretOpts),
 }
 
 pub fn main(args: Args) -> Result<(), Error> {
@@ -41,7 +41,9 @@ pub fn main(args: Args) -> Result<(), Error> {
 
     let config_dir = fsync::get_config_dir()?.join(&name);
     if config_dir.exists() {
-        return Err(Error::Custom(format!("Configuration already exists: {config_dir}")));
+        return Err(Error::Custom(format!(
+            "Configuration already exists: {config_dir}"
+        )));
     }
 
     let local_dir = if let Some(local_dir) = args.local_dir {
@@ -67,7 +69,9 @@ pub fn main(args: Args) -> Result<(), Error> {
         panic!("Could not recognize answer: {provider}");
     };
 
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     let create_res = rt.block_on(create_config(
         &config_dir,
         InitOptions {
@@ -78,7 +82,7 @@ pub fn main(args: Args) -> Result<(), Error> {
     match create_res {
         Ok(()) => {
             println!("Success!");
-        },
+        }
         Err(_) => {
             if config_dir.exists() {
                 println!("Deleting {config_dir} because of error");
@@ -115,7 +119,7 @@ async fn create_config(config_dir: &Utf8Path, opts: InitOptions) -> Result<(), E
 
     match opts.provider_opts {
         ProviderOpts::GoogleDrive(app_secret_opts) => {
-            let app_secret =  app_secret_opts.get()?;
+            let app_secret = app_secret_opts.get()?;
             let cache_dir = fsync::oauth2::CacheDir::new(config_dir.to_path_buf());
             cache_dir.cache_secret(&app_secret).await?;
             // cache_dir.auth_and_cache_tokens(app_secret).await?;
@@ -193,7 +197,7 @@ fn validate_path(input: &str) -> Result<Validation, CustomUserError> {
     validate_chars(invalid_chars)
 }
 
-fn google_drive() -> Result<gdrive::AppSecretOpts, Error> {
+fn google_drive() -> Result<backend::gdrive::AppSecretOpts, Error> {
     let options = &[
         "Use built-in application secret",
         "Provide path to client_secret.json",
@@ -207,19 +211,19 @@ fn google_drive() -> Result<gdrive::AppSecretOpts, Error> {
     .prompt()?;
     let ind = options.iter().position(|e| *e == ans).unwrap();
     let opts = match ind {
-        0 => gdrive::AppSecretOpts::Fsync,
-        1 => gdrive::AppSecretOpts::JsonPath(
+        0 => backend::gdrive::AppSecretOpts::Fsync,
+        1 => backend::gdrive::AppSecretOpts::JsonPath(
             Text::new("Enter path to client_scret.json")
                 .prompt()?
                 .into(),
         ),
-        2 => gdrive::AppSecretOpts::JsonContent(
+        2 => backend::gdrive::AppSecretOpts::JsonContent(
             Editor::new("Enter content of client_secret.json").prompt()?,
         ),
         3 => {
             let client_id = Text::new("Client Id").prompt()?;
             let client_secret = Text::new("Client Secret").prompt()?;
-            gdrive::AppSecretOpts::Credentials {
+            backend::gdrive::AppSecretOpts::Credentials {
                 client_id,
                 client_secret,
             }
