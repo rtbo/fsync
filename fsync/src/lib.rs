@@ -23,13 +23,14 @@ pub struct Config {
 }
 
 pub fn get_home() -> Result<Utf8PathBuf> {
-    std::env::var("HOME")
-        .map(|v| v.into())
-        .map_err(|err| err.into())
+    let dir = dirs::home_dir().ok_or_else(|| Error::Custom("Can't get HOME directory".into()))?;
+    Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
 }
 
 pub fn get_config_dir() -> Result<Utf8PathBuf> {
-    get_home().map(|h| [h.as_str(), ".config", "fsync"].iter().collect())
+    let dir = dirs::config_dir().ok_or_else(|| Error::Custom("Can't get config directory".into()))?;
+    let dir = Utf8PathBuf::from_path_buf(dir).unwrap();
+    Ok(dir.join("fsync"))
 }
 
 #[derive(Debug, thiserror::Error)]

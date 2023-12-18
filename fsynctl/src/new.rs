@@ -26,6 +26,9 @@ enum ProviderOpts {
 }
 
 pub fn main(args: Args) -> Result<(), Error> {
+    for (key, value) in std::env::vars() {
+        println!("{key}  =  {value}");
+    }
     let name = if let Some(name) = args.name {
         map_validation_result(validate_name(name.as_str()))?;
         name
@@ -174,12 +177,13 @@ fn validate_path(input: &str) -> Result<Validation, CustomUserError> {
         match *c {
             b'<' => invalid_chars.push("<"),
             b'>' => invalid_chars.push(">"),
-            b':' => invalid_chars.push(":"),
             b'|' => invalid_chars.push("|"),
             b'?' => invalid_chars.push("?"),
             b'*' => invalid_chars.push("*"),
             0..=31 => invalid_chars.push("<ctrl>"),
 
+            #[cfg(not(target_os = "windows"))]
+            b':' => invalid_chars.push(":"),
             #[cfg(not(target_os = "windows"))]
             b'\\' => invalid_chars.push("\\"),
 
