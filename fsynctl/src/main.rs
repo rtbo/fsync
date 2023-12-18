@@ -1,4 +1,3 @@
-
 use clap::Parser;
 use inquire::InquireError;
 
@@ -38,7 +37,7 @@ impl From<fsync::Error> for Error {
             fsync::Error::Utf8(err) => Error::Utf8(err),
             fsync::Error::OAuth2(err) => Error::OAuth2(err),
             fsync::Error::Custom(err) => Error::Custom(err),
-            err => panic!("not supposed to have this error here: {err:?}")
+            err => panic!("not supposed to have this error here: {err:?}"),
         }
     }
 }

@@ -3,10 +3,10 @@ use std::str;
 
 use camino::Utf8PathBuf;
 use futures::Future;
-use yup_oauth2::ApplicationSecret;
 use yup_oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
 use yup_oauth2::hyper::client::HttpConnector;
 use yup_oauth2::hyper_rustls::HttpsConnector;
+use yup_oauth2::ApplicationSecret;
 
 pub type Connector = HttpsConnector<HttpConnector>;
 pub type Authenticator = yup_oauth2::authenticator::Authenticator<Connector>;

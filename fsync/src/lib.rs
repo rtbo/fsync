@@ -28,7 +28,8 @@ pub fn get_home() -> Result<Utf8PathBuf> {
 }
 
 pub fn get_config_dir() -> Result<Utf8PathBuf> {
-    let dir = dirs::config_dir().ok_or_else(|| Error::Custom("Can't get config directory".into()))?;
+    let dir =
+        dirs::config_dir().ok_or_else(|| Error::Custom("Can't get config directory".into()))?;
     let dir = Utf8PathBuf::from_path_buf(dir).unwrap();
     Ok(dir.join("fsync"))
 }
