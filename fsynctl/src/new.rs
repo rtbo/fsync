@@ -55,10 +55,10 @@ pub fn main(args: Args) -> Result<(), Error> {
             .with_default(def.as_str())
             .with_validator(validate_path)
             .prompt()
-            .map(|ld| Utf8PathBuf::from(ld))?
+            .map(Utf8PathBuf::from)?
     };
 
-    const GOOGLE_DRIVE_PROVIDER: &'static str = "Google Drive";
+    const GOOGLE_DRIVE_PROVIDER: &str = "Google Drive";
 
     let providers = vec![GOOGLE_DRIVE_PROVIDER];
     let provider = Select::new("Select drive provider", providers).prompt()?;

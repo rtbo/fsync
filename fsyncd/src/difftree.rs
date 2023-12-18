@@ -134,7 +134,7 @@ impl<'a> DiffTreeBuild<'a> {
 
         let path = path
             .map(|p| p.to_owned())
-            .unwrap_or_else(|| Utf8PathBuf::new());
+            .unwrap_or_default();
 
         let entry = TreeEntry::Both {
             local_typ: loc_cache_entry.entry.typ().clone(),

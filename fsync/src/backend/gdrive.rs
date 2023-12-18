@@ -36,7 +36,7 @@ impl AppSecretOpts {
     pub fn get(self) -> crate::Result<ApplicationSecret> {
         match self {
             AppSecretOpts::Fsync => {
-                const CIPHERED_SECRET: &'static str = concat!(
+                const CIPHERED_SECRET: &str = concat!(
                     "GB3fSrPXMUAIOLstLrJ8AlA3MyM6KULxtenYrt76NRXWPCn+VZiMZ+y5rEKCKaH/4i26lGa6azK44",
                     "zaTdPGrqzHo/D78cKQaQ3AeS9PRtF8UZK7JytDMs9fp5i00Ou/UW3iyLObnPlOKdh16dlUui7es7a",
                     "kr+HoMIdLjbh0yOH2FcEQhULkXFg4Dhj62CxPasI9JzYKkjMHuvQlyQA2NMfpGyGGGv42xR/Rdsxf",
@@ -56,7 +56,7 @@ impl AppSecretOpts {
                 Ok(yup_oauth2::parse_application_secret(secret_json)?)
             }
             AppSecretOpts::JsonContent(secret_json) => {
-                Ok(yup_oauth2::parse_application_secret(&secret_json)?)
+                Ok(yup_oauth2::parse_application_secret(secret_json)?)
             }
             AppSecretOpts::Credentials {
                 client_id,
@@ -132,10 +132,10 @@ impl crate::Storage for Storage {
     }
 }
 
-const FOLDER_MIME_TYPE: &'static str = "application/vnd.google-apps.folder";
+const FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
 
 fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> Entry {
-    let id = f.id.unwrap_or(String::new());
+    let id = f.id.unwrap_or_default();
     let path = match base_dir {
         Some(di) => Utf8Path::new(di).join(f.name.as_deref().unwrap()),
         None => Utf8PathBuf::from(f.name.as_deref().unwrap()),

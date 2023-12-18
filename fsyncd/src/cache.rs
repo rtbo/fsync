@@ -109,7 +109,7 @@ where
                     EntryType::Directory => {
                         populate_recurse(
                             Some(ent_id.clone()),
-                            Some(ent_path.clone().into()),
+                            Some(ent_path.clone()),
                             entries.clone(),
                             storage,
                             ignored,

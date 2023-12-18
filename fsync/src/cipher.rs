@@ -56,8 +56,8 @@ fn test_cipher_lenghts() {
 fn test_cipher_repeat() {
     let msg = "a string message";
 
-    let cipher1 = cipher_text(&msg);
-    let cipher2 = cipher_text(&msg);
+    let cipher1 = cipher_text(msg);
+    let cipher2 = cipher_text(msg);
     assert_ne!(&cipher1, &cipher2);
 
     let clear1 = decipher_text(&cipher1);

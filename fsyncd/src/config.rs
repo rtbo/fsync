@@ -1,6 +1,7 @@
 use camino::Utf8Path;
 use glob::{MatchOptions, Pattern, PatternError};
 
+#[derive(Default)]
 pub struct PatternList(Vec<Pattern>, MatchOptions);
 
 impl PatternList {
@@ -20,8 +21,4 @@ impl PatternList {
     }
 }
 
-impl Default for PatternList {
-    fn default() -> Self {
-        PatternList(Vec::new(), MatchOptions::default())
-    }
-}
+
