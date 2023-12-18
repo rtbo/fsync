@@ -20,5 +20,3 @@ impl PatternList {
             .any(|p| p.matches_with(path.as_ref().as_str(), self.1))
     }
 }
-
-

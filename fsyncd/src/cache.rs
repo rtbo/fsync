@@ -65,7 +65,7 @@ impl Cache {
     // }
 }
 
-fn populate_recurse<'a, 'b, S>(
+fn populate_recurse<'a, S>(
     dir_id: Option<String>,
     dir_path: Option<Utf8PathBuf>,
     entries: Arc<DashMap<Utf8PathBuf, CacheEntry>>,

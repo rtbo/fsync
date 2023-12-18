@@ -48,31 +48,19 @@ impl Entry {
     }
 
     pub fn is_dir(&self) -> bool {
-        match self.typ {
-            EntryType::Directory => true,
-            _ => false,
-        }
+        matches!(self.typ, EntryType::Directory)
     }
 
     pub fn is_file(&self) -> bool {
-        match self.typ {
-            EntryType::Regular { .. } => true,
-            _ => false,
-        }
+        matches!(self.typ, EntryType::Regular { .. })
     }
 
     pub fn is_symlink(&self) -> bool {
-        match self.typ {
-            EntryType::Symlink { .. } => true,
-            _ => false,
-        }
+        matches!(self.typ, EntryType::Symlink { .. })
     }
 
     pub fn is_special(&self) -> bool {
-        match self.typ {
-            EntryType::Special => true,
-            _ => false,
-        }
+        matches!(self.typ, EntryType::Special)
     }
 
     pub fn size(&self) -> Option<u64> {

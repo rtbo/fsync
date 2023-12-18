@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
 use fsync::EntryType;
@@ -90,37 +92,40 @@ impl<'a> DiffTreeBuild<'a> {
         while iloc < loc_cache_entry.children.len() && irem < rem_cache_entry.children.len() {
             let loc = &loc_cache_entry.children[iloc];
             let rem = &rem_cache_entry.children[irem];
-            if loc == rem {
-                let path = join_path(path, loc);
-                let loc_entry = self.local.entry(Some(&path)).unwrap();
-                let rem_entry = self.remote.entry(Some(&path)).unwrap();
-                match (loc_entry.entry.is_dir(), rem_entry.entry.is_dir()) {
-                    (true, true) => {
-                        self.both(Some(&path));
+            match loc.cmp(rem) {
+                Ordering::Equal => {
+                    let path = join_path(path, loc);
+                    let loc_entry = self.local.entry(Some(&path)).unwrap();
+                    let rem_entry = self.remote.entry(Some(&path)).unwrap();
+                    match (loc_entry.entry.is_dir(), rem_entry.entry.is_dir()) {
+                        (true, true) => {
+                            self.both(Some(&path));
+                        }
+                        (true, false) => {
+                            self.local(path.clone());
+                        }
+                        (false, true) => {
+                            self.remote(path.clone());
+                        }
+                        (false, false) => {
+                            self.both(Some(&path));
+                        }
                     }
-                    (true, false) => {
-                        self.local(path.clone());
-                    }
-                    (false, true) => {
-                        self.remote(path.clone());
-                    }
-                    (false, false) => {
-                        self.both(Some(&path));
-                    }
+                    children.push(loc.clone());
+                    iloc += 1;
+                    irem += 1;
                 }
-                children.push(loc.clone());
-                iloc += 1;
-                irem += 1;
-            } else if loc < rem {
-                self.local(join_path(path, loc));
-                children.push(loc.clone());
-                iloc += 1;
-                iloc += 1;
-            } else {
-                self.remote(join_path(path, rem));
-                children.push(rem.clone());
-                irem += 1;
-            };
+                Ordering::Less => {
+                    self.local(join_path(path, loc));
+                    children.push(loc.clone());
+                    iloc += 1;
+                }
+                Ordering::Greater => {
+                    self.remote(join_path(path, rem));
+                    children.push(rem.clone());
+                    irem += 1;
+                }
+            }
         }
 
         for child_name in &loc_cache_entry.children[iloc..] {
@@ -132,9 +137,7 @@ impl<'a> DiffTreeBuild<'a> {
             children.push(child_name.clone());
         }
 
-        let path = path
-            .map(|p| p.to_owned())
-            .unwrap_or_default();
+        let path = path.map(|p| p.to_owned()).unwrap_or_default();
 
         let entry = TreeEntry::Both {
             local_typ: loc_cache_entry.entry.typ().clone(),
