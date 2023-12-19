@@ -3,13 +3,12 @@ use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
-use fsync::{Entry, EntryType, PathId, Storage};
-use fsync::{Error, Result};
 use futures::future::BoxFuture;
 use tokio::task::JoinSet;
 use tokio_stream::StreamExt;
 
 use crate::config::PatternList;
+use crate::{Entry, EntryType, Error, PathId, Result, Storage};
 
 pub struct Cache {
     entries: Arc<DashMap<Utf8PathBuf, CacheEntry>>,

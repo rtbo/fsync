@@ -1,14 +1,10 @@
-mod cache;
-mod config;
-mod difftree;
-
 use std::sync::Arc;
 
-use config::PatternList;
-use difftree::DiffTree;
+use fsync::config::PatternList;
+use fsync::difftree::DiffTree;
 use fsync::{oauth2, Config, Error, Provider, Result};
 
-use crate::cache::Cache;
+use fsync::cache::Cache;
 
 #[tokio::main]
 async fn main() -> Result<()> {

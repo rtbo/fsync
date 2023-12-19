@@ -2,10 +2,12 @@ use std::cmp::Ordering;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
-use fsync::EntryType;
+use serde::{Deserialize, Serialize};
 
 use crate::cache::Cache;
+use crate::EntryType;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TreeEntry {
     Local {
         typ: EntryType,
@@ -21,11 +23,13 @@ pub enum TreeEntry {
     },
 }
 
-struct TreeNode {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TreeNode {
     entry: TreeEntry,
     children: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct DiffTree {
     nodes: DashMap<Utf8PathBuf, TreeNode>,
 }
@@ -40,6 +44,10 @@ impl DiffTree {
         };
         build.both(None);
         Self { nodes }
+    }
+
+    pub fn entry(&self, path: &Utf8Path) -> Option<TreeNode> {
+        self.nodes.get(path).map(|node| node.clone())
     }
 
     pub fn print_out(&self) {

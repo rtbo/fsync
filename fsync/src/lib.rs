@@ -5,7 +5,10 @@ use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub mod backend;
+pub mod cache;
+pub mod config;
 pub mod cipher;
+pub mod difftree;
 pub mod oauth2;
 mod storage;
 

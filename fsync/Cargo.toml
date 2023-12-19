@@ -20,6 +20,8 @@ tokio-stream = { workspace = true }
 yup-oauth2 = { workspace = true }
 
 base64 = "0.21"
+dashmap = "5.5.3"
+glob = "0.3.1"
 google-drive3 = "^5.0"
 hyper = "0.14.27"
 hyper-rustls = "0.24.2"
