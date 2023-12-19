@@ -9,6 +9,7 @@ pub mod cache;
 pub mod config;
 pub mod cipher;
 pub mod difftree;
+pub mod ipc;
 pub mod oauth2;
 mod storage;
 

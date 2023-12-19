@@ -1,10 +1,11 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Utc};
 use futures::Stream;
+use serde::{Deserialize, Serialize};
 
 use crate::Result;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EntryType {
     Directory,
     Regular {

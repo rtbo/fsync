@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
+use fsync::cache::Cache;
 use fsync::config::PatternList;
 use fsync::difftree::DiffTree;
 use fsync::{oauth2, Config, Error, Provider, Result};
+use service::Service;
 
-use fsync::cache::Cache;
+mod service;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,7 +31,7 @@ async fn main() -> Result<()> {
     let local = Arc::new(fsync::backend::fs::Storage::new(&config.local_dir));
     let local = Cache::new_from_storage(local, ignored.clone());
 
-    match &config.provider {
+    let tree = match &config.provider {
         Provider::GoogleDrive => {
             let remote = Arc::new(
                 fsync::backend::gdrive::Storage::new(oauth2::CacheDir::new(config_dir)).await?,
@@ -39,9 +41,11 @@ async fn main() -> Result<()> {
             let local = local?;
             let remote = remote?;
 
-            let tree = DiffTree::from_cache(&local, &remote);
-            tree.print_out();
+            DiffTree::from_cache(&local, &remote)
         }
-    }
-    Ok(())
+    };
+
+    let service = Service::new(tree);
+
+    service.start().await
 }
