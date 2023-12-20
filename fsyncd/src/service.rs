@@ -56,7 +56,7 @@ impl Service {
 
         let _ = Abortable::new(fut, abort_reg).await;
         Ok(())
-    } 
+    }
 
     pub fn shutdown(&self) {
         println!("shutdown!");

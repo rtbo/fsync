@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 pub mod backend;
 pub mod cache;
-pub mod config;
 pub mod cipher;
+pub mod config;
 pub mod difftree;
 pub mod ipc;
 pub mod oauth2;
