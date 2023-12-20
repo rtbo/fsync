@@ -3,13 +3,14 @@ use std::sync::Arc;
 use fsync::cache::Cache;
 use fsync::config::PatternList;
 use fsync::difftree::DiffTree;
-use fsync::{oauth2, Config, Error, Provider, Result};
+use fsync::{oauth2, Config, Error, Provider};
+use futures::stream::AbortHandle;
 use service::Service;
 
 mod service;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> fsync::Result<()> {
     let instance_name = std::env::var("FSYNCD_INSTANCE")?;
     let config_dir = fsync::get_config_dir()?.join(&instance_name);
     if !config_dir.exists() {
@@ -47,5 +48,27 @@ async fn main() -> Result<()> {
 
     let service = Service::new(tree);
 
-    service.start().await
+    let (abort_handle, abort_reg) = AbortHandle::new_pair();
+    handle_signals(service.clone(), abort_handle)?;
+
+    service.start(abort_reg).await
+}
+
+fn handle_signals(service: Service, abort_handle: AbortHandle) -> fsync::Result<()> {
+    use tokio::signal::unix::{signal, SignalKind};
+
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = sigterm.recv() => {},
+            _ = sigint.recv() => {},
+        };
+        service.shutdown();
+        abort_handle.abort();
+        println!("exiting");
+    });
+
+    Ok(())
 }

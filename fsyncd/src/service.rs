@@ -6,6 +6,7 @@ use fsync::difftree::{DiffTree, TreeNode};
 use fsync::ipc::Fsync;
 use futures::future;
 use futures::prelude::*;
+use futures::stream::{AbortRegistration, Abortable};
 use tarpc::{
     context::Context,
     server::{self, incoming::Incoming, Channel},
@@ -31,7 +32,7 @@ impl Service {
         }
     }
 
-    pub async fn start(&self) -> fsync::Result<()> {
+    pub async fn start(&self, abort_reg: AbortRegistration) -> fsync::Result<()> {
         let server_addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), 0);
 
         let mut listener =
@@ -40,7 +41,7 @@ impl Service {
         println!("Listening on port {}", listener.local_addr().port());
 
         listener.config_mut().max_frame_length(usize::MAX);
-        listener
+        let fut = listener
             // Ignore accept errors.
             .filter_map(|r| future::ready(r.ok()))
             .map(server::BaseChannel::with_defaults)
@@ -51,8 +52,13 @@ impl Service {
             .map(|channel| channel.execute(self.clone().serve()))
             // Max 10 channels.
             .buffer_unordered(10)
-            .for_each(|_| async {})
-            .await;
+            .for_each(|_| async {});
+
+        let _ = Abortable::new(fut, abort_reg).await;
         Ok(())
+    } 
+
+    pub fn shutdown(&self) {
+        println!("shutdown!");
     }
 }
