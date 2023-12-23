@@ -106,9 +106,17 @@ impl Storage {
 }
 
 impl crate::Storage for Storage {
-    fn entries(&self, dir_id: Option<PathId>) -> impl Stream<Item = crate::Result<Entry>> + Send {
-        let parent_id = dir_id.map(|di| di.id).unwrap_or("root");
-        let base_dir = dir_id.map(|di| di.path);
+    async fn entry<'a>(&self, path_id: PathId<'a>) -> crate::Result<Entry> {
+        let (_resp, file) = self.hub.files().get(path_id.id).doit().await?;
+        Ok(map_file(Some(path_id.path), file))
+    }
+
+    fn entries(
+        &self,
+        parent_path_id: Option<PathId>,
+    ) -> impl Stream<Item = crate::Result<Entry>> + Send {
+        let parent_id = parent_path_id.map(|di| di.id).unwrap_or("root");
+        let base_dir = parent_path_id.map(|di| di.path);
         let q = format!("'{}' in parents", parent_id);
         let mut next_page_token: Option<String> = None;
         try_stream! {

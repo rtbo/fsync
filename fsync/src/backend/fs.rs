@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::fs::Metadata;
 use std::result;
 
 use async_stream::try_stream;
@@ -99,56 +99,70 @@ impl Storage {
     pub fn root(&self) -> &Utf8Path {
         &self.root
     }
-
-    async fn map_entry(&self, entry: &DirEntry, base: Option<&Utf8Path>) -> Result<Entry> {
-        let file_name = Utf8PathBuf::try_from(PathBuf::from(entry.file_name()))?;
-        let path = match base {
-            Some(base) => Utf8PathBuf::from([base.as_str(), file_name.as_str()].join("/")),
-            None => file_name,
-        };
-        let metadata = entry.metadata().await?;
-        let typ = if metadata.is_symlink() {
-            let target = tokio::fs::read_link(entry.path()).await?;
-            let target = Utf8PathBuf::try_from(target)?;
-            check_symlink(&path, &target)?;
-            EntryType::Symlink {
-                target: target.into_string(),
-                size: metadata.len(),
-                mtime: metadata.modified().ok().map(|mt| mt.into()),
-            }
-        } else if metadata.is_file() {
-            EntryType::Regular {
-                size: metadata.len(),
-                mtime: metadata.modified().ok().map(|mt| mt.into()),
-            }
-        } else if metadata.is_dir() {
-            EntryType::Directory
-        } else {
-            EntryType::Special
-        };
-
-        Ok(Entry::new(path.clone().into(), path, typ))
-    }
 }
 
 impl crate::Storage for Storage {
-    fn entries(&self, dir_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send {
-        let base = match dir_id {
+    async fn entry<'a>(&self, path_id: PathId<'a>) -> Result<Entry> {
+        let fs_path = self.root.join(path_id.path);
+        let path = path_id.path;
+        let metadata = std::fs::metadata(&fs_path)?;
+        map_metadata(path, &metadata, &fs_path).await
+    }
+
+    fn entries(&self, parent_path_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send {
+        let fs_base = match parent_path_id {
             Some(dir) => self.root.join(dir.path),
             None => self.root.clone(),
         };
+        let parent_path = parent_path_id.map(|pid| pid.path);
         try_stream! {
-            let mut read_dir = fs::read_dir(base).await?;
-            let base = dir_id.map(|di| di.path);
+            if tokio::fs::metadata(&fs_base).await?.is_dir() {
+                return;
+            }
+            let mut read_dir = fs::read_dir(&fs_base).await?;
             loop {
                 match read_dir.next_entry().await? {
                     None => break,
-                    Some(e) => {
-                        let entry = self.map_entry(&e, base).await?;
-                        yield entry;
+                    Some(direntry) => {
+                        yield map_direntry(parent_path, &direntry).await?;
                     }
                 }
             }
         }
     }
+}
+
+async fn map_direntry(parent_path: Option<&Utf8Path>, direntry: &DirEntry) -> Result<Entry> {
+    let fs_path = Utf8PathBuf::try_from(direntry.path())?;
+    let file_name = String::from_utf8(direntry.file_name().into_encoded_bytes())
+        .map_err(|err| err.utf8_error())?;
+    let path = parent_path
+        .map(|p| p.join(&file_name))
+        .unwrap_or_else(|| Utf8PathBuf::from(&file_name));
+    let metadata = direntry.metadata().await?;
+    map_metadata(&path, &metadata, &fs_path).await
+}
+
+async fn map_metadata(path: &Utf8Path, metadata: &Metadata, fs_path: &Utf8Path) -> Result<Entry> {
+    let typ = if metadata.is_symlink() {
+        let target = tokio::fs::read_link(fs_path).await?;
+        let target = Utf8PathBuf::try_from(target)?;
+        check_symlink(&path, &target)?;
+        EntryType::Symlink {
+            target: target.into_string(),
+            size: metadata.len(),
+            mtime: metadata.modified().ok().map(|mt| mt.into()),
+        }
+    } else if metadata.is_file() {
+        EntryType::Regular {
+            size: metadata.len(),
+            mtime: metadata.modified().ok().map(|mt| mt.into()),
+        }
+    } else if metadata.is_dir() {
+        EntryType::Directory
+    } else {
+        EntryType::Special
+    };
+
+    Ok(Entry::new(path.to_string(), path.to_path_buf(), typ))
 }
