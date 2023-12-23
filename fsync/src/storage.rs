@@ -20,7 +20,7 @@ pub enum EntryType {
     Special,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     id: String,
     path: Utf8PathBuf,
@@ -28,8 +28,30 @@ pub struct Entry {
 }
 
 impl Entry {
+    pub fn root() -> Entry {
+        Entry {
+            id: "".to_string(),
+            path: Utf8PathBuf::from(""),
+            typ: EntryType::Directory,
+        }
+    }
+
     pub fn new(id: String, path: Utf8PathBuf, typ: EntryType) -> Entry {
         Entry { id, path, typ }
+    }
+
+    pub fn path_id(&self) -> PathId<'_> {
+        PathId {
+            id: &self.id,
+            path: &self.path,
+        }
+    }
+
+    pub fn path_id_buf(&self) -> PathIdBuf {
+        PathIdBuf {
+            id: self.id.to_owned(),
+            path: self.path.to_owned(),
+        }
     }
 
     pub fn id(&self) -> &str {
@@ -88,12 +110,48 @@ impl Entry {
     }
 }
 
+impl Default for Entry {
+    fn default() -> Self {
+        Entry::root()
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct PathId<'a> {
     pub id: &'a str,
     pub path: &'a Utf8Path,
 }
 
+impl<'a> PathId<'a> {
+    pub fn to_path_id_buf(&self) -> PathIdBuf {
+        PathIdBuf {
+            id: self.id.into(),
+            path: self.path.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PathIdBuf {
+    pub id: String,
+    pub path: Utf8PathBuf,
+}
+
+impl PathIdBuf {
+    pub fn as_path_id(&self) -> PathId<'_> {
+        PathId {
+            id: &self.id,
+            path: &self.path,
+        }
+    }
+}
+
+impl<'a> From<PathId<'a>> for PathIdBuf {
+    fn from(pid: PathId<'a>) -> Self {
+        pid.to_path_id_buf()
+    }
+}
+
 pub trait Storage {
-    fn entries(&self, dir_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send;
+    fn entries(&self, parent_path_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send;
 }
