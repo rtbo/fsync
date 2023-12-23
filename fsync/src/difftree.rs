@@ -1,26 +1,21 @@
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
+use futures::{
+    future::{self, BoxFuture},
+    StreamExt, TryStreamExt,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::cache::Cache;
-use crate::EntryType;
+use crate::{Entry, Result, Storage};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TreeEntry {
-    Local {
-        typ: EntryType,
-    },
-    Remote {
-        id: String,
-        typ: EntryType,
-    },
-    Both {
-        local_typ: EntryType,
-        remote_id: String,
-        remote_typ: EntryType,
-    },
+    Local(Entry),
+    Remote(Entry),
+    Both { local: Entry, remote: Entry },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,19 +26,25 @@ pub struct TreeNode {
 
 #[derive(Debug)]
 pub struct DiffTree {
-    nodes: DashMap<Utf8PathBuf, TreeNode>,
+    nodes: Arc<DashMap<Utf8PathBuf, TreeNode>>,
 }
 
 impl DiffTree {
-    pub fn from_cache(local: &Cache, remote: &Cache) -> Self {
-        let nodes = DashMap::new();
+    pub async fn from_cache<L, R>(local: Arc<L>, remote: Arc<R>) -> Result<Self>
+    where
+        L: Storage + Send + Sync + 'static,
+        R: Storage + Send + Sync + 'static,
+    {
+        let nodes = Arc::new(DashMap::new());
+
         let build = DiffTreeBuild {
             local,
             remote,
-            nodes: &nodes,
+            nodes: nodes.clone(),
         };
-        build.both(None);
-        Self { nodes }
+        build.both(None).await?;
+
+        Ok(Self { nodes })
     }
 
     pub fn entry(&self, path: &Utf8Path) -> Option<TreeNode> {
@@ -81,116 +82,164 @@ impl DiffTree {
     }
 }
 
-struct DiffTreeBuild<'a> {
-    local: &'a Cache,
-    remote: &'a Cache,
-    nodes: &'a DashMap<Utf8PathBuf, TreeNode>,
+struct DiffTreeBuild<L, R> {
+    local: Arc<L>,
+    remote: Arc<R>,
+    nodes: Arc<DashMap<Utf8PathBuf, TreeNode>>,
 }
 
-impl<'a> DiffTreeBuild<'a> {
-    fn both(&self, path: Option<&Utf8Path>) {
-        let loc_cache_entry = self.local.entry(path).unwrap();
-        let rem_cache_entry = self.remote.entry(path).unwrap();
+impl<L, R> DiffTreeBuild<L, R>
+where
+    L: Storage + Send + Sync + 'static,
+    R: Storage + Send + Sync + 'static,
+{
+    fn both(&self, both: Option<(Entry, Entry)>) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            let loc_path_id = both.as_ref().map(|b| b.0.path_id());
+            let loc_children = self.local.entries(loc_path_id);
+            let loc_children = loc_children.try_collect::<Vec<_>>();
 
-        let mut iloc = 0usize;
-        let mut irem = 0usize;
+            let rem_path_id = both.as_ref().map(|b| b.1.path_id());
+            let rem_children = self.remote.entries(rem_path_id);
+            let rem_children = rem_children.try_collect::<Vec<_>>();
 
-        let mut children = Vec::new();
+            let (loc_children, rem_children) = tokio::join!(loc_children, rem_children);
 
-        while iloc < loc_cache_entry.children.len() && irem < rem_cache_entry.children.len() {
-            let loc = &loc_cache_entry.children[iloc];
-            let rem = &rem_cache_entry.children[irem];
-            match loc.cmp(rem) {
-                Ordering::Equal => {
-                    let path = join_path(path, loc);
-                    let loc_entry = self.local.entry(Some(&path)).unwrap();
-                    let rem_entry = self.remote.entry(Some(&path)).unwrap();
-                    match (loc_entry.entry.is_dir(), rem_entry.entry.is_dir()) {
-                        (true, true) => {
-                            self.both(Some(&path));
+            let mut loc_children = loc_children?;
+            loc_children.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+            let mut loc_children = loc_children.iter();
+            let mut loc_child = loc_children.next();
+
+            let mut rem_children = rem_children?;
+            rem_children.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+            let mut rem_children = rem_children.iter();
+            let mut rem_child = rem_children.next();
+
+            let mut children = Vec::new();
+            let mut joinvec = Vec::new();
+
+            loop {
+                match (loc_child, rem_child) {
+                    (None, None) => break,
+                    (Some(loc), Some(rem)) => match loc.name().cmp(rem.name()) {
+                        Ordering::Equal => {
+                            match (loc.is_dir(), rem.is_dir()) {
+                                (true, true) | (false, false) => {
+                                    joinvec.push(self.both(Some((loc.clone(), rem.clone()))));
+                                }
+                                (true, false) => {
+                                    joinvec.push(self.local(loc.clone()));
+                                }
+                                (false, true) => {
+                                    joinvec.push(self.remote(rem.clone()));
+                                }
+                            }
+                            children.push(loc.name().to_string());
+                            loc_child = loc_children.next();
+                            rem_child = rem_children.next();
                         }
-                        (true, false) => {
-                            self.local(path.clone());
+                        Ordering::Less => {
+                            joinvec.push(self.local(loc.clone()));
+                            children.push(loc.name().to_string());
+                            loc_child = loc_children.next();
                         }
-                        (false, true) => {
-                            self.remote(path.clone());
+                        Ordering::Greater => {
+                            joinvec.push(self.remote(rem.clone()));
+                            children.push(rem.name().to_string());
+                            rem_child = rem_children.next();
                         }
-                        (false, false) => {
-                            self.both(Some(&path));
-                        }
+                    },
+                    (Some(loc), None) => {
+                        joinvec.push(self.local(loc.clone()));
+                        children.push(loc.name().to_string());
+                        loc_child = loc_children.next();
                     }
-                    children.push(loc.clone());
-                    iloc += 1;
-                    irem += 1;
-                }
-                Ordering::Less => {
-                    self.local(join_path(path, loc));
-                    children.push(loc.clone());
-                    iloc += 1;
-                }
-                Ordering::Greater => {
-                    self.remote(join_path(path, rem));
-                    children.push(rem.clone());
-                    irem += 1;
+                    (None, Some(rem)) => {
+                        joinvec.push(self.remote(rem.clone()));
+                        children.push(rem.name().to_string());
+                        rem_child = rem_children.next();
+                    }
                 }
             }
-        }
 
-        for child_name in &loc_cache_entry.children[iloc..] {
-            self.local(join_path(path, child_name));
-            children.push(child_name.clone());
-        }
-        for child_name in &rem_cache_entry.children[irem..] {
-            self.remote(join_path(path, child_name));
-            children.push(child_name.clone());
-        }
+            future::try_join_all(joinvec).await?;
 
-        let path = path.map(|p| p.to_owned()).unwrap_or_default();
+            let (path, entry) = if let Some((local, remote)) = both {
+                assert_eq!(local.path(), remote.path());
+                let path = local.path().to_owned();
+                (path, TreeEntry::Both { local, remote })
+            } else {
+                (
+                    Utf8PathBuf::default(),
+                    TreeEntry::Both {
+                        local: Entry::default(),
+                        remote: Entry::default(),
+                    },
+                )
+            };
 
-        let entry = TreeEntry::Both {
-            local_typ: loc_cache_entry.entry.typ().clone(),
-            remote_id: rem_cache_entry.entry.id().to_string(),
-            remote_typ: rem_cache_entry.entry.typ().clone(),
-        };
-        let node = TreeNode { entry, children };
-        self.nodes.insert(path, node);
+            let node = TreeNode { entry, children };
+            self.nodes.insert(path, node);
+
+            Ok(())
+        })
     }
 
-    fn local(&self, path: Utf8PathBuf) {
-        let cache_entry = self.local.entry(Some(&path)).unwrap();
+    fn local(&self, entry: Entry) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            let mut child_names = Vec::new();
+            let mut joinvec = Vec::new();
 
-        let children = cache_entry.children.clone();
+            {
+                let children = self.local.entries(Some(entry.path_id()));
+                tokio::pin!(children);
 
-        for child_name in &children {
-            self.local(join_path(Some(&path), child_name));
-        }
+                while let Some(child) = children.next().await {
+                    let child = child?;
+                    child_names.push(child.name().to_owned());
+                    joinvec.push(self.local(child));
+                }
+            }
 
-        let entry = TreeEntry::Local {
-            typ: cache_entry.entry.typ().clone(),
-        };
-        let node = TreeNode { entry, children };
-        self.nodes.insert(path, node);
+            future::try_join_all(joinvec).await?;
+
+            let path = entry.path().to_owned();
+            let entry = TreeEntry::Local(entry);
+            let node = TreeNode {
+                entry,
+                children: child_names,
+            };
+            self.nodes.insert(path, node);
+            Ok(())
+        })
     }
 
-    fn remote(&self, path: Utf8PathBuf) {
-        let cache_entry = self.remote.entry(Some(&path)).unwrap();
+    fn remote(&self, entry: Entry) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            let mut child_names = Vec::new();
+            let mut joinvec = Vec::new();
 
-        let children = cache_entry.children.clone();
+            {
+                let children = self.remote.entries(Some(entry.path_id()));
+                tokio::pin!(children);
 
-        for child_name in &children {
-            self.remote(join_path(Some(&path), child_name));
-        }
+                while let Some(child) = children.next().await {
+                    let child = child?;
+                    child_names.push(child.name().to_owned());
+                    joinvec.push(self.remote(child));
+                }
+            }
 
-        let entry = TreeEntry::Remote {
-            id: cache_entry.entry.id().to_string(),
-            typ: cache_entry.entry.typ().clone(),
-        };
-        let node = TreeNode { entry, children };
-        self.nodes.insert(path, node);
+            future::try_join_all(joinvec).await?;
+
+            let path = entry.path().to_owned();
+            let entry = TreeEntry::Remote(entry);
+            let node = TreeNode {
+                entry,
+                children: child_names,
+            };
+            self.nodes.insert(path, node);
+            Ok(())
+        })
     }
-}
-
-fn join_path(path: Option<&Utf8Path>, child_name: &str) -> Utf8PathBuf {
-    path.map(|p| p.join(child_name))
-        .unwrap_or_else(|| Utf8PathBuf::from(child_name))
 }

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use fsync::cache::Cache;
-use fsync::config::PatternList;
+use fsync::cache::CacheStorage;
 use fsync::difftree::DiffTree;
 use fsync::{oauth2, Config, Error, Provider};
 use futures::stream::AbortHandle;
@@ -27,22 +26,16 @@ async fn main() -> fsync::Result<()> {
 
     println!("Loaded config: {config:?}");
 
-    let ignored = Arc::new(PatternList::default());
-
     let local = Arc::new(fsync::backend::fs::Storage::new(&config.local_dir));
-    let local = Cache::new_from_storage(local, ignored.clone());
 
     let tree = match &config.provider {
         Provider::GoogleDrive => {
-            let remote = Arc::new(
-                fsync::backend::gdrive::Storage::new(oauth2::CacheDir::new(config_dir)).await?,
-            );
-            let remote = Cache::new_from_storage(remote, ignored);
-            let (local, remote) = tokio::join!(local, remote);
-            let local = local?;
-            let remote = remote?;
+            let remote =
+                fsync::backend::gdrive::Storage::new(oauth2::CacheDir::new(config_dir)).await?;
+            let remote = Arc::new(CacheStorage::new(remote));
+            remote.populate().await?;
 
-            DiffTree::from_cache(&local, &remote)
+            DiffTree::from_cache(local, remote).await?
         }
     };
 
