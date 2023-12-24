@@ -34,7 +34,7 @@ pub fn decipher_text(ciphertext: &str) -> String {
 }
 
 #[test]
-fn test_cipher_lenghts() {
+fn test_cipher_lengths() {
     // respectively 15, 16, 17, 31, 32, 33 bytes
     let msgs = [
         "0123456789abcde",
