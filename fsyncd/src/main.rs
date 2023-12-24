@@ -21,7 +21,15 @@ async fn main() -> fsync::Result<()> {
     println!("Found config directory: {config_dir}");
 
     let config_path = config_dir.join("config.json");
-    let config_json = tokio::fs::read(&config_path).await?;
+    let config_json = match tokio::fs::read(&config_path).await {
+        Ok(data) => data,
+        Err(err) => {
+            return Err(fsync::Error::Io(std::io::Error::new(
+                err.kind(),
+                format!("Could not open config file {config_path}: {err}"),
+            )));
+        }
+    };
     let config_json = std::str::from_utf8(&config_json)?;
     let config: Config = serde_json::from_str(config_json)?;
 
