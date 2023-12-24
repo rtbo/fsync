@@ -1,8 +1,8 @@
 use clap::Parser;
 use inquire::InquireError;
 
-mod list;
 mod create;
+mod list;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {

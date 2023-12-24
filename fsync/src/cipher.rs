@@ -18,7 +18,9 @@ pub fn cipher_text(cleartext: &str) -> String {
     ciphertext[..IV_LEN].copy_from_slice(&iv[..]);
 
     let mut cipher = Aes256Ctr64LE::new(KEY.into(), &iv.into());
-    cipher.apply_keystream_b2b(cleartext.as_bytes(), &mut ciphertext[IV_LEN..]).unwrap();
+    cipher
+        .apply_keystream_b2b(cleartext.as_bytes(), &mut ciphertext[IV_LEN..])
+        .unwrap();
 
     BASE64_STANDARD_NO_PAD.encode(ciphertext)
 }
@@ -34,7 +36,9 @@ pub fn decipher_text(ciphertext: &str) -> String {
     let mut cleartext = vec![0u8; ciphertext.len() - IV_LEN];
 
     let mut cipher = Aes256Ctr64LE::new(KEY.into(), &iv.into());
-    cipher.apply_keystream_b2b(&ciphertext[IV_LEN..], &mut cleartext[..]).unwrap();
+    cipher
+        .apply_keystream_b2b(&ciphertext[IV_LEN..], &mut cleartext[..])
+        .unwrap();
 
     String::from_utf8(cleartext).expect("wrong deciphered text (not utf-8)")
 }

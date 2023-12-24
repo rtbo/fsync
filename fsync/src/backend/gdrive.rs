@@ -112,9 +112,7 @@ impl Storage {
             ),
             auth,
         );
-        Ok(Self {
-            hub,
-        })
+        Ok(Self { hub })
     }
 }
 
