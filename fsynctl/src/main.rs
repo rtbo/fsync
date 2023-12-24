@@ -2,7 +2,7 @@ use clap::Parser;
 use inquire::InquireError;
 
 mod list;
-mod new;
+mod create;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -55,7 +55,7 @@ enum Commands {
     /// List all installed services
     List,
     /// Create a new synchronization service
-    New(new::Args),
+    Create(create::Args),
 }
 
 fn main() -> Result<(), Error> {
@@ -63,6 +63,6 @@ fn main() -> Result<(), Error> {
 
     match cli.command {
         Commands::List => list::main(),
-        Commands::New(args) => new::main(args),
+        Commands::Create(args) => create::main(args),
     }
 }
