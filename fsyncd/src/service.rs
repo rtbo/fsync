@@ -59,6 +59,5 @@ impl Service {
     }
 
     pub fn shutdown(&self) {
-        println!("shutdown!");
     }
 }

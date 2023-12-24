@@ -95,13 +95,12 @@ impl AppSecretOpts {
 
 pub struct Storage {
     hub: DriveHub<oauth2::Connector>,
-    _files: oauth2::Files,
 }
 
 impl Storage {
-    pub async fn new(oauth_files: oauth2::Files) -> crate::Result<Self> {
-        let app_secret = oauth_files.load_secret().await?;
-        let auth = oauth_files.oauth2_installed_flow(app_secret).await?;
+    pub async fn new(secret_path: &Utf8Path, token_cache_path: &Utf8Path) -> crate::Result<Self> {
+        let app_secret = oauth2::load_secret(secret_path).await?;
+        let auth = oauth2::installed_flow(app_secret, token_cache_path).await?;
 
         let hub = DriveHub::new(
             hyper::Client::builder().build(
@@ -115,7 +114,6 @@ impl Storage {
         );
         Ok(Self {
             hub,
-            _files: oauth_files,
         })
     }
 }

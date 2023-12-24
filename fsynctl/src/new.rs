@@ -1,5 +1,5 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use fsync::backend;
+use fsync::{backend, oauth2};
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Editor, Select, Text};
 
@@ -120,9 +120,7 @@ async fn create_config(config_dir: &Utf8Path, opts: InitOptions) -> Result<(), E
     match opts.provider_opts {
         ProviderOpts::GoogleDrive(app_secret_opts) => {
             let app_secret = app_secret_opts.get()?;
-            let cache_dir = fsync::oauth2::CacheDir::new(config_dir.to_path_buf());
-            cache_dir.cache_secret(&app_secret).await?;
-            // cache_dir.auth_and_cache_tokens(app_secret).await?;
+            oauth2::save_secret(&oauth2::secret_path(config_dir), &app_secret).await?;
         }
     }
 

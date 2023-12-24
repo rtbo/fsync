@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clap::Parser;
 use fsync::cache::CacheStorage;
 use fsync::difftree::DiffTree;
-use fsync::{self, oauth2};
+use fsync::{self, backend, oauth2};
 use futures::stream::AbortHandle;
 use futures::Future;
 use service::Service;
@@ -21,32 +21,34 @@ struct Cli {
 async fn main() -> fsync::Result<()> {
     let cli = Cli::parse();
 
-    let config_path = fsync::instance_config_dir(&cli.instance)?;
-    if !config_path.exists() {
+    let config_dir = fsync::instance_config_dir(&cli.instance)?;
+    if !config_dir.exists() {
         return Err(fsync::Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("No such config directory: {config_path}"),
+            format!("No such config directory: {config_dir}"),
         )));
     }
-    println!("Found config directory: {config_path}");
+    println!("Found config directory: {config_dir}");
 
-    let config = fsync::Config::load_from_file(&config_path.join("config.json")).await?;
+    let config = fsync::Config::load_from_file(&config_dir.join("config.json")).await?;
     println!("Loaded config: {config:?}");
 
     let local = Arc::new(fsync::backend::fs::Storage::new(&config.local_dir));
 
-    let cache_path = fsync::instance_cache_dir(&cli.instance)?;
-    let oauth_files = oauth2::Files::new(config_path.join("client_secret.json"), cache_path.join("token_cache.json"));
+    let cache_dir = fsync::instance_cache_dir(&cli.instance)?;
 
     let mut remote = match &config.provider {
         fsync::Provider::GoogleDrive => {
-            let remote =
-                fsync::backend::gdrive::Storage::new(oauth_files).await?;
+            let remote = backend::gdrive::Storage::new(
+                &oauth2::secret_path(&config_dir),
+                &oauth2::token_cache_path(&cache_dir),
+            )
+            .await?;
             CacheStorage::new(remote)
         }
     };
 
-    let remote_cache_path = cache_path.join("remote.bin");
+    let remote_cache_path = cache_dir.join("remote.bin");
     match remote.load_from_disk(&remote_cache_path).await {
         Err(fsync::Error::Io(_)) => {
             remote.populate_from_storage().await?;
@@ -63,7 +65,7 @@ async fn main() -> fsync::Result<()> {
         let (abort_handle, abort_reg) = AbortHandle::new_pair();
         let service = service.clone();
         handle_shutdown_signals(|| async move {
-            tokio::fs::create_dir_all(cache_path).await.unwrap();
+            tokio::fs::create_dir_all(cache_dir).await.unwrap();
             remote.save_to_disc(&remote_cache_path).await.unwrap();
             service.shutdown();
             abort_handle.abort();
@@ -90,7 +92,6 @@ where
             _ = sigint.recv() => {},
         };
         shutdown().await;
-        println!("exiting");
     });
 
     Ok(())

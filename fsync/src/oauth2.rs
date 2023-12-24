@@ -1,7 +1,7 @@
 use std::pin::Pin;
 use std::str;
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use futures::Future;
 use yup_oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
 use yup_oauth2::hyper::client::HttpConnector;
@@ -11,45 +11,39 @@ use yup_oauth2::ApplicationSecret;
 pub type Connector = HttpsConnector<HttpConnector>;
 pub type Authenticator = yup_oauth2::authenticator::Authenticator<Connector>;
 
-pub struct Files {
-    secret_config: Utf8PathBuf,
-    token_cache: Utf8PathBuf,
+pub fn secret_path(config_dir: &Utf8Path) -> Utf8PathBuf {
+    config_dir.join("client_secret.json")
 }
 
-impl Files {
-    pub fn new(secret_config: Utf8PathBuf, token_cache: Utf8PathBuf) -> Self {
-        Self {
-            secret_config,
-            token_cache,
-        }
-    }
+pub fn token_cache_path(cache_dir: &Utf8Path) -> Utf8PathBuf {
+    cache_dir.join("token_cache.json")
+}
 
-    pub async fn cache_secret(&self, app_secret: &ApplicationSecret) -> crate::Result<()> {
-        let json = serde_json::to_string(app_secret)?;
-        tokio::fs::write(&self.secret_config, &json).await?;
-        Ok(())
-    }
+pub async fn save_secret(path: &Utf8Path, app_secret: &ApplicationSecret) -> crate::Result<()> {
+    let json = serde_json::to_string(app_secret)?;
+    tokio::fs::write(path, &json).await?;
+    Ok(())
+}
 
-    pub async fn load_secret(&self) -> crate::Result<ApplicationSecret> {
-        let json = tokio::fs::read(&self.secret_config).await?;
-        let json = str::from_utf8(&json)?;
-        Ok(serde_json::from_str(json)?)
-    }
+pub async fn load_secret(path: &Utf8Path) -> crate::Result<ApplicationSecret> {
+    let json = tokio::fs::read(path).await?;
+    let json = str::from_utf8(&json)?;
+    Ok(serde_json::from_str(json)?)
+}
 
-    pub async fn oauth2_installed_flow(
-        &self,
-        app_secret: ApplicationSecret,
-    ) -> crate::Result<Authenticator> {
-        let auth = yup_oauth2::InstalledFlowAuthenticator::builder(
-            app_secret,
-            yup_oauth2::InstalledFlowReturnMethod::HTTPRedirect,
-        )
-        .persist_tokens_to_disk(&self.token_cache)
-        .flow_delegate(Box::new(InstalledFlowBrowserDelegate))
-        .build()
-        .await?;
-        Ok(auth)
-    }
+pub async fn installed_flow(
+    app_secret: ApplicationSecret,
+    token_cache_path: &Utf8Path,
+) -> crate::Result<Authenticator> {
+    let auth = yup_oauth2::InstalledFlowAuthenticator::builder(
+        app_secret,
+        yup_oauth2::InstalledFlowReturnMethod::HTTPRedirect,
+    )
+    .persist_tokens_to_disk(token_cache_path)
+    .flow_delegate(Box::new(InstalledFlowBrowserDelegate))
+    .build()
+    .await?;
+    Ok(auth)
 }
 
 async fn browser_user_url(url: &str, need_code: bool) -> Result<String, String> {
