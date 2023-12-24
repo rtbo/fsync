@@ -1,4 +1,5 @@
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8PathBuf;
+use fsync::locs;
 use fsync::{backend, oauth2};
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Editor, Select, Text};
@@ -39,7 +40,7 @@ pub fn main(args: Args) -> Result<(), Error> {
             .prompt()?
     };
 
-    let config_dir = fsync::config_dir()?.join(&name);
+    let config_dir = locs::ConfigDir::new(&name)?;
     if config_dir.exists() {
         return Err(Error::Custom(format!(
             "Configuration already exists: {config_dir}"
@@ -50,7 +51,7 @@ pub fn main(args: Args) -> Result<(), Error> {
         map_validation_result(validate_path(local_dir.as_str()))?;
         local_dir
     } else {
-        let def = fsync::home_dir()?.join(&name);
+        let def = locs::user_home_dir()?.join(&name);
         Text::new("Local directory path?")
             .with_default(def.as_str())
             .with_validator(validate_path)
@@ -86,7 +87,7 @@ pub fn main(args: Args) -> Result<(), Error> {
         Err(_) => {
             if config_dir.exists() {
                 println!("Deleting {config_dir} because of error");
-                std::fs::remove_dir_all(&config_dir)?;
+                std::fs::remove_dir_all(config_dir.path())?;
             }
         }
     }
@@ -102,9 +103,9 @@ pub fn main(args: Args) -> Result<(), Error> {
     Ok(())
 }
 
-async fn create_config(config_dir: &Utf8Path, opts: InitOptions) -> Result<(), Error> {
+async fn create_config(config_dir: &locs::ConfigDir, opts: InitOptions) -> Result<(), Error> {
     println!("Creating configuration directory: {}", config_dir);
-    tokio::fs::create_dir_all(&config_dir).await?;
+    tokio::fs::create_dir_all(config_dir.path()).await?;
 
     let config = fsync::Config {
         local_dir: opts.local_dir.clone().into(),
@@ -120,7 +121,7 @@ async fn create_config(config_dir: &Utf8Path, opts: InitOptions) -> Result<(), E
     match opts.provider_opts {
         ProviderOpts::GoogleDrive(app_secret_opts) => {
             let app_secret = app_secret_opts.get()?;
-            oauth2::save_secret(&oauth2::secret_path(config_dir), &app_secret).await?;
+            oauth2::save_secret(&config_dir.client_secret_path(), &app_secret).await?;
         }
     }
 

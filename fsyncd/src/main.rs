@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clap::Parser;
 use fsync::cache::CacheStorage;
 use fsync::difftree::DiffTree;
-use fsync::{self, backend, oauth2};
+use fsync::{self, backend, locs};
 use futures::stream::AbortHandle;
 use futures::Future;
 use service::Service;
@@ -21,7 +21,7 @@ struct Cli {
 async fn main() -> fsync::Result<()> {
     let cli = Cli::parse();
 
-    let config_dir = fsync::instance_config_dir(&cli.instance)?;
+    let config_dir = locs::ConfigDir::new(&cli.instance)?;
     if !config_dir.exists() {
         return Err(fsync::Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -35,13 +35,13 @@ async fn main() -> fsync::Result<()> {
 
     let local = Arc::new(fsync::backend::fs::Storage::new(&config.local_dir));
 
-    let cache_dir = fsync::instance_cache_dir(&cli.instance)?;
+    let cache_dir = locs::CacheDir::new(&cli.instance)?;
 
     let mut remote = match &config.provider {
         fsync::Provider::GoogleDrive => {
             let remote = backend::gdrive::Storage::new(
-                &oauth2::secret_path(&config_dir),
-                &oauth2::token_cache_path(&cache_dir),
+                &config_dir.client_secret_path(),
+                &cache_dir.token_cache_path(),
             )
             .await?;
             CacheStorage::new(remote)
@@ -65,7 +65,7 @@ async fn main() -> fsync::Result<()> {
         let (abort_handle, abort_reg) = AbortHandle::new_pair();
         let service = service.clone();
         handle_shutdown_signals(|| async move {
-            tokio::fs::create_dir_all(cache_dir).await.unwrap();
+            tokio::fs::create_dir_all(cache_dir.path()).await.unwrap();
             remote.save_to_disc(&remote_cache_path).await.unwrap();
             service.shutdown();
             abort_handle.abort();

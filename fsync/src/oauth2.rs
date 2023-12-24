@@ -1,7 +1,7 @@
 use std::pin::Pin;
 use std::str;
 
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use futures::Future;
 use yup_oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
 use yup_oauth2::hyper::client::HttpConnector;
@@ -10,14 +10,6 @@ use yup_oauth2::ApplicationSecret;
 
 pub type Connector = HttpsConnector<HttpConnector>;
 pub type Authenticator = yup_oauth2::authenticator::Authenticator<Connector>;
-
-pub fn secret_path(config_dir: &Utf8Path) -> Utf8PathBuf {
-    config_dir.join("client_secret.json")
-}
-
-pub fn token_cache_path(cache_dir: &Utf8Path) -> Utf8PathBuf {
-    cache_dir.join("token_cache.json")
-}
 
 pub async fn save_secret(path: &Utf8Path, app_secret: &ApplicationSecret) -> crate::Result<()> {
     let json = serde_json::to_string(app_secret)?;

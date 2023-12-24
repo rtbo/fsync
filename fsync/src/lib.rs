@@ -1,7 +1,7 @@
 #![allow(async_fn_in_trait)]
 #![feature(async_closure)]
 
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 
 pub mod backend;
@@ -10,6 +10,7 @@ pub mod cipher;
 pub mod config;
 pub mod difftree;
 pub mod ipc;
+pub mod locs;
 pub mod oauth2;
 mod storage;
 
@@ -40,32 +41,6 @@ impl Config {
         let config_json = std::str::from_utf8(&config_json)?;
         Ok(serde_json::from_str(config_json)?)
     }
-}
-
-pub fn home_dir() -> Result<Utf8PathBuf> {
-    let dir = dirs::home_dir().ok_or_else(|| Error::Custom("Can't get HOME directory".into()))?;
-    Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
-}
-
-pub fn cache_dir() -> Result<Utf8PathBuf> {
-    let dir = dirs::cache_dir().ok_or_else(|| Error::Custom("Can't get cache directory".into()))?;
-    let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
-    Ok(dir.join("fsync"))
-}
-
-pub fn config_dir() -> Result<Utf8PathBuf> {
-    let dir =
-        dirs::config_dir().ok_or_else(|| Error::Custom("Can't get config directory".into()))?;
-    let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
-    Ok(dir.join("fsync"))
-}
-
-pub fn instance_cache_dir(name: &str) -> Result<Utf8PathBuf> {
-    cache_dir().map(|d| d.join(name))
-}
-
-pub fn instance_config_dir(name: &str) -> Result<Utf8PathBuf> {
-    config_dir().map(|d| d.join(name))
 }
 
 #[derive(Debug, thiserror::Error)]

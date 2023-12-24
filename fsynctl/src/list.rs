@@ -1,7 +1,7 @@
 use crate::Error;
 
 pub fn list_drives() -> Result<Vec<String>, Error> {
-    let config_dir = fsync::config_dir()?;
+    let config_dir = fsync::locs::user_config_dir()?;
     if !config_dir.exists() {
         return Ok(Vec::new());
     }
