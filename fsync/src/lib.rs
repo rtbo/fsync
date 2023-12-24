@@ -1,7 +1,7 @@
 #![allow(async_fn_in_trait)]
 #![feature(async_closure)]
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub mod backend;
@@ -26,30 +26,46 @@ pub struct Config {
     pub provider: Provider,
 }
 
-pub fn get_home() -> Result<Utf8PathBuf> {
+impl Config {
+    pub async fn load_from_file(path: &Utf8Path) -> Result<Self> {
+        let config_json = match tokio::fs::read(&path).await {
+            Ok(data) => data,
+            Err(err) => {
+                return Err(Error::Io(std::io::Error::new(
+                    err.kind(),
+                    format!("Could not open config file {path}: {err}"),
+                )));
+            }
+        };
+        let config_json = std::str::from_utf8(&config_json)?;
+        Ok(serde_json::from_str(config_json)?)
+    }
+}
+
+pub fn home_dir() -> Result<Utf8PathBuf> {
     let dir = dirs::home_dir().ok_or_else(|| Error::Custom("Can't get HOME directory".into()))?;
     Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
 }
 
-pub fn get_cache_dir() -> Result<Utf8PathBuf> {
+pub fn cache_dir() -> Result<Utf8PathBuf> {
     let dir = dirs::cache_dir().ok_or_else(|| Error::Custom("Can't get cache directory".into()))?;
     let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
     Ok(dir.join("fsync"))
 }
 
-pub fn get_config_dir() -> Result<Utf8PathBuf> {
+pub fn config_dir() -> Result<Utf8PathBuf> {
     let dir =
         dirs::config_dir().ok_or_else(|| Error::Custom("Can't get config directory".into()))?;
     let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
     Ok(dir.join("fsync"))
 }
 
-pub fn get_instance_cache_dir(name: &str) -> Result<Utf8PathBuf> {
-    get_cache_dir().map(|d| d.join(name))
+pub fn instance_cache_dir(name: &str) -> Result<Utf8PathBuf> {
+    cache_dir().map(|d| d.join(name))
 }
 
-pub fn get_instance_config_dir(name: &str) -> Result<Utf8PathBuf> {
-    get_config_dir().map(|d| d.join(name))
+pub fn instance_config_dir(name: &str) -> Result<Utf8PathBuf> {
+    config_dir().map(|d| d.join(name))
 }
 
 #[derive(Debug, thiserror::Error)]

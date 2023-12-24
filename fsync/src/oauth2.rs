@@ -11,23 +11,27 @@ use yup_oauth2::ApplicationSecret;
 pub type Connector = HttpsConnector<HttpConnector>;
 pub type Authenticator = yup_oauth2::authenticator::Authenticator<Connector>;
 
-pub struct CacheDir(Utf8PathBuf);
+pub struct Files {
+    secret_config: Utf8PathBuf,
+    token_cache: Utf8PathBuf,
+}
 
-impl CacheDir {
-    pub fn new(path: Utf8PathBuf) -> Self {
-        Self(path)
+impl Files {
+    pub fn new(secret_config: Utf8PathBuf, token_cache: Utf8PathBuf) -> Self {
+        Self {
+            secret_config,
+            token_cache,
+        }
     }
 
     pub async fn cache_secret(&self, app_secret: &ApplicationSecret) -> crate::Result<()> {
         let json = serde_json::to_string(app_secret)?;
-        let path = self.0.join("client_secret.json");
-        tokio::fs::write(&path, &json).await?;
+        tokio::fs::write(&self.secret_config, &json).await?;
         Ok(())
     }
 
     pub async fn load_secret(&self) -> crate::Result<ApplicationSecret> {
-        let path = self.0.join("client_secret.json");
-        let json = tokio::fs::read(&path).await?;
+        let json = tokio::fs::read(&self.secret_config).await?;
         let json = str::from_utf8(&json)?;
         Ok(serde_json::from_str(json)?)
     }
@@ -36,12 +40,11 @@ impl CacheDir {
         &self,
         app_secret: ApplicationSecret,
     ) -> crate::Result<Authenticator> {
-        let path = self.0.join("token_cache.json");
         let auth = yup_oauth2::InstalledFlowAuthenticator::builder(
             app_secret,
             yup_oauth2::InstalledFlowReturnMethod::HTTPRedirect,
         )
-        .persist_tokens_to_disk(&path)
+        .persist_tokens_to_disk(&self.token_cache)
         .flow_delegate(Box::new(InstalledFlowBrowserDelegate))
         .build()
         .await?;

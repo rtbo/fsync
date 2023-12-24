@@ -5,6 +5,5 @@ After=network.target
 [Service]
 Type=exec
 Environment=LANG=C
-Environment=FSYNCD_INSTANCE=%i
-ExecStart=FSYNCD_EXE
-ExecReload=FSYNCD_EXE
+ExecStart=FSYNCD_EXE %i
+ExecReload=FSYNCD_EXE %i

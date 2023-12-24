@@ -8,11 +8,11 @@ edition = "2021"
 fsync = { path = "../fsync" }
 
 camino = { workspace = true }
+clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 yup-oauth2 = { workspace = true }
 
-clap = { version = "4.4.11", features = ["derive"] }
 inquire = { version = "0.6.2", features = ["editor"] }

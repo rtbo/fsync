@@ -584,6 +584,7 @@ name = "fsyncd"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "clap",
  "fsync",
  "futures",
  "serde_json",

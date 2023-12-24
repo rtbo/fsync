@@ -1,53 +1,52 @@
 use std::sync::Arc;
 
+use clap::Parser;
 use fsync::cache::CacheStorage;
 use fsync::difftree::DiffTree;
-use fsync::{oauth2, Config, Error, Provider};
+use fsync::{self, oauth2};
 use futures::stream::AbortHandle;
 use futures::Future;
 use service::Service;
 
 mod service;
 
+#[derive(Parser)]
+#[command(name = "fsyncd")]
+#[command(author, version, about, long_about=None)]
+struct Cli {
+    instance: String,
+}
+
 #[tokio::main]
 async fn main() -> fsync::Result<()> {
-    let instance_name = std::env::var("FSYNCD_INSTANCE")?;
-    let config_dir = fsync::get_config_dir()?.join(&instance_name);
-    if !config_dir.exists() {
-        return Err(Error::Custom(format!(
-            "No such config directory: {config_dir}"
+    let cli = Cli::parse();
+
+    let config_path = fsync::instance_config_dir(&cli.instance)?;
+    if !config_path.exists() {
+        return Err(fsync::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("No such config directory: {config_path}"),
         )));
     }
-    println!("Found config directory: {config_dir}");
+    println!("Found config directory: {config_path}");
 
-    let config_path = config_dir.join("config.json");
-    let config_json = match tokio::fs::read(&config_path).await {
-        Ok(data) => data,
-        Err(err) => {
-            return Err(fsync::Error::Io(std::io::Error::new(
-                err.kind(),
-                format!("Could not open config file {config_path}: {err}"),
-            )));
-        }
-    };
-    let config_json = std::str::from_utf8(&config_json)?;
-    let config: Config = serde_json::from_str(config_json)?;
-
+    let config = fsync::Config::load_from_file(&config_path.join("config.json")).await?;
     println!("Loaded config: {config:?}");
 
     let local = Arc::new(fsync::backend::fs::Storage::new(&config.local_dir));
 
+    let cache_path = fsync::instance_cache_dir(&cli.instance)?;
+    let oauth_files = oauth2::Files::new(config_path.join("client_secret.json"), cache_path.join("token_cache.json"));
+
     let mut remote = match &config.provider {
-        Provider::GoogleDrive => {
+        fsync::Provider::GoogleDrive => {
             let remote =
-                fsync::backend::gdrive::Storage::new(oauth2::CacheDir::new(config_dir)).await?;
+                fsync::backend::gdrive::Storage::new(oauth_files).await?;
             CacheStorage::new(remote)
         }
     };
 
-    let cache_path = fsync::get_instance_cache_dir(&instance_name)?;
     let remote_cache_path = cache_path.join("remote.bin");
-
     match remote.load_from_disk(&remote_cache_path).await {
         Err(fsync::Error::Io(_)) => {
             remote.populate_from_storage().await?;

@@ -39,7 +39,7 @@ pub fn main(args: Args) -> Result<(), Error> {
             .prompt()?
     };
 
-    let config_dir = fsync::get_config_dir()?.join(&name);
+    let config_dir = fsync::config_dir()?.join(&name);
     if config_dir.exists() {
         return Err(Error::Custom(format!(
             "Configuration already exists: {config_dir}"
@@ -50,7 +50,7 @@ pub fn main(args: Args) -> Result<(), Error> {
         map_validation_result(validate_path(local_dir.as_str()))?;
         local_dir
     } else {
-        let def = fsync::get_home()?.join(&name);
+        let def = fsync::home_dir()?.join(&name);
         Text::new("Local directory path?")
             .with_default(def.as_str())
             .with_validator(validate_path)
