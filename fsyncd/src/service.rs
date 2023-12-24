@@ -4,6 +4,7 @@ use std::sync::Arc;
 use camino::Utf8PathBuf;
 use fsync::difftree::{DiffTree, TreeNode};
 use fsync::ipc::Fsync;
+use fsync::locs;
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};
@@ -32,13 +33,22 @@ impl Service {
         }
     }
 
-    pub async fn start(&self, abort_reg: AbortRegistration) -> fsync::Result<()> {
+    pub async fn start(&self, inst_name: &str, abort_reg: AbortRegistration) -> fsync::Result<()> {
         let server_addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), 0);
 
         let mut listener =
             tarpc::serde_transport::tcp::listen(&server_addr, Bincode::default).await?;
 
         println!("Listening on port {}", listener.local_addr().port());
+
+        let port_path = locs::user_runtime_dir()?
+            .join("fsync")
+            .join(format!("{inst_name}.port"));
+        tokio::fs::create_dir_all(port_path.parent().unwrap()).await?;
+
+        let port_str = serde_json::to_string(&listener.local_addr().port())?;
+        println!("Creating file {port_path}");
+        tokio::fs::write(&port_path, port_str.as_bytes()).await?;
 
         listener.config_mut().max_frame_length(usize::MAX);
         let fut = listener
@@ -55,9 +65,12 @@ impl Service {
             .for_each(|_| async {});
 
         let _ = Abortable::new(fut, abort_reg).await;
+
+        println!("Removing file {port_path}");
+        tokio::fs::remove_file(&port_path).await?;
+        println!("Exiting server");
         Ok(())
     }
 
-    pub fn shutdown(&self) {
-    }
+    pub fn shutdown(&self) {}
 }

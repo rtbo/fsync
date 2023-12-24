@@ -78,6 +78,11 @@ pub fn user_home_dir() -> Result<Utf8PathBuf> {
     Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
 }
 
+pub fn user_runtime_dir() -> Result<Utf8PathBuf> {
+    let dir = dirs::runtime_dir().ok_or_else(|| Error::Custom("Can't get the user runtime directory".into()))?;
+    Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
+}
+
 fn user_cache_dir() -> Result<Utf8PathBuf> {
     let dir = dirs::cache_dir().ok_or_else(|| Error::Custom("Can't get cache directory".into()))?;
     let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");

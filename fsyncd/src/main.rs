@@ -73,7 +73,7 @@ async fn main() -> fsync::Result<()> {
         abort_reg
     };
 
-    service.start(abort_reg).await
+    service.start(&cli.instance, abort_reg).await
 }
 
 fn handle_shutdown_signals<F, Fut>(shutdown: F) -> fsync::Result<()>
