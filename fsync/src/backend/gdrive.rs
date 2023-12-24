@@ -32,23 +32,38 @@ pub enum SecretError {
     Io(#[from] std::io::Error),
 }
 
+#[test]
+fn test_get_appsecret() -> crate::Result<()> {
+    let appsecret = AppSecretOpts::Fsync.get()?;
+    assert_eq!(appsecret.token_uri, "https://oauth2.googleapis.com/token");
+    assert_eq!(
+        appsecret.auth_uri,
+        "https://accounts.google.com/o/oauth2/auth"
+    );
+    assert_eq!(appsecret.redirect_uris, ["http://localhost"]);
+    assert_eq!(
+        appsecret.auth_provider_x509_cert_url,
+        Some("https://www.googleapis.com/oauth2/v1/certs".into())
+    );
+    Ok(())
+}
+
 impl AppSecretOpts {
     pub fn get(self) -> crate::Result<ApplicationSecret> {
         match self {
             AppSecretOpts::Fsync => {
                 const CIPHERED_SECRET: &str = concat!(
-                    "GB3fSrPXMUAIOLstLrJ8AlA3MyM6KULxtenYrt76NRXWPCn+VZiMZ+y5rEKCKaH/4i26lGa6azK44",
-                    "zaTdPGrqzHo/D78cKQaQ3AeS9PRtF8UZK7JytDMs9fp5i00Ou/UW3iyLObnPlOKdh16dlUui7es7a",
-                    "kr+HoMIdLjbh0yOH2FcEQhULkXFg4Dhj62CxPasI9JzYKkjMHuvQlyQA2NMfpGyGGGv42xR/Rdsxf",
-                    "avIui8sGKjZ0lbMVg114pceT7YTNjSGHuNDCfbA9mdC9VnuG/dzqCot9pj+u7p1C0BJ2ks6cQ19rA",
-                    "Z79zz/GH4kngQQJPXxvz0JF8b2xHhVAErlJX2+aomhbLRupsa9VVJHaEjAnPCdgOhYBY+NDOho+71",
-                    "9JdTNW8Z1PGv8w0jIeKlyyBKdoGimQUybqoG12rpZgnkN+rWYEdkv9CBACIIO2ukrDlyCEjspj7yA",
-                    "yfcIeUBWsi5M4JBUyI0G6gZQ9Pxs0irsDX3weBjI/0sqgVsDGhXn5V+N3eiO9JL7G1Xk8MQQB/Iqx",
-                    "gRFGO/jQ6kRmRzwkfW2FPiEJLJDRXu9m+q2D7DNoT7Kw++v0OGVHIxy0UVeyQRe1dNbSq9JMiZ3Vx",
-                    "VYxlRVhRH8+Vv15boyRT0/9WmlELhI9vCjpqmoAiLbxFHYfS91PXtetZx+LpSmMcz5wkSfJPdkAB3L0"
+                    "nRkHq/y6fB6MxEP+XUpoYuYY3oF3WAYcYEF62twEnls4INPhV/WWVuA5tCw4B8fpHk8nXkMhrQU6g",
+                    "WAv9k7MeMa94t2CA1eB3ADhtD1QwteGffKJ/pFxolASh0s8Gs0JdP4RpzgjAAOpRPtrBHgTM6W1It",
+                    "UIsQ5mHFSahZyS0obuh9FeXESsetUz0CDQr5l1IG2m4E1c/I790TtLBHut8YDBQs1pNptuaBwDCV7",
+                    "DbdXcicbdftiVH9jYd2lt/IvxBi4C7+F8LXS65WGZSYiBrQDb2qkdeasM9tbiGl0/+Yze3ETUA/SN",
+                    "urji8/o1fGwcygL8mTsp7DkkOxkjHn18N/a5b8MjhZouxfNvBPKC80AgcdLwmdCXVJ0t7OFobpWxz",
+                    "3j57A5URFHyhzj1RqUiui9xldG+AhF69op+QEQSPQ7bWrun6gOYaB1vUvwNt0MzzqM/SUaWVEeT54",
+                    "UEVHKqTHva+NBsIzFS/dIsiAYNV8OVcuojl8jPVKlqJJGoS1NO8hog6Gk35GXHZKyIJj/vlzsSOoC",
+                    "/5i/Qajyl1/nFfJKUsy+qDZbFkdyevN2UVDFW/wCqLoRJj7P09cHyE8QrHDC9JA"
                 );
                 let secret_json = decipher_text(CIPHERED_SECRET);
-                Ok(yup_oauth2::parse_application_secret(secret_json)?)
+                Ok(serde_json::from_str(&secret_json)?)
             }
             AppSecretOpts::JsonPath(path) => {
                 let secret_json = std::fs::read(path)?;

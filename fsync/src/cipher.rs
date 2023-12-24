@@ -1,21 +1,24 @@
 use std::str;
 
+use aes::cipher::{KeyIvInit, StreamCipher};
 use base64::prelude::*;
-use crypto::{aes, aes::KeySize};
 use rand::{rngs::OsRng, RngCore};
+
+type Aes256Ctr64LE = ctr::Ctr64LE<aes::Aes256>;
 
 const IV_LEN: usize = 16;
 const KEY: &[u8; 32] = include_bytes!("cipher.binkey");
 
 pub fn cipher_text(cleartext: &str) -> String {
-    let mut ciphertext = vec![0u8; IV_LEN + cleartext.len()];
-    let iv = &mut ciphertext[..IV_LEN];
-
+    let mut iv = [0u8; IV_LEN];
     let mut gen = OsRng {};
     gen.fill_bytes(&mut iv[..]);
 
-    let mut cipher = aes::ctr(KeySize::KeySize256, KEY, iv);
-    cipher.process(cleartext.as_bytes(), &mut ciphertext[IV_LEN..]);
+    let mut ciphertext = vec![0u8; cleartext.len() + IV_LEN];
+    ciphertext[..IV_LEN].copy_from_slice(&iv[..]);
+
+    let mut cipher = Aes256Ctr64LE::new(KEY.into(), &iv.into());
+    cipher.apply_keystream_b2b(cleartext.as_bytes(), &mut ciphertext[IV_LEN..]).unwrap();
 
     BASE64_STANDARD_NO_PAD.encode(ciphertext)
 }
@@ -25,11 +28,14 @@ pub fn decipher_text(ciphertext: &str) -> String {
         .decode(ciphertext)
         .expect("invalid ciphertext (not base64)");
 
-    let iv = &ciphertext[0..IV_LEN];
+    let mut iv = [0u8; IV_LEN];
+    iv.copy_from_slice(&ciphertext[..IV_LEN]);
+
     let mut cleartext = vec![0u8; ciphertext.len() - IV_LEN];
 
-    let mut cipher = aes::ctr(KeySize::KeySize256, KEY, iv);
-    cipher.process(&ciphertext[IV_LEN..], &mut cleartext[..]);
+    let mut cipher = Aes256Ctr64LE::new(KEY.into(), &iv.into());
+    cipher.apply_keystream_b2b(&ciphertext[IV_LEN..], &mut cleartext[..]).unwrap();
+
     String::from_utf8(cleartext).expect("wrong deciphered text (not utf-8)")
 }
 
