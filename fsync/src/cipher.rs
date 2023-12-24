@@ -1,6 +1,6 @@
 use std::str;
 
-use base64::prelude::{Engine, BASE64_STANDARD_NO_PAD};
+use base64::prelude::*;
 use crypto::{aes, aes::KeySize};
 use rand::{rngs::OsRng, RngCore};
 
