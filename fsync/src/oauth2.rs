@@ -12,7 +12,7 @@ pub type Connector = HttpsConnector<HttpConnector>;
 pub type Authenticator = yup_oauth2::authenticator::Authenticator<Connector>;
 
 pub async fn save_secret(path: &Utf8Path, app_secret: &ApplicationSecret) -> crate::Result<()> {
-    let json = serde_json::to_string(app_secret)?;
+    let json = serde_json::to_string_pretty(app_secret)?;
     tokio::fs::write(path, &json).await?;
     Ok(())
 }
