@@ -1,97 +1,69 @@
 //! Locations module
 
-use std::fmt;
+/// Locations for the user
+pub mod user {
+    use camino::Utf8PathBuf;
 
-use camino::{Utf8Path, Utf8PathBuf};
-use serde::{Deserialize, Serialize};
+    use crate::{Error, Result};
 
-use crate::{Error, Result};
+    pub fn home_dir() -> Result<Utf8PathBuf> {
+        let dir =
+            dirs::home_dir().ok_or_else(|| Error::Custom("Can't get HOME directory".into()))?;
+        Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
+    }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ConfigDir(Utf8PathBuf);
+    pub fn runtime_dir() -> Result<Utf8PathBuf> {
+        let dir = dirs::runtime_dir()
+            .ok_or_else(|| Error::Custom("Can't get the user runtime directory".into()))?;
+        let dir = Utf8PathBuf::from_path_buf(dir).unwrap();
+        Ok(dir.join("fsync"))
+    }
 
-impl fmt::Display for ConfigDir {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
+    pub fn config_dir() -> Result<Utf8PathBuf> {
+        let dir =
+            dirs::config_dir().ok_or_else(|| Error::Custom("Can't get config directory".into()))?;
+        let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
+        Ok(dir.join("fsync"))
+    }
+
+    pub fn cache_dir() -> Result<Utf8PathBuf> {
+        let dir =
+            dirs::cache_dir().ok_or_else(|| Error::Custom("Can't get cache directory".into()))?;
+        let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
+        Ok(dir.join("fsync"))
     }
 }
 
-impl ConfigDir {
-    pub fn new(instance_name: &str) -> Result<ConfigDir> {
-        user_config_dir().map(|d| ConfigDir(d.join(instance_name)))
+pub mod inst {
+    use camino::Utf8PathBuf;
+
+    use crate::Result;
+
+    pub fn runtime_port_file(instance_name: &str) -> Result<Utf8PathBuf> {
+        Ok(super::user::runtime_dir()?.join(format!("{instance_name}.port")))
     }
 
-    pub fn path(&self) -> &Utf8Path {
-        &self.0
+    pub fn config_dir(instance_name: &str) -> Result<Utf8PathBuf> {
+        Ok(super::user::config_dir()?.join(instance_name))
     }
 
-    pub fn exists(&self) -> bool {
-        self.0.exists()
+    pub fn config_file(instance_name: &str) -> Result<Utf8PathBuf> {
+        Ok(config_dir(instance_name)?.join("config.json"))
     }
 
-    pub fn join<P: AsRef<Utf8Path>>(&self, path: P) -> Utf8PathBuf {
-        self.0.join(path)
+    pub fn oauth_secret_file(instance_name: &str) -> Result<Utf8PathBuf> {
+        Ok(config_dir(instance_name)?.join("client_secret.json"))
     }
 
-    pub fn config_path(&self) -> Utf8PathBuf {
-        self.join("config.json")
+    pub fn cache_dir(instance_name: &str) -> Result<Utf8PathBuf> {
+        Ok(super::user::cache_dir()?.join(instance_name))
     }
 
-    pub fn client_secret_path(&self) -> Utf8PathBuf {
-        self.join("client_secret.json")
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CacheDir(Utf8PathBuf);
-
-impl fmt::Display for CacheDir {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl CacheDir {
-    pub fn new(instance_name: &str) -> Result<CacheDir> {
-        user_cache_dir().map(|d| CacheDir(d.join(instance_name)))
+    pub fn token_cache_file(instance_name: &str) -> Result<Utf8PathBuf> {
+        Ok(cache_dir(instance_name)?.join("token_cache.json"))
     }
 
-    pub fn path(&self) -> &Utf8Path {
-        &self.0
+    pub fn remote_cache_file(instance_name: &str) -> Result<Utf8PathBuf> {
+        Ok(cache_dir(instance_name)?.join("remote.bin"))
     }
-
-    pub fn exists(&self) -> bool {
-        self.0.exists()
-    }
-
-    pub fn join<P: AsRef<Utf8Path>>(&self, path: P) -> Utf8PathBuf {
-        self.0.join(path)
-    }
-
-    pub fn token_cache_path(&self) -> Utf8PathBuf {
-        self.join("token_cache.json")
-    }
-}
-
-pub fn user_home_dir() -> Result<Utf8PathBuf> {
-    let dir = dirs::home_dir().ok_or_else(|| Error::Custom("Can't get HOME directory".into()))?;
-    Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
-}
-
-pub fn user_runtime_dir() -> Result<Utf8PathBuf> {
-    let dir = dirs::runtime_dir().ok_or_else(|| Error::Custom("Can't get the user runtime directory".into()))?;
-    Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
-}
-
-fn user_cache_dir() -> Result<Utf8PathBuf> {
-    let dir = dirs::cache_dir().ok_or_else(|| Error::Custom("Can't get cache directory".into()))?;
-    let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
-    Ok(dir.join("fsync"))
-}
-
-pub fn user_config_dir() -> Result<Utf8PathBuf> {
-    let dir =
-        dirs::config_dir().ok_or_else(|| Error::Custom("Can't get config directory".into()))?;
-    let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
-    Ok(dir.join("fsync"))
 }

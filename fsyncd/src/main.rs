@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clap::Parser;
 use fsync::cache::CacheStorage;
 use fsync::difftree::DiffTree;
-use fsync::{self, backend, loc};
+use fsync::{self, backend, loc::inst};
 use futures::stream::AbortHandle;
 use futures::Future;
 use service::Service;
@@ -21,34 +21,32 @@ struct Cli {
 async fn main() -> fsync::Result<()> {
     let cli = Cli::parse();
 
-    let config_dir = loc::ConfigDir::new(&cli.instance)?;
-    if !config_dir.exists() {
+    let config_file = inst::config_file(&cli.instance)?;
+    if !&config_file.exists() {
         return Err(fsync::Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("No such config directory: {config_dir}"),
+            format!("No such config file: {config_file}"),
         )));
     }
-    println!("Found config directory: {config_dir}");
+    println!("Found config file: {config_file}");
 
-    let config = fsync::Config::load_from_file(&config_dir.join("config.json")).await?;
+    let config = fsync::Config::load_from_file(&config_file).await?;
     println!("Loaded config: {config:?}");
 
     let local = Arc::new(fsync::backend::fs::Storage::new(&config.local_dir));
 
-    let cache_dir = loc::CacheDir::new(&cli.instance)?;
-
     let mut remote = match &config.provider {
         fsync::Provider::GoogleDrive => {
             let remote = backend::gdrive::Storage::new(
-                &config_dir.client_secret_path(),
-                &cache_dir.token_cache_path(),
+                &inst::oauth_secret_file(&cli.instance)?,
+                &inst::token_cache_file(&cli.instance)?,
             )
             .await?;
             CacheStorage::new(remote)
         }
     };
 
-    let remote_cache_path = cache_dir.join("remote.bin");
+    let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
     match remote.load_from_disk(&remote_cache_path).await {
         Err(fsync::Error::Io(_)) => {
             remote.populate_from_storage().await?;
@@ -65,7 +63,9 @@ async fn main() -> fsync::Result<()> {
         let (abort_handle, abort_reg) = AbortHandle::new_pair();
         let service = service.clone();
         handle_shutdown_signals(|| async move {
-            tokio::fs::create_dir_all(cache_dir.path()).await.unwrap();
+            tokio::fs::create_dir_all(remote_cache_path.parent().unwrap())
+                .await
+                .unwrap();
             remote.save_to_disc(&remote_cache_path).await.unwrap();
             service.shutdown();
             abort_handle.abort();

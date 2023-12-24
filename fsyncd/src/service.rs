@@ -4,7 +4,7 @@ use std::sync::Arc;
 use camino::Utf8PathBuf;
 use fsync::difftree::{DiffTree, TreeNode};
 use fsync::ipc::Fsync;
-use fsync::loc;
+use fsync::loc::inst;
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};
@@ -33,7 +33,11 @@ impl Service {
         }
     }
 
-    pub async fn start(&self, inst_name: &str, abort_reg: AbortRegistration) -> fsync::Result<()> {
+    pub async fn start(
+        &self,
+        instance_name: &str,
+        abort_reg: AbortRegistration,
+    ) -> fsync::Result<()> {
         let server_addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), 0);
 
         let mut listener =
@@ -41,9 +45,7 @@ impl Service {
 
         println!("Listening on port {}", listener.local_addr().port());
 
-        let port_path = loc::user_runtime_dir()?
-            .join("fsync")
-            .join(format!("{inst_name}.port"));
+        let port_path = inst::runtime_port_file(instance_name)?;
         tokio::fs::create_dir_all(port_path.parent().unwrap()).await?;
 
         let port_str = serde_json::to_string(&listener.local_addr().port())?;

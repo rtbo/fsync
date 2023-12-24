@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf;
-use fsync::loc;
+use fsync::loc::{inst, user};
 use fsync::{backend, oauth2};
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Editor, Select, Text};
@@ -40,7 +40,7 @@ pub fn main(args: Args) -> Result<(), Error> {
             .prompt()?
     };
 
-    let config_dir = loc::ConfigDir::new(&name)?;
+    let config_dir = inst::config_dir(&name)?;
     if config_dir.exists() {
         return Err(Error::Custom(format!(
             "Configuration already exists: {config_dir}"
@@ -51,7 +51,7 @@ pub fn main(args: Args) -> Result<(), Error> {
         map_validation_result(validate_path(local_dir.as_str()))?;
         local_dir
     } else {
-        let def = loc::user_home_dir()?.join(&name);
+        let def = user::home_dir()?.join(&name);
         Text::new("Local directory path?")
             .with_default(def.as_str())
             .with_validator(validate_path)
@@ -74,7 +74,7 @@ pub fn main(args: Args) -> Result<(), Error> {
         .enable_all()
         .build()?;
     let create_res = rt.block_on(create_config(
-        &config_dir,
+        &name,
         InitOptions {
             local_dir: local_dir.clone(),
             provider_opts: provider,
@@ -87,7 +87,7 @@ pub fn main(args: Args) -> Result<(), Error> {
         Err(_) => {
             if config_dir.exists() {
                 println!("Deleting {config_dir} because of error");
-                std::fs::remove_dir_all(config_dir.path())?;
+                std::fs::remove_dir_all(config_dir)?;
             }
         }
     }
@@ -103,9 +103,10 @@ pub fn main(args: Args) -> Result<(), Error> {
     Ok(())
 }
 
-async fn create_config(config_dir: &loc::ConfigDir, opts: InitOptions) -> Result<(), Error> {
-    println!("Creating configuration directory: {}", config_dir);
-    tokio::fs::create_dir_all(config_dir.path()).await?;
+async fn create_config(instance_name: &str, opts: InitOptions) -> Result<(), Error> {
+    let config_dir = inst::config_dir(instance_name)?;
+    println!("Creating configuration directory: {config_dir}");
+    tokio::fs::create_dir_all(config_dir).await?;
 
     let config = fsync::Config {
         local_dir: opts.local_dir.clone().into(),
@@ -114,14 +115,14 @@ async fn create_config(config_dir: &loc::ConfigDir, opts: InitOptions) -> Result
         },
     };
     let config_json = serde_json::to_string_pretty(&config)?;
-    let config_path = config_dir.join("config.json");
-    println!("Writing configuration file: {config_path}");
-    tokio::fs::write(&config_path, config_json).await?;
+    let config_file = inst::config_file(instance_name)?;
+    println!("Writing configuration file: {config_file}");
+    tokio::fs::write(&config_file, config_json).await?;
 
     match opts.provider_opts {
         ProviderOpts::GoogleDrive(app_secret_opts) => {
             let app_secret = app_secret_opts.get()?;
-            oauth2::save_secret(&config_dir.client_secret_path(), &app_secret).await?;
+            oauth2::save_secret(&inst::oauth_secret_file(instance_name)?, &app_secret).await?;
         }
     }
 
