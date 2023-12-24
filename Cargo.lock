@@ -392,6 +392,7 @@ dependencies = [
  "lock_api",
  "once_cell",
  "parking_lot_core",
+ "serde",
 ]
 
 [[package]]
@@ -506,6 +507,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "base64 0.21.5",
+ "bincode",
  "camino",
  "chrono",
  "dashmap",

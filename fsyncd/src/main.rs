@@ -4,6 +4,7 @@ use fsync::cache::CacheStorage;
 use fsync::difftree::DiffTree;
 use fsync::{oauth2, Config, Error, Provider};
 use futures::stream::AbortHandle;
+use futures::Future;
 use service::Service;
 
 mod service;
@@ -28,26 +29,49 @@ async fn main() -> fsync::Result<()> {
 
     let local = Arc::new(fsync::backend::fs::Storage::new(&config.local_dir));
 
-    let tree = match &config.provider {
+    let mut remote = match &config.provider {
         Provider::GoogleDrive => {
             let remote =
                 fsync::backend::gdrive::Storage::new(oauth2::CacheDir::new(config_dir)).await?;
-            let remote = Arc::new(CacheStorage::new(remote));
-            remote.populate().await?;
-
-            DiffTree::from_cache(local, remote).await?
+            CacheStorage::new(remote)
         }
     };
 
+    let cache_path = fsync::get_instance_cache_dir(&instance_name)?;
+    let remote_cache_path = cache_path.join("remote.bin");
+
+    match remote.load_from_disk(&remote_cache_path).await {
+        Err(fsync::Error::Io(_)) => {
+            remote.populate_from_storage().await?;
+        }
+        Err(err) => Err(err)?,
+        Ok(()) => (),
+    }
+    let remote = Arc::new(remote);
+
+    let tree = DiffTree::from_cache(local, remote.clone()).await?;
     let service = Service::new(tree);
 
-    let (abort_handle, abort_reg) = AbortHandle::new_pair();
-    handle_signals(service.clone(), abort_handle)?;
+    let abort_reg = {
+        let (abort_handle, abort_reg) = AbortHandle::new_pair();
+        let service = service.clone();
+        handle_shutdown_signals(|| async move {
+            tokio::fs::create_dir_all(cache_path).await.unwrap();
+            remote.save_to_disc(&remote_cache_path).await.unwrap();
+            service.shutdown();
+            abort_handle.abort();
+        })?;
+        abort_reg
+    };
 
     service.start(abort_reg).await
 }
 
-fn handle_signals(service: Service, abort_handle: AbortHandle) -> fsync::Result<()> {
+fn handle_shutdown_signals<F, Fut>(shutdown: F) -> fsync::Result<()>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send,
+{
     use tokio::signal::unix::{signal, SignalKind};
 
     let mut sigterm = signal(SignalKind::terminate())?;
@@ -58,8 +82,7 @@ fn handle_signals(service: Service, abort_handle: AbortHandle) -> fsync::Result<
             _ = sigterm.recv() => {},
             _ = sigint.recv() => {},
         };
-        service.shutdown();
-        abort_handle.abort();
+        shutdown().await;
         println!("exiting");
     });
 

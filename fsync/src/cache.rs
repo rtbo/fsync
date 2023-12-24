@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use async_stream::try_stream;
-use camino::Utf8PathBuf;
+use bincode::Options;
+use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
 use futures::{future::BoxFuture, Stream};
+use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 use tokio_stream::StreamExt;
 
@@ -15,7 +17,7 @@ pub struct CacheStorage<S> {
     storage: Arc<S>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CacheNode {
     entry: Entry,
     _parent: Option<String>,
@@ -33,9 +35,47 @@ where
         }
     }
 
-    pub async fn populate(&self) -> crate::Result<()> {
-        let children = populate_recurse(None, self.entries.clone(), self.storage.clone()).await?;
-        self.entries.insert(
+    pub async fn load_from_disk(&mut self, path: &Utf8Path) -> crate::Result<()> {
+        use std::fs;
+        use std::io::BufReader;
+
+        let path = path.to_owned();
+
+        let handle = tokio::task::spawn_blocking(move || {
+            let reader = fs::File::open(&path)?;
+            let reader = BufReader::new(reader);
+            let opts = bincode_options();
+            let entries: DashMap<String, CacheNode> = opts.deserialize_from(reader)?;
+            Ok::<_, crate::Error>(entries)
+        });
+
+        let entries = handle.await.unwrap()?;
+        self.entries = Arc::new(entries);
+        Ok(())
+    }
+
+    pub async fn save_to_disc(&self, path: &Utf8Path) -> crate::Result<()> {
+        use std::fs;
+        use std::io::BufWriter;
+
+        let path = path.to_owned();
+        let entries = self.entries.clone();
+
+        let handle = tokio::task::spawn_blocking(move || {
+            let writer = fs::File::create(&path)?;
+            let writer = BufWriter::new(writer);
+            let opts = bincode_options();
+            opts.serialize_into(writer, &*entries)?;
+            Ok::<_, crate::Error>(())
+        });
+
+        handle.await.unwrap()
+    }
+
+    pub async fn populate_from_storage(&mut self) -> crate::Result<()> {
+        let entries = Arc::new(DashMap::new());
+        let children = populate_recurse(None, entries.clone(), self.storage.clone()).await?;
+        entries.insert(
             String::new(),
             CacheNode {
                 entry: Entry::new("".to_string(), Utf8PathBuf::new(), EntryType::Directory),
@@ -43,6 +83,7 @@ where
                 children,
             },
         );
+        self.entries = entries;
         Ok(())
     }
 }
@@ -69,6 +110,12 @@ where
             }
         }
     }
+}
+
+fn bincode_options() -> impl bincode::Options {
+    bincode::DefaultOptions::new()
+        .with_fixint_encoding()
+        .allow_trailing_bytes()
 }
 
 fn populate_recurse<'a, S>(

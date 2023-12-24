@@ -31,11 +31,25 @@ pub fn get_home() -> Result<Utf8PathBuf> {
     Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
 }
 
+pub fn get_cache_dir() -> Result<Utf8PathBuf> {
+    let dir = dirs::cache_dir().ok_or_else(|| Error::Custom("Can't get cache directory".into()))?;
+    let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
+    Ok(dir.join("fsync"))
+}
+
 pub fn get_config_dir() -> Result<Utf8PathBuf> {
     let dir =
         dirs::config_dir().ok_or_else(|| Error::Custom("Can't get config directory".into()))?;
-    let dir = Utf8PathBuf::from_path_buf(dir).unwrap();
+    let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
     Ok(dir.join("fsync"))
+}
+
+pub fn get_instance_cache_dir(name: &str) -> Result<Utf8PathBuf> {
+    get_cache_dir().map(|d| d.join(name))
+}
+
+pub fn get_instance_config_dir(name: &str) -> Result<Utf8PathBuf> {
+    get_config_dir().map(|d| d.join(name))
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -51,6 +65,9 @@ pub enum Error {
 
     #[error("Serde JSON")]
     SerdeJson(#[from] serde_json::Error),
+
+    #[error("Bincode")]
+    Bincode(#[from] bincode::Error),
 
     #[error("OAuth2")]
     OAuth2(#[from] yup_oauth2::Error),
