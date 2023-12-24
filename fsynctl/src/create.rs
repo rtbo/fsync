@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf;
-use fsync::locs;
+use fsync::loc;
 use fsync::{backend, oauth2};
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Editor, Select, Text};
@@ -40,7 +40,7 @@ pub fn main(args: Args) -> Result<(), Error> {
             .prompt()?
     };
 
-    let config_dir = locs::ConfigDir::new(&name)?;
+    let config_dir = loc::ConfigDir::new(&name)?;
     if config_dir.exists() {
         return Err(Error::Custom(format!(
             "Configuration already exists: {config_dir}"
@@ -51,7 +51,7 @@ pub fn main(args: Args) -> Result<(), Error> {
         map_validation_result(validate_path(local_dir.as_str()))?;
         local_dir
     } else {
-        let def = locs::user_home_dir()?.join(&name);
+        let def = loc::user_home_dir()?.join(&name);
         Text::new("Local directory path?")
             .with_default(def.as_str())
             .with_validator(validate_path)
@@ -103,7 +103,7 @@ pub fn main(args: Args) -> Result<(), Error> {
     Ok(())
 }
 
-async fn create_config(config_dir: &locs::ConfigDir, opts: InitOptions) -> Result<(), Error> {
+async fn create_config(config_dir: &loc::ConfigDir, opts: InitOptions) -> Result<(), Error> {
     println!("Creating configuration directory: {}", config_dir);
     tokio::fs::create_dir_all(config_dir.path()).await?;
 

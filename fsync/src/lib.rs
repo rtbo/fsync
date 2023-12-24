@@ -10,7 +10,7 @@ pub mod cipher;
 pub mod config;
 pub mod difftree;
 pub mod ipc;
-pub mod locs;
+pub mod loc;
 pub mod oauth2;
 mod storage;
 

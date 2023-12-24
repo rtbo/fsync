@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clap::Parser;
 use fsync::cache::CacheStorage;
 use fsync::difftree::DiffTree;
-use fsync::{self, backend, locs};
+use fsync::{self, backend, loc};
 use futures::stream::AbortHandle;
 use futures::Future;
 use service::Service;
@@ -21,7 +21,7 @@ struct Cli {
 async fn main() -> fsync::Result<()> {
     let cli = Cli::parse();
 
-    let config_dir = locs::ConfigDir::new(&cli.instance)?;
+    let config_dir = loc::ConfigDir::new(&cli.instance)?;
     if !config_dir.exists() {
         return Err(fsync::Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -35,7 +35,7 @@ async fn main() -> fsync::Result<()> {
 
     let local = Arc::new(fsync::backend::fs::Storage::new(&config.local_dir));
 
-    let cache_dir = locs::CacheDir::new(&cli.instance)?;
+    let cache_dir = loc::CacheDir::new(&cli.instance)?;
 
     let mut remote = match &config.provider {
         fsync::Provider::GoogleDrive => {

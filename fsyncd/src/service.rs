@@ -4,7 +4,7 @@ use std::sync::Arc;
 use camino::Utf8PathBuf;
 use fsync::difftree::{DiffTree, TreeNode};
 use fsync::ipc::Fsync;
-use fsync::locs;
+use fsync::loc;
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};
@@ -41,7 +41,7 @@ impl Service {
 
         println!("Listening on port {}", listener.local_addr().port());
 
-        let port_path = locs::user_runtime_dir()?
+        let port_path = loc::user_runtime_dir()?
             .join("fsync")
             .join(format!("{inst_name}.port"));
         tokio::fs::create_dir_all(port_path.parent().unwrap()).await?;
