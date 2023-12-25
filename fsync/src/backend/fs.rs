@@ -116,7 +116,7 @@ impl crate::Storage for Storage {
         };
         let parent_path = parent_path_id.map(|pid| pid.path);
         try_stream! {
-            if tokio::fs::metadata(&fs_base).await?.is_dir() {
+            if !tokio::fs::metadata(&fs_base).await?.is_dir() {
                 return;
             }
             let mut read_dir = fs::read_dir(&fs_base).await?;
