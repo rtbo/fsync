@@ -2,7 +2,7 @@ use std::net::{IpAddr, Ipv6Addr};
 
 use camino::Utf8PathBuf;
 use fsync::ipc::FsyncClient;
-use tarpc::{tokio_serde::formats::Bincode, client, context};
+use tarpc::{client, context, tokio_serde::formats::Bincode};
 
 use crate::{utils, Error};
 
@@ -32,7 +32,10 @@ pub async fn main(args: Args) -> Result<(), Error> {
     transport.config_mut().max_frame_length(usize::MAX);
 
     let client = FsyncClient::new(client::Config::default(), transport.await?).spawn();
-    let entry = client.entry(context::current(), Utf8PathBuf::from("Musique")).await.unwrap();
+    let entry = client
+        .entry(context::current(), Utf8PathBuf::from("Musique"))
+        .await
+        .unwrap();
 
     println!("{entry:#?}");
 

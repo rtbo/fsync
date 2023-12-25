@@ -4,8 +4,8 @@ use clap::Parser;
 use inquire::InquireError;
 
 mod entry;
-mod new;
 mod list;
+mod new;
 mod utils;
 
 #[derive(Debug, thiserror::Error)]
