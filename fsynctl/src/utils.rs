@@ -2,7 +2,8 @@ use fsync::loc::{inst, user};
 
 use crate::{Error, Result};
 
-pub fn get_single_share() -> Result<Option<String>> {
+/// If a single instance of fsyncd exists, get its name
+pub fn single_instance_name() -> Result<Option<String>> {
     let config_dir = user::config_dir()?;
     if !config_dir.exists() {
         return Ok(None);
@@ -20,12 +21,12 @@ pub fn get_single_share() -> Result<Option<String>> {
     }
 }
 
-pub fn get_share_port(name: &str) -> Result<u16> {
-    let pf = inst::runtime_port_file(name)?;
+pub fn instance_port(instance_name: &str) -> Result<u16> {
+    let pf = inst::runtime_port_file(instance_name)?;
     if !pf.exists() {
         return Err(Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("Could not find {pf}. Are you sure the fsyncd {name} instance is running?"),
+            format!("Could not find {pf}. Are you sure the fsyncd {instance_name} instance is running?"),
         )));
     }
     let content = std::fs::read(&pf)?;

@@ -1,31 +1,35 @@
 use std::net::{IpAddr, Ipv6Addr};
 
 use camino::Utf8PathBuf;
-use fsync::ipc::FsyncClient;
+use fsync::{difftree::TreeEntry, ipc::FsyncClient};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
 use crate::{utils, Error};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// Name of the share
-    name: Option<String>,
+    /// Name of the fsyncd instance
+    #[clap(long, short = 'n')]
+    instance_name: Option<String>,
+
+    /// Path to the entry
+    path: Option<Utf8PathBuf>,
 }
 
 pub async fn main(args: Args) -> Result<(), Error> {
-    let share_name = match args.name {
+    let instance_name = match args.instance_name {
         Some(name) => name,
         None => {
-            let name = utils::get_single_share()?;
+            let name = utils::single_instance_name()?;
             if let Some(name) = name {
                 name
             } else {
-                return Err(Error::Custom("Could not find a single share, please pass the <NAME> as command line argument".into()));
+                return Err(Error::Custom("Could not find a single share, please specify --share-name command line argument".into()));
             }
         }
     };
 
-    let port = utils::get_share_port(&share_name)?;
+    let port = utils::instance_port(&instance_name)?;
 
     let addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), port);
     let mut transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default);
@@ -33,11 +37,37 @@ pub async fn main(args: Args) -> Result<(), Error> {
 
     let client = FsyncClient::new(client::Config::default(), transport.await?).spawn();
     let entry = client
-        .entry(context::current(), Utf8PathBuf::from("Musique"))
+        .entry(context::current(), args.path.clone().unwrap_or_default())
         .await
         .unwrap();
 
-    println!("{entry:#?}");
+    if entry.is_none() {
+        println!("No such entry: {}", args.path.unwrap_or("(root)".into()));
+        return Ok(());
+    }
+    let entry = entry.unwrap();
+
+    match entry.entry() {
+        TreeEntry::Local(entry) => {
+            println!("L {}", entry.path());
+        }
+        TreeEntry::Remote(entry) => {
+            println!("R {}", entry.path());
+        }
+        TreeEntry::Both { local, remote } => {
+            assert_eq!(local.path(), remote.path());
+            if local.mtime() == remote.mtime() {
+                println!("S {}", local.path());
+            } else {
+                let (older, younger) = if local.mtime() < remote.mtime() {
+                    ("local", "remote")
+                } else {
+                    ("remote", "local")
+                };
+                println!("C {:<40} {older} older than {younger}", local.path());
+            }
+        }
+    }
 
     Ok(())
 }
