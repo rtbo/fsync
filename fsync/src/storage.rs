@@ -154,7 +154,5 @@ impl<'a> From<PathId<'a>> for PathIdBuf {
 
 pub trait Storage {
     async fn entry(&self, path_id: PathId) -> Result<Entry>;
-    /// Returns a stream of entries.
-    /// If `parent_path_id` is a directory, simply returns an empty stream without failing
     fn entries(&self, parent_path_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send;
 }

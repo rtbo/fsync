@@ -95,23 +95,19 @@ where
 {
     fn both(&self, both: Option<(Entry, Entry)>) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
-            let loc_path_id = both.as_ref().map(|b| b.0.path_id());
-            let loc_children = self.local.entries(loc_path_id);
-            let loc_children = loc_children.try_collect::<Vec<_>>();
+            let loc_entry = both.as_ref().map(|b| &b.0);
+            let loc_children = entry_children_sorted(&*self.local, loc_entry);
 
-            let rem_path_id = both.as_ref().map(|b| b.1.path_id());
-            let rem_children = self.remote.entries(rem_path_id);
-            let rem_children = rem_children.try_collect::<Vec<_>>();
+            let rem_entry = both.as_ref().map(|b| &b.1);
+            let rem_children = entry_children_sorted(&*self.remote, rem_entry);
 
             let (loc_children, rem_children) = tokio::join!(loc_children, rem_children);
 
-            let mut loc_children = loc_children?;
-            loc_children.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+            let loc_children = loc_children?;
             let mut loc_children = loc_children.iter();
             let mut loc_child = loc_children.next();
 
-            let mut rem_children = rem_children?;
-            rem_children.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+            let rem_children = rem_children?;
             let mut rem_children = rem_children.iter();
             let mut rem_child = rem_children.next();
 
@@ -188,9 +184,9 @@ where
     fn local(&self, entry: Entry) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
-            let mut joinvec = Vec::new();
 
-            {
+            if entry.is_dir() {
+                let mut joinvec = Vec::new();
                 let children = self.local.entries(Some(entry.path_id()));
                 tokio::pin!(children);
 
@@ -199,9 +195,8 @@ where
                     child_names.push(child.name().to_owned());
                     joinvec.push(self.local(child));
                 }
+                future::try_join_all(joinvec).await?;
             }
-
-            future::try_join_all(joinvec).await?;
 
             let path = entry.path().to_owned();
             let entry = TreeEntry::Local(entry);
@@ -217,9 +212,9 @@ where
     fn remote(&self, entry: Entry) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
-            let mut joinvec = Vec::new();
 
-            {
+            if entry.is_dir() {
+                let mut joinvec = Vec::new();
                 let children = self.remote.entries(Some(entry.path_id()));
                 tokio::pin!(children);
 
@@ -228,9 +223,8 @@ where
                     child_names.push(child.name().to_owned());
                     joinvec.push(self.remote(child));
                 }
+                future::try_join_all(joinvec).await?;
             }
-
-            future::try_join_all(joinvec).await?;
 
             let path = entry.path().to_owned();
             let entry = TreeEntry::Remote(entry);
@@ -242,4 +236,22 @@ where
             Ok(())
         })
     }
+}
+
+async fn entry_children_sorted<S>(storage: &S, entry: Option<&Entry>) -> Result<Vec<Entry>>
+where
+    S: Storage + Send + Sync + 'static,
+{
+    if let Some(entry) = entry {
+        if !entry.is_dir() {
+            return Ok(vec![]);
+        }
+    }
+    let path_id = entry.map(|e| e.path_id());
+    let children = storage.entries(path_id);
+    let mut children = children.try_collect::<Vec<_>>().await?;
+
+    children.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+
+    Ok(children)
 }
