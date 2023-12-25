@@ -1,8 +1,12 @@
+#![feature(iterator_try_collect)]
+
 use clap::Parser;
 use inquire::InquireError;
 
+mod entry;
 mod new;
 mod list;
+mod utils;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -42,6 +46,8 @@ impl From<fsync::Error> for Error {
     }
 }
 
+type Result<T> = std::result::Result<T, Error>;
+
 #[derive(Parser)]
 #[command(name = "fsynctl")]
 #[command(author, version, about, long_about=None)]
@@ -56,13 +62,17 @@ enum Commands {
     List,
     /// Create a new synchronization service
     New(new::Args),
+    /// Get the status of an entry
+    Entry(entry::Args),
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::List => list::main(),
         Commands::New(args) => new::main(args),
+        Commands::Entry(args) => entry::main(args).await,
     }
 }

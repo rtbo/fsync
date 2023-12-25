@@ -603,6 +603,7 @@ dependencies = [
  "inquire",
  "serde",
  "serde_json",
+ "tarpc",
  "thiserror",
  "tokio",
  "yup-oauth2",
