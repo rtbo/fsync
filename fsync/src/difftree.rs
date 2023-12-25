@@ -24,6 +24,27 @@ pub struct TreeNode {
     children: Vec<String>,
 }
 
+impl TreeNode {
+    pub fn entry(&self) -> &TreeEntry {
+        &self.entry
+    }
+
+    pub fn children(&self) -> &[String] {
+        &self.children
+    }
+
+    pub fn path(&self) -> &Utf8Path {
+        match &self.entry {
+            TreeEntry::Both { local, remote } => {
+                debug_assert_eq!(local.path(), remote.path());
+                local.path()
+            }
+            TreeEntry::Local(entry) => entry.path(),
+            TreeEntry::Remote(entry) => entry.path(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DiffTree {
     nodes: Arc<DashMap<Utf8PathBuf, TreeNode>>,
