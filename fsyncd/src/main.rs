@@ -33,20 +33,27 @@ async fn main() -> fsync::Result<()> {
     let config = fsync::Config::load_from_file(&config_file).await?;
     println!("Loaded config: {config:?}");
 
-    let local = Arc::new(fsync::backend::fs::Storage::new(&config.local_dir));
+    let local = fsync::backend::fs::Storage::new(&config.local_dir);
 
-    let mut remote = match &config.provider {
+    match &config.provider {
         fsync::Provider::GoogleDrive => {
             let remote = backend::gdrive::Storage::new(
                 &inst::oauth_secret_file(&cli.instance)?,
                 &inst::token_cache_file(&cli.instance)?,
             )
             .await?;
-            CacheStorage::new(remote)
+            start_service(cli, local, remote).await
         }
-    };
+    }
+}
 
+async fn start_service<L, R>(cli: Cli, local: L, remote: R) -> fsync::Result<()>
+where
+    L: fsync::Storage,
+    R: fsync::Storage,
+{
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
+    let mut remote = CacheStorage::new(remote);
     match remote.load_from_disk(&remote_cache_path).await {
         Err(fsync::Error::Io(_)) => {
             remote.populate_from_storage().await?;
@@ -54,9 +61,12 @@ async fn main() -> fsync::Result<()> {
         Err(err) => Err(err)?,
         Ok(()) => (),
     }
+
+    let local = Arc::new(local);
     let remote = Arc::new(remote);
 
     let tree = DiffTree::from_cache(local, remote.clone()).await?;
+
     let service = Service::new(tree);
 
     let abort_reg = {
