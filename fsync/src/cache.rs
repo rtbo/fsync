@@ -42,7 +42,7 @@ where
         let path = path.to_owned();
 
         let handle = tokio::task::spawn_blocking(move || {
-            let reader = fs::File::open(&path)?;
+            let reader = fs::File::open(path)?;
             let reader = BufReader::new(reader);
             let opts = bincode_options();
             let entries: DashMap<String, CacheNode> = opts.deserialize_from(reader)?;

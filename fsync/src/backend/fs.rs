@@ -144,7 +144,7 @@ async fn map_metadata(path: &Utf8Path, metadata: &Metadata, fs_path: &Utf8Path) 
     let typ = if metadata.is_symlink() {
         let target = tokio::fs::read_link(fs_path).await?;
         let target = Utf8PathBuf::try_from(target)?;
-        check_symlink(&path, &target)?;
+        check_symlink(path, &target)?;
         EntryType::Symlink {
             target: target.into_string(),
             size: metadata.len(),
