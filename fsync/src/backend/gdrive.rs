@@ -118,7 +118,13 @@ impl Storage {
 
 impl crate::Storage for Storage {
     async fn entry<'a>(&self, path_id: PathId<'a>) -> crate::Result<Entry> {
-        let (_resp, file) = self.hub.files().get(path_id.id).doit().await?;
+        let (_resp, file) = self
+            .hub
+            .files()
+            .get(path_id.id)
+            .param("fields", METADATA_FIELDS)
+            .doit()
+            .await?;
         Ok(map_file(Some(path_id.path), file))
     }
 
@@ -129,10 +135,11 @@ impl crate::Storage for Storage {
         let parent_id = parent_path_id.map(|di| di.id).unwrap_or("root");
         let base_dir = parent_path_id.map(|di| di.path);
         let q = format!("'{}' in parents", parent_id);
+        let fields = format!("files({METADATA_FIELDS})");
         let mut next_page_token: Option<String> = None;
         try_stream! {
             loop {
-                let mut query = self.hub.files().list().q(&q);
+                let mut query = self.hub.files().list().param("fields", &fields).q(&q);
                 if let Some(page_token) = next_page_token {
                     query = query.page_token(&page_token);
                 }
@@ -151,7 +158,8 @@ impl crate::Storage for Storage {
     }
 }
 
-const FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
+const METADATA_FIELDS: &str = "id,name,size,modifiedTime,mimeType";
+const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
 fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> Entry {
     let id = f.id.unwrap_or_default();
@@ -159,7 +167,7 @@ fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> Entry {
         Some(di) => Utf8Path::new(di).join(f.name.as_deref().unwrap()),
         None => Utf8PathBuf::from(f.name.as_deref().unwrap()),
     };
-    let typ = if f.mime_type.as_deref() == Some(FOLDER_MIME_TYPE) {
+    let typ = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
         EntryType::Directory
     } else {
         let mtime = f.modified_time;
