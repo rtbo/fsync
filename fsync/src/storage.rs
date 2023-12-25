@@ -152,7 +152,7 @@ impl<'a> From<PathId<'a>> for PathIdBuf {
     }
 }
 
-pub trait Storage {
+pub trait Storage: Send + Sync + 'static {
     async fn entry(&self, path_id: PathId) -> Result<Entry>;
     fn entries(&self, parent_path_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send;
 }

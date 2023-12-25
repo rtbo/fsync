@@ -32,8 +32,8 @@ pub struct DiffTree {
 impl DiffTree {
     pub async fn from_cache<L, R>(local: Arc<L>, remote: Arc<R>) -> Result<Self>
     where
-        L: Storage + Send + Sync + 'static,
-        R: Storage + Send + Sync + 'static,
+        L: Storage,
+        R: Storage,
     {
         let nodes = Arc::new(DashMap::new());
 
@@ -90,8 +90,8 @@ struct DiffTreeBuild<L, R> {
 
 impl<L, R> DiffTreeBuild<L, R>
 where
-    L: Storage + Send + Sync + 'static,
-    R: Storage + Send + Sync + 'static,
+    L: Storage,
+    R: Storage,
 {
     fn both(&self, both: Option<(Entry, Entry)>) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
@@ -240,7 +240,7 @@ where
 
 async fn entry_children_sorted<S>(storage: &S, entry: Option<&Entry>) -> Result<Vec<Entry>>
 where
-    S: Storage + Send + Sync + 'static,
+    S: Storage,
 {
     if let Some(entry) = entry {
         if !entry.is_dir() {

@@ -26,7 +26,7 @@ struct CacheNode {
 
 impl<S> CacheStorage<S>
 where
-    S: Storage + Send + Sync + 'static,
+    S: Storage,
 {
     pub fn new(storage: S) -> Self {
         Self {
@@ -90,7 +90,7 @@ where
 
 impl<S> crate::Storage for CacheStorage<S>
 where
-    S: Storage + Sync + Send + 'static,
+    S: Storage,
 {
     async fn entry<'a>(&self, path_id: PathId<'a>) -> crate::Result<Entry> {
         let ent = self.entries.get(path_id.id).unwrap();
@@ -124,7 +124,7 @@ fn populate_recurse<'a, S>(
     storage: Arc<S>,
 ) -> BoxFuture<'a, crate::Result<Vec<String>>>
 where
-    S: Storage + Send + Sync + 'static,
+    S: Storage,
 {
     Box::pin(async move {
         let dirent = storage.entries(dir_path_id.as_ref().map(|dpi| dpi.as_path_id()));
