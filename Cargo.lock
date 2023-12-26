@@ -600,6 +600,7 @@ dependencies = [
  "camino",
  "clap",
  "fsync",
+ "futures",
  "inquire",
  "serde",
  "serde_json",

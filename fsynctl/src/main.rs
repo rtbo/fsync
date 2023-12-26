@@ -6,6 +6,7 @@ use inquire::InquireError;
 mod entry;
 mod list;
 mod new;
+mod tree;
 mod utils;
 
 #[derive(Debug, thiserror::Error)]
@@ -64,6 +65,8 @@ enum Commands {
     New(new::Args),
     /// Get the status of an entry
     Entry(entry::Args),
+    /// Print the tree status
+    Tree(tree::Args),
 }
 
 #[tokio::main]
@@ -74,5 +77,6 @@ async fn main() -> Result<()> {
         Commands::List => list::main(),
         Commands::New(args) => new::main(args),
         Commands::Entry(args) => entry::main(args).await,
+        Commands::Tree(args) => tree::main(args).await,
     }
 }

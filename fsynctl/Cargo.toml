@@ -9,6 +9,7 @@ fsync = { path = "../fsync" }
 
 camino = { workspace = true }
 clap = { workspace = true }
+futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tarpc = { workspace = true }
