@@ -26,7 +26,9 @@ pub fn instance_port(instance_name: &str) -> Result<u16> {
     if !pf.exists() {
         return Err(Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("Could not find {pf}. Are you sure the fsyncd {instance_name} instance is running?"),
+            format!(
+                "Could not find {pf}. Are you sure the fsyncd {instance_name} instance is running?"
+            ),
         )));
     }
     let content = std::fs::read(&pf)?;
