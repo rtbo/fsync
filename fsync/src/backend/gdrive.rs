@@ -125,7 +125,7 @@ impl crate::Storage for Storage {
             .param("fields", METADATA_FIELDS)
             .doit()
             .await?;
-        Ok(map_file(Some(path_id.path), file))
+        map_file(Some(path_id.path), file)
     }
 
     fn entries(
@@ -147,7 +147,7 @@ impl crate::Storage for Storage {
                 next_page_token = file_list.next_page_token;
                 if let Some(files) = file_list.files {
                     for f in files {
-                        yield map_file(base_dir, f);
+                        yield map_file(base_dir, f)?;
                     }
                 }
                 if next_page_token.is_none() {
@@ -161,7 +161,7 @@ impl crate::Storage for Storage {
 const METADATA_FIELDS: &str = "id,name,size,modifiedTime,mimeType";
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
-fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> Entry {
+fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> crate::Result<Entry> {
     let id = f.id.unwrap_or_default();
     let path = match base_dir {
         Some(di) => Utf8Path::new(di).join(f.name.as_deref().unwrap()),
@@ -170,10 +170,18 @@ fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> Entry {
     let typ = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
         EntryType::Directory
     } else {
-        let mtime = f.modified_time;
-        let size = f.size.unwrap_or(0) as _;
+        let mtime = f.modified_time.ok_or_else(|| {
+            crate::Error::Custom(format!(
+                "Expected to receive modifiedTime from Google for {path}"
+            ))
+        })?;
+        let size = f.size.ok_or_else(|| {
+            crate::Error::Custom(format!(
+                "Expected to receive size from Google for {path}"
+            ))
+        })? as _;
         EntryType::Regular { size, mtime }
     };
 
-    Entry::new(id, path, typ)
+    Ok(Entry::new(id, path, typ))
 }

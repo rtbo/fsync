@@ -153,7 +153,7 @@ async fn map_metadata(path: &Utf8Path, metadata: &Metadata, fs_path: &Utf8Path) 
     } else if metadata.is_file() {
         EntryType::Regular {
             size: metadata.len(),
-            mtime: metadata.modified().ok().map(|mt| mt.into()),
+            mtime: metadata.modified().map(|mt| mt.into())?,
         }
     } else if metadata.is_dir() {
         EntryType::Directory

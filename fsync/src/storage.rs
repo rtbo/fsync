@@ -10,7 +10,7 @@ pub enum EntryType {
     Directory,
     Regular {
         size: u64,
-        mtime: Option<DateTime<Utc>>,
+        mtime: DateTime<Utc>,
     },
     Symlink {
         target: String,
@@ -62,6 +62,14 @@ impl Entry {
         &self.path
     }
 
+    pub fn path_or_root(&self) -> &str {
+        if self.path.as_str().is_empty() {
+            "(root)"
+        } else {
+            self.path().as_str()
+        }
+    }
+
     pub fn name(&self) -> &str {
         self.path.file_name().unwrap_or("")
     }
@@ -96,7 +104,7 @@ impl Entry {
 
     pub fn mtime(&self) -> Option<DateTime<Utc>> {
         match self.typ {
-            EntryType::Regular { mtime, .. } => mtime,
+            EntryType::Regular { mtime, .. } => Some(mtime),
             EntryType::Symlink { mtime, .. } => mtime,
             _ => None,
         }
