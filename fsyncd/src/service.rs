@@ -21,8 +21,8 @@ pub struct Service {
 
 #[tarpc::server]
 impl Fsync for Service {
-    async fn entry(self, _: Context, path: Utf8PathBuf) -> Option<TreeNode> {
-        self.tree.entry(&path)
+    async fn entry(self, _: Context, path: Option<Utf8PathBuf>) -> Option<TreeNode> {
+        self.tree.entry(path.as_deref())
     }
 }
 

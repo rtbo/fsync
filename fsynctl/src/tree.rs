@@ -43,10 +43,7 @@ pub async fn main(args: Args) -> crate::Result<()> {
     transport.config_mut().max_frame_length(usize::MAX);
 
     let client = Arc::new(FsyncClient::new(client::Config::default(), transport.await?).spawn());
-    let node = client
-        .entry(context::current(), args.path.clone().unwrap_or_default())
-        .await
-        .unwrap();
+    let node = client.entry(context::current(), args.path.clone()).await?;
 
     let is_root = args.path.is_none();
 
@@ -60,7 +57,7 @@ pub async fn main(args: Args) -> crate::Result<()> {
         print_entry_status(true, !node.children().is_empty(), "", node.entry());
     }
 
-    walk(client, "".into(), node ).await
+    walk(client, "".into(), node).await
 }
 
 // all special unicode are from "box drawing" block starting at \u{2500}
@@ -75,9 +72,9 @@ fn walk(
         let joinvec: Vec<_> = node
             .children()
             .iter()
-            .map(|c| client.entry(context::current(), dir.join(c)))
+            .map(|c| client.entry(context::current(), Some(dir.join(c))))
             .collect();
-        let children = future::try_join_all(joinvec).await.unwrap();
+        let children = future::try_join_all(joinvec).await?;
         let mut len = children.len();
 
         for child in children {

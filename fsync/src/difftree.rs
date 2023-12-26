@@ -68,8 +68,9 @@ impl DiffTree {
         Ok(Self { nodes })
     }
 
-    pub fn entry(&self, path: &Utf8Path) -> Option<TreeNode> {
-        self.nodes.get(path).map(|node| node.clone())
+    pub fn entry(&self, path: Option<&Utf8Path>) -> Option<TreeNode> {
+        let key = path.unwrap_or(Utf8Path::new(""));
+        self.nodes.get(key).map(|node| node.clone())
     }
 
     pub fn print_out(&self) {

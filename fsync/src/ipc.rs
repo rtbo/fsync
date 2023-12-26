@@ -4,5 +4,5 @@ use crate::difftree::TreeNode;
 
 #[tarpc::service]
 pub trait Fsync {
-    async fn entry(path: Utf8PathBuf) -> Option<TreeNode>;
+    async fn entry(path: Option<Utf8PathBuf>) -> Option<TreeNode>;
 }

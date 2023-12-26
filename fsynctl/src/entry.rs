@@ -37,7 +37,7 @@ pub async fn main(args: Args) -> Result<(), Error> {
 
     let client = FsyncClient::new(client::Config::default(), transport.await?).spawn();
     let entry = client
-        .entry(context::current(), args.path.clone().unwrap_or_default())
+        .entry(context::current(), args.path.clone())
         .await
         .unwrap();
 
