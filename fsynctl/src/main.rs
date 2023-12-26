@@ -1,5 +1,7 @@
 #![feature(iterator_try_collect)]
 
+use std::process;
+
 use clap::Parser;
 use inquire::InquireError;
 
@@ -25,6 +27,9 @@ enum Error {
 
     #[error("Serde JSON")]
     SerdeJson(#[from] serde_json::Error),
+
+    #[error("Rpc")]
+    Rpc(#[from] tarpc::client::RpcError),
 
     #[error("OAuth2")]
     OAuth2(#[from] yup_oauth2::Error),
@@ -70,9 +75,26 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> process::ExitCode {
     let cli = Cli::parse();
+    match main2(cli).await {
+        Ok(()) => process::ExitCode::SUCCESS,
+        Err(Error::Custom(msg)) => {
+            eprintln!("{msg}");
+            process::ExitCode::FAILURE
+        }
+        Err(Error::Io(err)) => {
+            eprintln!("I/O Error: {err}");
+            process::ExitCode::FAILURE
+        }
+        Err(err) => {
+            eprintln!("Error encoutered: {err}");
+            process::ExitCode::FAILURE
+        }
+    }
+}
 
+async fn main2(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::List => list::main(),
         Commands::New(args) => new::main(args),
