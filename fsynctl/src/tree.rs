@@ -4,10 +4,7 @@ use std::{
 };
 
 use camino::Utf8PathBuf;
-use fsync::{
-    difftree::{TreeEntry, TreeNode},
-    ipc::FsyncClient,
-};
+use fsync::{ipc::FsyncClient, tree};
 use futures::future::{self, BoxFuture};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
@@ -65,7 +62,7 @@ pub async fn main(args: Args) -> crate::Result<()> {
 fn walk(
     client: Arc<FsyncClient>,
     prefix: String,
-    node: TreeNode,
+    node: tree::Node,
 ) -> BoxFuture<'static, crate::Result<()>> {
     Box::pin(async move {
         let dir = node.path();
@@ -100,7 +97,7 @@ fn walk(
     })
 }
 
-fn print_entry_status(first: bool, has_follower: bool, prefix_head: &str, entry: &TreeEntry) {
+fn print_entry_status(first: bool, has_follower: bool, prefix_head: &str, entry: &tree::Entry) {
     let prefix_tail = match (first, has_follower) {
         (true, _) => "",
         (false, true) => "├─ ",
@@ -108,13 +105,13 @@ fn print_entry_status(first: bool, has_follower: bool, prefix_head: &str, entry:
     };
 
     match entry {
-        TreeEntry::Local(entry) => {
+        tree::Entry::Local(entry) => {
             println!("L {prefix_head}{prefix_tail}{}", entry.path());
         }
-        TreeEntry::Remote(entry) => {
+        tree::Entry::Remote(entry) => {
             println!("R {prefix_head}{prefix_tail}{}", entry.path());
         }
-        TreeEntry::Both { local, remote } => {
+        tree::Entry::Both { local, remote } => {
             assert_eq!(local.path(), remote.path());
             let conflict = match (local.is_dir(), remote.is_dir()) {
                 (true, true) => None,

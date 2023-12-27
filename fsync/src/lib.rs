@@ -8,12 +8,12 @@ pub mod backend;
 pub mod cache;
 pub mod cipher;
 pub mod config;
-pub mod difftree;
 pub mod ipc;
 pub mod loc;
 pub mod oauth2;
-mod storage;
+pub mod tree;
 
+mod storage;
 pub use crate::storage::*;
 
 #[derive(Debug, Serialize, Deserialize)]

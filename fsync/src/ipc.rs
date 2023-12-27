@@ -1,8 +1,8 @@
 use camino::Utf8PathBuf;
 
-use crate::difftree::TreeNode;
+use crate::tree;
 
 #[tarpc::service]
 pub trait Fsync {
-    async fn entry(path: Option<Utf8PathBuf>) -> Option<TreeNode>;
+    async fn entry(path: Option<Utf8PathBuf>) -> Option<tree::Node>;
 }

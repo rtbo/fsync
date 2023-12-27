@@ -9,23 +9,26 @@ use futures::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{Entry, Result, Storage};
+use crate::{Result, Storage};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TreeEntry {
-    Local(Entry),
-    Remote(Entry),
-    Both { local: Entry, remote: Entry },
+pub enum Entry {
+    Local(crate::Entry),
+    Remote(crate::Entry),
+    Both {
+        local: crate::Entry,
+        remote: crate::Entry,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TreeNode {
-    entry: TreeEntry,
+pub struct Node {
+    entry: Entry,
     children: Vec<String>,
 }
 
-impl TreeNode {
-    pub fn entry(&self) -> &TreeEntry {
+impl Node {
+    pub fn entry(&self) -> &Entry {
         &self.entry
     }
 
@@ -35,19 +38,19 @@ impl TreeNode {
 
     pub fn path(&self) -> &Utf8Path {
         match &self.entry {
-            TreeEntry::Both { local, remote } => {
+            Entry::Both { local, remote } => {
                 debug_assert_eq!(local.path(), remote.path());
                 local.path()
             }
-            TreeEntry::Local(entry) => entry.path(),
-            TreeEntry::Remote(entry) => entry.path(),
+            Entry::Local(entry) => entry.path(),
+            Entry::Remote(entry) => entry.path(),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct DiffTree {
-    nodes: Arc<DashMap<Utf8PathBuf, TreeNode>>,
+    nodes: Arc<DashMap<Utf8PathBuf, Node>>,
 }
 
 impl DiffTree {
@@ -68,7 +71,7 @@ impl DiffTree {
         Ok(Self { nodes })
     }
 
-    pub fn entry(&self, path: Option<&Utf8Path>) -> Option<TreeNode> {
+    pub fn entry(&self, path: Option<&Utf8Path>) -> Option<Node> {
         let key = path.unwrap_or(Utf8Path::new(""));
         self.nodes.get(key).map(|node| node.clone())
     }
@@ -86,9 +89,9 @@ impl DiffTree {
     fn _print_out(&self, path: &Utf8Path, indent: usize) {
         let node = self.nodes.get(path).unwrap();
         let marker = match node.entry {
-            TreeEntry::Both { .. } => "B",
-            TreeEntry::Local { .. } => "L",
-            TreeEntry::Remote { .. } => "R",
+            Entry::Both { .. } => "B",
+            Entry::Local { .. } => "L",
+            Entry::Remote { .. } => "R",
         };
 
         println!(
@@ -107,7 +110,7 @@ impl DiffTree {
 struct DiffTreeBuild<L, R> {
     local: Arc<L>,
     remote: Arc<R>,
-    nodes: Arc<DashMap<Utf8PathBuf, TreeNode>>,
+    nodes: Arc<DashMap<Utf8PathBuf, Node>>,
 }
 
 impl<L, R> DiffTreeBuild<L, R>
@@ -115,7 +118,7 @@ where
     L: Storage,
     R: Storage,
 {
-    fn both(&self, both: Option<(Entry, Entry)>) -> BoxFuture<'_, Result<()>> {
+    fn both(&self, both: Option<(crate::Entry, crate::Entry)>) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             let loc_entry = both.as_ref().map(|b| &b.0);
             let loc_children = entry_children_sorted(&*self.local, loc_entry);
@@ -185,25 +188,25 @@ where
             let (path, entry) = if let Some((local, remote)) = both {
                 assert_eq!(local.path(), remote.path());
                 let path = local.path().to_owned();
-                (path, TreeEntry::Both { local, remote })
+                (path, Entry::Both { local, remote })
             } else {
                 (
                     Utf8PathBuf::default(),
-                    TreeEntry::Both {
-                        local: Entry::default(),
-                        remote: Entry::default(),
+                    Entry::Both {
+                        local: crate::Entry::default(),
+                        remote: crate::Entry::default(),
                     },
                 )
             };
 
-            let node = TreeNode { entry, children };
+            let node = Node { entry, children };
             self.nodes.insert(path, node);
 
             Ok(())
         })
     }
 
-    fn local(&self, entry: Entry) -> BoxFuture<'_, Result<()>> {
+    fn local(&self, entry: crate::Entry) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
 
@@ -221,8 +224,8 @@ where
             }
 
             let path = entry.path().to_owned();
-            let entry = TreeEntry::Local(entry);
-            let node = TreeNode {
+            let entry = Entry::Local(entry);
+            let node = Node {
                 entry,
                 children: child_names,
             };
@@ -231,7 +234,7 @@ where
         })
     }
 
-    fn remote(&self, entry: Entry) -> BoxFuture<'_, Result<()>> {
+    fn remote(&self, entry: crate::Entry) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
 
@@ -249,8 +252,8 @@ where
             }
 
             let path = entry.path().to_owned();
-            let entry = TreeEntry::Remote(entry);
-            let node = TreeNode {
+            let entry = Entry::Remote(entry);
+            let node = Node {
                 entry,
                 children: child_names,
             };
@@ -260,7 +263,10 @@ where
     }
 }
 
-async fn entry_children_sorted<S>(storage: &S, entry: Option<&Entry>) -> Result<Vec<Entry>>
+async fn entry_children_sorted<S>(
+    storage: &S,
+    entry: Option<&crate::Entry>,
+) -> Result<Vec<crate::Entry>>
 where
     S: Storage,
 {

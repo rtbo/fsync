@@ -2,9 +2,9 @@ use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
-use fsync::difftree::{DiffTree, TreeNode};
 use fsync::ipc::Fsync;
 use fsync::loc::inst;
+use fsync::tree::{self, DiffTree};
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};
@@ -21,7 +21,7 @@ pub struct Service {
 
 #[tarpc::server]
 impl Fsync for Service {
-    async fn entry(self, _: Context, path: Option<Utf8PathBuf>) -> Option<TreeNode> {
+    async fn entry(self, _: Context, path: Option<Utf8PathBuf>) -> Option<tree::Node> {
         self.tree.entry(path.as_deref())
     }
 }

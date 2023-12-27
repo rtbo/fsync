@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv6Addr};
 
 use camino::Utf8PathBuf;
-use fsync::{difftree::TreeEntry, ipc::FsyncClient};
+use fsync::{ipc::FsyncClient, tree};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
 use crate::{utils, Error};
@@ -48,13 +48,13 @@ pub async fn main(args: Args) -> Result<(), Error> {
     let entry = entry.unwrap();
 
     match entry.entry() {
-        TreeEntry::Local(entry) => {
+        tree::Entry::Local(entry) => {
             println!("L {}", entry.path());
         }
-        TreeEntry::Remote(entry) => {
+        tree::Entry::Remote(entry) => {
             println!("R {}", entry.path());
         }
-        TreeEntry::Both { local, remote } => {
+        tree::Entry::Both { local, remote } => {
             assert_eq!(local.path(), remote.path());
             if local.mtime() == remote.mtime() {
                 println!("S {}", local.path());

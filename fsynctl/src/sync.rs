@@ -7,10 +7,7 @@ use std::{
 
 use byte_unit::AdjustedByte;
 use camino::{Utf8Path, Utf8PathBuf};
-use fsync::{
-    difftree::{TreeEntry, TreeNode},
-    ipc::FsyncClient,
-};
+use fsync::{ipc::FsyncClient, tree};
 use futures::future::BoxFuture;
 use inquire::Select;
 use tarpc::{client, context, tokio_serde::formats::Bincode};
@@ -335,7 +332,7 @@ struct SyncCommand {
 }
 
 impl SyncCommand {
-    fn node<'a>(&'a self, node: &'a TreeNode) -> BoxFuture<'a, crate::Result<()>> {
+    fn node<'a>(&'a self, node: &'a tree::Node) -> BoxFuture<'a, crate::Result<()>> {
         Box::pin(async {
             self.entry(node.entry()).await?;
             if self.args.recurse {
@@ -350,11 +347,11 @@ impl SyncCommand {
         })
     }
 
-    async fn entry(&self, entry: &TreeEntry) -> crate::Result<()> {
+    async fn entry(&self, entry: &tree::Entry) -> crate::Result<()> {
         match entry {
-            TreeEntry::Local(entry) => self.local_to_remote(entry).await,
-            TreeEntry::Remote(entry) => self.remote_to_local(entry).await,
-            TreeEntry::Both { local, remote } => self.both(local, remote).await,
+            tree::Entry::Local(entry) => self.local_to_remote(entry).await,
+            tree::Entry::Remote(entry) => self.remote_to_local(entry).await,
+            tree::Entry::Both { local, remote } => self.both(local, remote).await,
         }
     }
 

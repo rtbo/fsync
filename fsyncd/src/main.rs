@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use fsync::cache::CacheStorage;
-use fsync::difftree::DiffTree;
+use fsync::tree::DiffTree;
 use fsync::{self, backend, loc::inst};
 use futures::stream::AbortHandle;
 use futures::Future;
