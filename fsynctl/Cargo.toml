@@ -18,3 +18,4 @@ tokio = { workspace = true }
 yup-oauth2 = { workspace = true }
 
 inquire = { version = "0.6.2", features = ["editor"] }
+byte-unit = "5.1.2"

@@ -1,3 +1,4 @@
+use byte_unit::AdjustedByte;
 use fsync::loc::{inst, user};
 
 use crate::{Error, Result};
@@ -35,4 +36,12 @@ pub fn instance_port(instance_name: &str) -> Result<u16> {
     let content = String::from_utf8(content).map_err(|err| err.utf8_error())?;
     let port: u16 = serde_json::from_str(&content)?;
     Ok(port)
+}
+
+
+pub fn adjusted_byte(val: u64) -> AdjustedByte {
+    use byte_unit::{Byte, UnitType};
+
+    let byte = Byte::from(val);
+    byte.get_appropriate_unit(UnitType::Binary)
 }

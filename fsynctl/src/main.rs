@@ -8,6 +8,7 @@ use inquire::InquireError;
 mod entry;
 mod list;
 mod new;
+mod sync;
 mod tree;
 mod utils;
 
@@ -72,6 +73,8 @@ enum Commands {
     Entry(entry::Args),
     /// Print the tree status
     Tree(tree::Args),
+    /// Synchronize local and remote
+    Sync(sync::Args),
 }
 
 #[tokio::main]
@@ -100,5 +103,6 @@ async fn main2(cli: Cli) -> Result<()> {
         Commands::New(args) => new::main(args),
         Commands::Entry(args) => entry::main(args).await,
         Commands::Tree(args) => tree::main(args).await,
+        Commands::Sync(args) => sync::main(args).await,
     }
 }
