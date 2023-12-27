@@ -4,7 +4,7 @@ use std::str;
 use async_stream::try_stream;
 use camino::{Utf8Path, Utf8PathBuf};
 use futures::Stream;
-use google_drive3::api;
+use google_drive3::api::{self, Scope};
 use google_drive3::oauth2::ApplicationSecret;
 use google_drive3::DriveHub;
 
@@ -144,6 +144,27 @@ impl crate::DirEntries for Storage {
                 }
             }
         }
+    }
+}
+
+impl crate::ReadFile for Storage {
+    async fn read_file<'a>(&self, path_id: PathId<'a>) -> crate::Result<impl tokio::io::AsyncRead> {
+        use futures::stream::{StreamExt, TryStreamExt};
+
+        let (resp, _) = self
+            .hub
+            .files()
+            .get(path_id.id)
+            .add_scope(Scope::Full)
+            .doit()
+            .await?;
+        let body = resp.into_body();
+        let body = body.map(|res| {
+            res.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))
+        });
+        let read = body.into_async_read();
+
+        Ok(tokio_util::compat::FuturesAsyncReadCompatExt::compat(read))
     }
 }
 

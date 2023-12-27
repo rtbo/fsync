@@ -125,6 +125,38 @@ impl crate::DirEntries for Storage {
     }
 }
 
+impl crate::ReadFile for Storage {
+    async fn read_file<'a>(&self, path_id: PathId<'a>) -> Result<impl tokio::io::AsyncRead> {
+        debug_assert!(path_id.path.is_relative());
+        let path = self.root.join(path_id.path);
+        Ok(tokio::fs::File::open(&path).await?)
+    }
+}
+
+impl crate::WriteFile for Storage {
+    async fn write_file(&self, metadata: &Entry, data: impl tokio::io::AsyncRead) -> Result<()> {
+        debug_assert!(metadata.path().is_relative());
+        let path = self.root.join(metadata.path());
+        if path.is_dir() {
+            return Err(crate::Error::Custom(format!(
+                "{} is a directory",
+                metadata.path()
+            )));
+        }
+
+        tokio::pin!(data);
+
+        let mut f = tokio::fs::File::create(&path).await?;
+        tokio::io::copy(&mut data, &mut f).await?;
+
+        if let Some(mtime) = metadata.mtime() {
+            let f = f.into_std().await;
+            f.set_modified(mtime.into())?;
+        }
+        Ok(())
+    }
+}
+
 impl crate::Storage for Storage {}
 
 async fn map_direntry(parent_path: Option<&Utf8Path>, direntry: &DirEntry) -> Result<Entry> {

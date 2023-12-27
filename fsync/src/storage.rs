@@ -167,4 +167,12 @@ pub trait DirEntries {
     ) -> impl Stream<Item = Result<Entry>> + Send;
 }
 
+pub trait ReadFile {
+    async fn read_file(&self, path_id: PathId) -> Result<impl tokio::io::AsyncRead>;
+}
+
+pub trait WriteFile {
+    async fn write_file(&self, metadata: &Entry, data: impl tokio::io::AsyncRead) -> Result<()>;
+}
+
 pub trait Storage: DirEntries + Send + Sync + 'static {}
