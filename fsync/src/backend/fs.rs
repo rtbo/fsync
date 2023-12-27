@@ -101,15 +101,8 @@ impl Storage {
     }
 }
 
-impl crate::Storage for Storage {
-    async fn entry<'a>(&self, path_id: PathId<'a>) -> Result<Entry> {
-        let fs_path = self.root.join(path_id.path);
-        let path = path_id.path;
-        let metadata = std::fs::metadata(&fs_path)?;
-        map_metadata(path, &metadata, &fs_path).await
-    }
-
-    fn entries(&self, parent_path_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send {
+impl crate::DirEntries for Storage {
+    fn dir_entries(&self, parent_path_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send {
         let fs_base = match parent_path_id {
             Some(dir) => self.root.join(dir.path),
             None => self.root.clone(),
@@ -128,6 +121,8 @@ impl crate::Storage for Storage {
         }
     }
 }
+
+impl crate::Storage for Storage {}
 
 async fn map_direntry(parent_path: Option<&Utf8Path>, direntry: &DirEntry) -> Result<Entry> {
     let fs_path = Utf8PathBuf::try_from(direntry.path())?;

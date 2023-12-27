@@ -116,19 +116,8 @@ impl Storage {
     }
 }
 
-impl crate::Storage for Storage {
-    async fn entry<'a>(&self, path_id: PathId<'a>) -> crate::Result<Entry> {
-        let (_resp, file) = self
-            .hub
-            .files()
-            .get(path_id.id)
-            .param("fields", METADATA_FIELDS)
-            .doit()
-            .await?;
-        map_file(Some(path_id.path), file)
-    }
-
-    fn entries(
+impl crate::DirEntries for Storage {
+    fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
     ) -> impl Stream<Item = crate::Result<Entry>> + Send {
@@ -157,6 +146,8 @@ impl crate::Storage for Storage {
         }
     }
 }
+
+impl crate::Storage for Storage {}
 
 const METADATA_FIELDS: &str = "id,name,size,modifiedTime,mimeType";
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";

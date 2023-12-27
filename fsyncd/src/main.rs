@@ -56,7 +56,7 @@ where
     let mut remote = CacheStorage::new(remote);
     match remote.load_from_disk(&remote_cache_path).await {
         Err(fsync::Error::Io(_)) => {
-            remote.populate_from_storage().await?;
+            remote.populate_from_entries().await?;
         }
         Err(err) => Err(err)?,
         Ok(()) => (),

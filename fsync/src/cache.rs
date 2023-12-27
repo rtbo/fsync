@@ -71,8 +71,13 @@ where
 
         handle.await.unwrap()
     }
+}
 
-    pub async fn populate_from_storage(&mut self) -> crate::Result<()> {
+impl<S> CacheStorage<S>
+where
+    S: crate::DirEntries + Send + Sync + 'static,
+{
+    pub async fn populate_from_entries(&mut self) -> crate::Result<()> {
         let entries = Arc::new(DashMap::new());
         let children = populate_recurse(None, entries.clone(), self.storage.clone()).await?;
         entries.insert(
@@ -88,16 +93,11 @@ where
     }
 }
 
-impl<S> crate::Storage for CacheStorage<S>
+impl<S> crate::DirEntries for CacheStorage<S>
 where
-    S: Storage,
+    S: crate::DirEntries + Send + Sync + 'static,
 {
-    async fn entry<'a>(&self, path_id: PathId<'a>) -> crate::Result<Entry> {
-        let ent = self.entries.get(path_id.id).unwrap();
-        Ok(ent.entry.clone())
-    }
-
-    fn entries(
+    fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
     ) -> impl Stream<Item = crate::Result<Entry>> + Send {
@@ -112,6 +112,11 @@ where
     }
 }
 
+impl<S> crate::Storage for CacheStorage<S>
+where
+    S: crate::DirEntries + Send + Sync + 'static,
+{}
+
 fn bincode_options() -> impl bincode::Options {
     bincode::DefaultOptions::new()
         .with_fixint_encoding()
@@ -124,10 +129,10 @@ fn populate_recurse<'a, S>(
     storage: Arc<S>,
 ) -> BoxFuture<'a, crate::Result<Vec<String>>>
 where
-    S: Storage,
+    S: crate::DirEntries + Send + Sync + 'static,
 {
     Box::pin(async move {
-        let dirent = storage.entries(dir_path_id.as_ref().map(|dpi| dpi.as_path_id()));
+        let dirent = storage.dir_entries(dir_path_id.as_ref().map(|dpi| dpi.as_path_id()));
         tokio::pin!(dirent);
 
         let mut children = Vec::new();
