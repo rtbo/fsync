@@ -161,8 +161,10 @@ impl<'a> From<PathId<'a>> for PathIdBuf {
 }
 
 pub trait DirEntries {
-    fn dir_entries(&self, parent_path_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send;
+    fn dir_entries(
+        &self,
+        parent_path_id: Option<PathId>,
+    ) -> impl Stream<Item = Result<Entry>> + Send;
 }
 
-pub trait Storage: DirEntries + Send + Sync + 'static {
-}
+pub trait Storage: DirEntries + Send + Sync + 'static {}

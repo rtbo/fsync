@@ -112,10 +112,7 @@ where
     }
 }
 
-impl<S> crate::Storage for CacheStorage<S>
-where
-    S: crate::DirEntries + Send + Sync + 'static,
-{}
+impl<S> crate::Storage for CacheStorage<S> where S: crate::DirEntries + Send + Sync + 'static {}
 
 fn bincode_options() -> impl bincode::Options {
     bincode::DefaultOptions::new()

@@ -167,9 +167,7 @@ fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> crate::Result<Entry> {
             ))
         })?;
         let size = f.size.ok_or_else(|| {
-            crate::Error::Custom(format!(
-                "Expected to receive size from Google for {path}"
-            ))
+            crate::Error::Custom(format!("Expected to receive size from Google for {path}"))
         })? as _;
         EntryType::Regular { size, mtime }
     };

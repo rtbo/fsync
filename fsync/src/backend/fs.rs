@@ -102,7 +102,10 @@ impl Storage {
 }
 
 impl crate::DirEntries for Storage {
-    fn dir_entries(&self, parent_path_id: Option<PathId>) -> impl Stream<Item = Result<Entry>> + Send {
+    fn dir_entries(
+        &self,
+        parent_path_id: Option<PathId>,
+    ) -> impl Stream<Item = Result<Entry>> + Send {
         let fs_base = match parent_path_id {
             Some(dir) => self.root.join(dir.path),
             None => self.root.clone(),

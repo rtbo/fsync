@@ -38,7 +38,6 @@ pub fn instance_port(instance_name: &str) -> Result<u16> {
     Ok(port)
 }
 
-
 pub fn adjusted_byte(val: u64) -> AdjustedByte {
     use byte_unit::{Byte, UnitType};
 
