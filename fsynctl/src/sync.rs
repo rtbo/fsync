@@ -224,7 +224,7 @@ impl StatReport {
 
     fn net_usage_sign_value(net_usage: i64) -> (&'static str, AdjustedByte) {
         let sign = if net_usage > 0 { "+" } else { "-" };
-        let byte = utils::adjusted_byte(net_usage.abs() as _);
+        let byte = utils::adjusted_byte(net_usage.unsigned_abs());
         (sign, byte)
     }
 
