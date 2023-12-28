@@ -3,13 +3,18 @@ use std::str;
 
 use camino::Utf8Path;
 use futures::Future;
+use yup_oauth2::authenticator::HyperClientBuilder;
 use yup_oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
-use yup_oauth2::hyper::client::HttpConnector;
-use yup_oauth2::hyper_rustls::HttpsConnector;
-use yup_oauth2::ApplicationSecret;
+pub use yup_oauth2::{ApplicationSecret, AccessToken};
 
-pub type Connector = HttpsConnector<HttpConnector>;
-pub type Authenticator = yup_oauth2::authenticator::Authenticator<Connector>;
+use crate::http;
+
+pub type Authenticator = yup_oauth2::authenticator::Authenticator<http::Connector>;
+
+pub struct Params<'a> {
+    pub app_secret: ApplicationSecret,
+    pub token_cache_path: &'a Utf8Path,
+}
 
 pub async fn save_secret(path: &Utf8Path, app_secret: &ApplicationSecret) -> crate::Result<()> {
     let json = serde_json::to_string_pretty(app_secret)?;
@@ -23,15 +28,16 @@ pub async fn load_secret(path: &Utf8Path) -> crate::Result<ApplicationSecret> {
     Ok(serde_json::from_str(json)?)
 }
 
-pub async fn installed_flow(
-    app_secret: ApplicationSecret,
-    token_cache_path: &Utf8Path,
-) -> crate::Result<Authenticator> {
-    let auth = yup_oauth2::InstalledFlowAuthenticator::builder(
-        app_secret,
+pub async fn installed_flow<C>(oauth2_params: Params<'_>, client: C) -> crate::Result<Authenticator>
+where
+    C: HyperClientBuilder<Connector = http::Connector>,
+{
+    let auth = yup_oauth2::InstalledFlowAuthenticator::with_client(
+        oauth2_params.app_secret,
         yup_oauth2::InstalledFlowReturnMethod::HTTPRedirect,
+        client,
     )
-    .persist_tokens_to_disk(token_cache_path)
+    .persist_tokens_to_disk(oauth2_params.token_cache_path)
     .flow_delegate(Box::new(InstalledFlowBrowserDelegate))
     .build()
     .await?;
