@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use fsync::cache::CacheStorage;
+use fsync::oauth2;
 use fsync::tree::DiffTree;
 use fsync::{self, backend, loc::inst};
 use futures::stream::AbortHandle;
@@ -35,13 +36,16 @@ async fn main() -> fsync::Result<()> {
 
     let local = fsync::backend::fs::Storage::new(&config.local_dir);
 
+    let app_secret = oauth2::load_secret(&inst::oauth_secret_file(&cli.instance)?).await?;
+    let token_cache_path = &inst::token_cache_file(&cli.instance)?;
+    let oauth2_params = oauth2::Params {
+        app_secret,
+        token_cache_path,
+    };
+
     match &config.provider {
         fsync::Provider::GoogleDrive => {
-            let remote = backend::gdrive::Storage::new(
-                &inst::oauth_secret_file(&cli.instance)?,
-                &inst::token_cache_file(&cli.instance)?,
-            )
-            .await?;
+            let remote = backend::gdrive::GoogleDrive::new(oauth2_params).await?;
             start_service(cli, local, remote).await
         }
     }

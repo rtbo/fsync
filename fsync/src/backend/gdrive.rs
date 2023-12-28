@@ -1,15 +1,10 @@
 use std::str;
 
-// use std::task::{Context, Poll};
 use async_stream::try_stream;
 use camino::{Utf8Path, Utf8PathBuf};
 use futures::Stream;
-use google_drive3::api::{self, Scope};
-use google_drive3::oauth2::ApplicationSecret;
-use google_drive3::DriveHub;
 
-use crate::cipher::decipher_text;
-use crate::{oauth2, Entry, EntryType, PathId};
+use crate::{cipher, http, oauth2, DirEntries, Entry, EntryType, PathId};
 
 #[derive(Debug, Clone)]
 pub enum AppSecretOpts {
@@ -49,7 +44,7 @@ fn test_get_appsecret() -> crate::Result<()> {
 }
 
 impl AppSecretOpts {
-    pub fn get(self) -> crate::Result<ApplicationSecret> {
+    pub fn get(self) -> crate::Result<oauth2::ApplicationSecret> {
         match self {
             AppSecretOpts::Fsync => {
                 const CIPHERED_SECRET: &str = concat!(
@@ -62,7 +57,7 @@ impl AppSecretOpts {
                     "UEVHKqTHva+NBsIzFS/dIsiAYNV8OVcuojl8jPVKlqJJGoS1NO8hog6Gk35GXHZKyIJj/vlzsSOoC",
                     "/5i/Qajyl1/nFfJKUsy+qDZbFkdyevN2UVDFW/wCqLoRJj7P09cHyE8QrHDC9JA"
                 );
-                let secret_json = decipher_text(CIPHERED_SECRET);
+                let secret_json = cipher::decipher_text(CIPHERED_SECRET);
                 Ok(serde_json::from_str(&secret_json)?)
             }
             AppSecretOpts::JsonPath(path) => {
@@ -76,7 +71,7 @@ impl AppSecretOpts {
             AppSecretOpts::Credentials {
                 client_id,
                 client_secret,
-            } => Ok(ApplicationSecret {
+            } => Ok(oauth2::ApplicationSecret {
                 client_id,
                 client_secret,
                 token_uri: "https://oauth2.googleapis.com/token".into(),
@@ -93,30 +88,33 @@ impl AppSecretOpts {
     }
 }
 
-pub struct Storage {
-    hub: DriveHub<oauth2::Connector>,
+pub struct GoogleDrive {
+    auth: oauth2::Authenticator,
+    client: hyper::Client<http::Connector>,
+    base_url: &'static str,
+    user_agent: String,
 }
 
-impl Storage {
-    pub async fn new(secret_path: &Utf8Path, token_cache_path: &Utf8Path) -> crate::Result<Self> {
-        let app_secret = oauth2::load_secret(secret_path).await?;
-        let auth = oauth2::installed_flow(app_secret, token_cache_path).await?;
-
-        let hub = DriveHub::new(
-            hyper::Client::builder().build(
-                hyper_rustls::HttpsConnectorBuilder::new()
+impl GoogleDrive {
+    pub async fn new(oauth2_params: oauth2::Params<'_>) -> crate::Result<Self> {
+        let connector = hyper_rustls::HttpsConnectorBuilder::new()
                     .with_native_roots()
-                    .https_or_http()
-                    .enable_http1()
-                    .build(),
-            ),
+            .https_only()
+            .enable_all_versions()
+            .build();
+        let client = hyper::Client::builder().build(connector);
+        let auth = oauth2::installed_flow(oauth2_params, client.clone()).await?;
+        let user_agent = format!("fsyncd/{}", env!("CARGO_PKG_VERSION"));
+        Ok(Self {
             auth,
-        );
-        Ok(Self { hub })
+            client,
+            base_url: "https://www.googleapis.com/drive/v3",
+            user_agent,
+        })
     }
 }
 
-impl crate::DirEntries for Storage {
+impl DirEntries for GoogleDrive {
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
@@ -124,15 +122,11 @@ impl crate::DirEntries for Storage {
         let parent_id = parent_path_id.map(|di| di.id).unwrap_or("root");
         let base_dir = parent_path_id.map(|di| di.path);
         let q = format!("'{}' in parents", parent_id);
-        let fields = format!("files({METADATA_FIELDS})");
         let mut next_page_token: Option<String> = None;
+
         try_stream! {
             loop {
-                let mut query = self.hub.files().list().param("fields", &fields).q(&q);
-                if let Some(page_token) = next_page_token {
-                    query = query.page_token(&page_token);
-                }
-                let (_resp, file_list) = query.doit().await?;
+                let file_list = self.files_list(q.clone(), next_page_token).await?;
                 next_page_token = file_list.next_page_token;
                 if let Some(files) = file_list.files {
                     for f in files {
@@ -147,30 +141,29 @@ impl crate::DirEntries for Storage {
     }
 }
 
-impl crate::ReadFile for Storage {
-    async fn read_file<'a>(&self, path_id: PathId<'a>) -> crate::Result<impl tokio::io::AsyncRead> {
-        use futures::stream::{StreamExt, TryStreamExt};
+// impl crate::ReadFile for GoogleDrive {
+//     async fn read_file<'a>(&self, path_id: PathId<'a>) -> crate::Result<impl tokio::io::AsyncRead> {
+//         use futures::stream::{StreamExt, TryStreamExt};
 
-        let (resp, _) = self
-            .hub
-            .files()
-            .get(path_id.id)
-            .add_scope(Scope::Full)
-            .doit()
-            .await?;
-        let body = resp.into_body();
-        let body = body.map(|res| {
-            res.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))
-        });
-        let read = body.into_async_read();
+//         let (resp, _) = self
+//             .hub
+//             .files()
+//             .get(path_id.id)
+//             .add_scope(Scope::Full)
+//             .doit()
+//             .await?;
+//         let body = resp.into_body();
+//         let body = body.map(|res| {
+//             res.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))
+//         });
+//         let read = body.into_async_read();
 
-        Ok(tokio_util::compat::FuturesAsyncReadCompatExt::compat(read))
-    }
-}
+//         Ok(tokio_util::compat::FuturesAsyncReadCompatExt::compat(read))
+//     }
+// }
 
-impl crate::Storage for Storage {}
+impl crate::Storage for GoogleDrive {}
 
-const METADATA_FIELDS: &str = "id,name,size,modifiedTime,mimeType";
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
 fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> crate::Result<Entry> {
@@ -194,4 +187,160 @@ fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> crate::Result<Entry> {
     };
 
     Ok(Entry::new(id, path, typ))
+}
+
+mod api {
+    use chrono::{DateTime, Utc};
+    use serde::{Deserialize, Deserializer};
+
+    use super::utils;
+
+    #[derive(Default, Clone, Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct File {
+        pub id: Option<String>,
+        pub name: Option<String>,
+        pub modified_time: Option<DateTime<Utc>>,
+        #[serde(default, deserialize_with = "size_from_str")]
+        pub size: Option<u64>,
+        pub mime_type: Option<String>,
+    }
+
+    fn size_from_str<'a, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+    where
+        D: Deserializer<'a>,
+    {
+        use std::str::FromStr;
+
+        let s = String::deserialize(deserializer)?;
+        Ok(Some(u64::from_str(&s).map_err(serde::de::Error::custom)?))
+    }
+
+    #[derive(Default, Clone, Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct FileList {
+        pub files: Option<Vec<File>>,
+        pub incomplete_search: Option<bool>,
+        pub kind: Option<String>,
+        pub next_page_token: Option<String>,
+    }
+
+    pub enum Scope {
+        //Full,
+        MetadataReadOnly,
+    }
+
+    impl AsRef<str> for Scope {
+        fn as_ref(&self) -> &str {
+            match self {
+                //Scope::Full => "https://www.googleapis.com/auth/drive",
+                Scope::MetadataReadOnly => {
+                    "https://www.googleapis.com/auth/drive.metadata.readonly"
+                }
+            }
+        }
+    }
+
+    const METADATA_FIELDS: &str = "id,name,size,modifiedTime,mimeType";
+
+    impl super::GoogleDrive {
+        pub async fn files_list(
+            &self,
+            q: String,
+            page_token: Option<String>,
+        ) -> crate::Result<FileList> {
+            let mut query_params = vec![
+                ("q", q),
+                ("fields", format!("files({METADATA_FIELDS})")),
+                ("alt", "json".into()),
+            ];
+            if let Some(page_token) = page_token {
+                query_params.push(("pageToken", page_token));
+            }
+
+            let mut res = self
+                .get_request_query(&[Scope::MetadataReadOnly], "/files", query_params)
+                .await?;
+
+            let body = utils::get_body_as_string(res.body_mut()).await;
+            let file_list: FileList = serde_json::from_str(&body)?;
+
+            Ok(file_list)
+        }
+    }
+}
+
+mod utils {
+    use std::borrow::Borrow;
+
+    use http::{Request, Response};
+    use hyper::Body;
+    use url::Url;
+
+    use super::api;
+    use crate::oauth2::AccessToken;
+
+    impl super::GoogleDrive {
+        pub async fn fetch_token(&self, scopes: &[api::Scope]) -> crate::Result<AccessToken> {
+            let token = self.auth.token(scopes).await?;
+
+            if token.is_expired() {
+                panic!("expired token");
+            }
+
+            Ok(token)
+        }
+
+        pub fn url_with_query<P, Q, K, V>(&self, path: P, query_params: Q) -> Url
+        where
+            P: AsRef<str>,
+            Q: IntoIterator,
+            Q::Item: Borrow<(K, V)>,
+            K: AsRef<str>,
+            V: AsRef<str>,
+        {
+            let base = format!("{}{}", self.base_url, path.as_ref());
+            Url::parse_with_params(&base, query_params).unwrap()
+        }
+
+        pub async fn get_request_query<Q, K, V>(
+            &self,
+            scopes: &[api::Scope],
+            path: &str,
+            query_params: Q,
+        ) -> crate::Result<Response<Body>>
+        where
+            Q: IntoIterator,
+            Q::Item: Borrow<(K, V)>,
+            K: AsRef<str>,
+            V: AsRef<str>,
+        {
+            let token = self.fetch_token(scopes).await?;
+            let url = self.url_with_query(path, query_params);
+
+            let req = Request::builder()
+                .uri(url.as_str())
+                .header(hyper::header::USER_AGENT, &self.user_agent)
+                .header(
+                    hyper::header::AUTHORIZATION,
+                    format!("Bearer {}", token.token().unwrap()),
+                )
+                .body(hyper::body::Body::empty())
+                .expect("invalid request");
+
+            let res = self.client.request(req).await?;
+
+            if res.status().is_success() {
+                Ok(res)
+            } else {
+                Err(crate::http::Error::Status(res).into())
+            }
+        }
+    }
+
+    pub async fn get_body_as_string(body: &mut Body) -> String {
+        let buf = hyper::body::to_bytes(body).await.unwrap();
+        let body_str = String::from_utf8_lossy(&buf);
+        body_str.to_string()
+    }
 }

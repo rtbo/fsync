@@ -8,6 +8,7 @@ pub mod backend;
 pub mod cache;
 pub mod cipher;
 pub mod config;
+pub mod http;
 pub mod ipc;
 pub mod loc;
 pub mod oauth2;
@@ -63,11 +64,14 @@ pub enum Error {
     #[error("OAuth2")]
     OAuth2(#[from] yup_oauth2::Error),
 
+    #[error("Hyper")]
+    Hyper(#[from] hyper::Error),
+
+    #[error("Http")]
+    Http(#[from] http::Error),
+
     #[error("file system related error")]
     Fs(#[from] crate::backend::fs::Error),
-
-    #[error("Google Drive error")]
-    GoogleDrive(#[from] google_drive3::Error),
 
     #[error("Custom error")]
     Custom(String),
