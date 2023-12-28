@@ -98,7 +98,7 @@ pub struct GoogleDrive {
 impl GoogleDrive {
     pub async fn new(oauth2_params: oauth2::Params<'_>) -> crate::Result<Self> {
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
-                    .with_native_roots()
+            .with_native_roots()
             .https_only()
             .enable_all_versions()
             .build();
@@ -141,26 +141,14 @@ impl DirEntries for GoogleDrive {
     }
 }
 
-// impl crate::ReadFile for GoogleDrive {
-//     async fn read_file<'a>(&self, path_id: PathId<'a>) -> crate::Result<impl tokio::io::AsyncRead> {
-//         use futures::stream::{StreamExt, TryStreamExt};
-
-//         let (resp, _) = self
-//             .hub
-//             .files()
-//             .get(path_id.id)
-//             .add_scope(Scope::Full)
-//             .doit()
-//             .await?;
-//         let body = resp.into_body();
-//         let body = body.map(|res| {
-//             res.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))
-//         });
-//         let read = body.into_async_read();
-
-//         Ok(tokio_util::compat::FuturesAsyncReadCompatExt::compat(read))
-//     }
-// }
+impl crate::ReadFile for GoogleDrive {
+    async fn read_file<'a>(&self, path_id: PathId<'a>) -> crate::Result<impl tokio::io::AsyncRead> {
+        Ok(self
+            .files_get_media(path_id.id)
+            .await?
+            .expect("Could not find file"))
+    }
+}
 
 impl crate::Storage for GoogleDrive {}
 
@@ -191,7 +179,9 @@ fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> crate::Result<Entry> {
 
 mod api {
     use chrono::{DateTime, Utc};
+    use http::StatusCode;
     use serde::{Deserialize, Deserializer};
+    use tokio::io;
 
     use super::utils;
 
@@ -226,14 +216,14 @@ mod api {
     }
 
     pub enum Scope {
-        //Full,
+        Full,
         MetadataReadOnly,
     }
 
     impl AsRef<str> for Scope {
         fn as_ref(&self) -> &str {
             match self {
-                //Scope::Full => "https://www.googleapis.com/auth/drive",
+                Scope::Full => "https://www.googleapis.com/auth/drive",
                 Scope::MetadataReadOnly => {
                     "https://www.googleapis.com/auth/drive.metadata.readonly"
                 }
@@ -259,7 +249,7 @@ mod api {
             }
 
             let mut res = self
-                .get_request_query(&[Scope::MetadataReadOnly], "/files", query_params)
+                .get_request_query(&[Scope::MetadataReadOnly], "/files", query_params, false)
                 .await?;
 
             let body = utils::get_body_as_string(res.body_mut()).await;
@@ -267,13 +257,39 @@ mod api {
 
             Ok(file_list)
         }
+
+        pub async fn files_get_media(&self, file_id: &str) -> crate::Result<Option<impl io::AsyncRead>> {
+            let path = format!("/files/{file_id}");
+            let query_params = &[("fields", METADATA_FIELDS), ("alt", "media")];
+            let res = self
+                .get_request_query(&[Scope::Full], &path, query_params, true)
+                .await?;
+
+            if res.status() == StatusCode::NOT_FOUND {
+                Ok(None)
+            } else {
+                use futures::stream::{StreamExt, TryStreamExt};
+
+                let body = res.into_body();
+                let body = body.map(|res| {
+                    res.map_err(|err| {
+                        std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
+                    })
+                });
+                let read = body.into_async_read();
+
+                Ok(Some(tokio_util::compat::FuturesAsyncReadCompatExt::compat(
+                    read,
+                )))
+            }
+        }
     }
 }
 
 mod utils {
     use std::borrow::Borrow;
 
-    use http::{Request, Response};
+    use http::{Request, Response, StatusCode};
     use hyper::Body;
     use url::Url;
 
@@ -308,6 +324,7 @@ mod utils {
             scopes: &[api::Scope],
             path: &str,
             query_params: Q,
+            allow_404: bool,
         ) -> crate::Result<Response<Body>>
         where
             Q: IntoIterator,
@@ -330,7 +347,7 @@ mod utils {
 
             let res = self.client.request(req).await?;
 
-            if res.status().is_success() {
+            if res.status().is_success() || (allow_404 && res.status() == StatusCode::NOT_FOUND) {
                 Ok(res)
             } else {
                 Err(crate::http::Error::Status(res).into())
