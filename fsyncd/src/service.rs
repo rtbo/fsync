@@ -13,7 +13,6 @@ use tarpc::{
     server::{self, incoming::Incoming, Channel},
     tokio_serde::formats::Bincode,
 };
-
 #[derive(Debug, Clone)]
 pub struct Service<L, R> {
     local: Arc<L>,
@@ -21,18 +20,7 @@ pub struct Service<L, R> {
     tree: Arc<DiffTree>,
 }
 
-#[tarpc::server]
-impl<L, R> Fsync for Service<L, R> 
-where
-    L: fsync::Storage,
-    R: fsync::Storage,
-{
-    async fn entry(self, _: Context, path: Option<Utf8PathBuf>) -> Option<tree::Node> {
-        self.tree.entry(path.as_deref())
-    }
-}
-
-impl<L, R> Service<L, R> 
+impl<L, R> Service<L, R>
 where
     L: fsync::Storage,
     R: fsync::Storage,
@@ -90,4 +78,41 @@ where
     }
 
     pub fn shutdown(&self) {}
+}
+
+#[tarpc::server]
+impl<L, R> Fsync for Service<L, R>
+where
+    L: fsync::Storage,
+    R: fsync::Storage,
+{
+    async fn entry(self, _: Context, path: Option<Utf8PathBuf>) -> Option<tree::Node> {
+        self.tree.entry(path.as_deref())
+    }
+
+    async fn copy_remote_to_local(self, _: Context, path: Utf8PathBuf) -> Result<(), String> {
+        let entry = self.tree.entry(Some(&path));
+        if entry.is_none() {
+            return Err(format!("no such entry in remote drive: {path}"));
+        }
+        let node = entry.unwrap();
+
+        match node.entry() {
+            tree::Entry::Remote(remote) => {
+                let read = self
+                    .remote
+                    .read_file(remote.path_id())
+                    .await
+                    .map_err(|err| err.to_string())?;
+                let local = self
+                    .local
+                    .create_file(&remote, read)
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.tree.add_local(&path, local).unwrap();
+                Ok(())
+            }
+            _ => Err(format!("{path} is not only on remote")),
+        }
+    }
 }
