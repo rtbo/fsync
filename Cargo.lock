@@ -673,6 +673,7 @@ dependencies = [
 name = "fsynctl"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "byte-unit",
  "camino",
  "clap",
