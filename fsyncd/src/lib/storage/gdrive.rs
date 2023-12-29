@@ -350,7 +350,7 @@ mod utils {
             if res.status().is_success() || (allow_404 && res.status() == StatusCode::NOT_FOUND) {
                 Ok(res)
             } else {
-                Err(fsync::http::Error::Status(res.status(), res).into())
+                Err(anyhow::anyhow!("GET {url} returned {}", res.status()))
             }
         }
 
@@ -394,7 +394,7 @@ mod utils {
 
             let mut res = self.client.request(req).await?;
             if res.status() != StatusCode::OK {
-                return Err(fsync::http::Error::Status(res.status(), res).into());
+                anyhow::bail!("POST {url} returned {}", res.status());
             }
             println!("{}", get_body_as_string(res.body_mut()).await);
             let location = &res.headers()[header::LOCATION];

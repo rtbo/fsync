@@ -16,13 +16,13 @@ pub struct Params<'a> {
     pub token_cache_path: &'a Utf8Path,
 }
 
-pub async fn save_secret(path: &Utf8Path, app_secret: &ApplicationSecret) -> crate::Result<()> {
+pub async fn save_secret(path: &Utf8Path, app_secret: &ApplicationSecret) -> anyhow::Result<()> {
     let json = serde_json::to_string_pretty(app_secret)?;
     tokio::fs::write(path, &json).await?;
     Ok(())
 }
 
-pub async fn load_secret(path: &Utf8Path) -> crate::Result<ApplicationSecret> {
+pub async fn load_secret(path: &Utf8Path) -> anyhow::Result<ApplicationSecret> {
     let json = tokio::fs::read(path).await?;
     let json = str::from_utf8(&json)?;
     Ok(serde_json::from_str(json)?)

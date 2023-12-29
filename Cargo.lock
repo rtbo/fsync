@@ -614,6 +614,7 @@ name = "fsync"
 version = "0.1.0"
 dependencies = [
  "aes",
+ "anyhow",
  "async-stream",
  "async-trait",
  "base64 0.21.5",

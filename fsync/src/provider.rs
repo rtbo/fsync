@@ -25,14 +25,8 @@ pub enum AppSecretOpts {
     },
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum SecretError {
-    #[error("I/O error")]
-    Io(#[from] std::io::Error),
-}
-
 #[test]
-fn test_get_appsecret() -> crate::Result<()> {
+fn test_get_appsecret() -> anyhow::Result<()> {
     let appsecret = AppSecretOpts::Fsync.get()?;
     assert_eq!(appsecret.token_uri, "https://oauth2.googleapis.com/token");
     assert_eq!(
@@ -48,7 +42,7 @@ fn test_get_appsecret() -> crate::Result<()> {
 }
 
 impl AppSecretOpts {
-    pub fn get(self) -> crate::Result<oauth2::ApplicationSecret> {
+    pub fn get(self) -> anyhow::Result<oauth2::ApplicationSecret> {
         match self {
             AppSecretOpts::Fsync => {
                 const CIPHERED_SECRET: &str = concat!(
