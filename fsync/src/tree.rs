@@ -21,6 +21,24 @@ pub enum Entry {
     },
 }
 
+impl Entry {
+    fn with_remote(self, remote: crate::Entry) -> Self {
+        match self {
+            Entry::Local(local) => Entry::Both { local, remote },
+            Entry::Remote(..) => Entry::Remote(remote),
+            Entry::Both { local, .. } => Entry::Both { local, remote },
+        }
+    }
+
+    fn with_local(self, local: crate::Entry) -> Self {
+        match self {
+            Entry::Remote(remote) => Entry::Both { local, remote },
+            Entry::Local(..) => Entry::Local(local),
+            Entry::Both { remote, .. } => Entry::Both { local, remote },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     entry: Entry,
@@ -45,6 +63,32 @@ impl Node {
             Entry::Local(entry) => entry.path(),
             Entry::Remote(entry) => entry.path(),
         }
+    }
+
+    pub fn is_local_only(&self) -> bool {
+        matches!(self.entry, Entry::Local(..))
+    }
+
+    pub fn is_remote_only(&self) -> bool {
+        matches!(self.entry, Entry::Remote(..))
+    }
+
+    pub fn is_both(&self) -> bool {
+        matches!(self.entry, Entry::Both { .. })
+    }
+
+    pub fn add_local(&mut self, local: crate::Entry) {
+        use std::mem;
+        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+        let valid = mem::replace(&mut self.entry, invalid);
+        self.entry = valid.with_local(local);
+    }
+
+    pub fn add_remote(&mut self, remote: crate::Entry) {
+        use std::mem;
+        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+        let valid = mem::replace(&mut self.entry, invalid);
+        self.entry = valid.with_remote(remote);
     }
 }
 
@@ -74,6 +118,34 @@ impl DiffTree {
     pub fn entry(&self, path: Option<&Utf8Path>) -> Option<Node> {
         let key = path.unwrap_or(Utf8Path::new(""));
         self.nodes.get(key).map(|node| node.clone())
+    }
+
+    pub fn add_local(
+        &self,
+        path: &Utf8Path,
+        local: crate::Entry,
+    ) -> std::result::Result<(), crate::Entry> {
+        let node = self.nodes.get_mut(path);
+        if node.is_none() {
+            return Err(local);
+        }
+        let mut node = node.unwrap();
+        node.add_local(local);
+        Ok(())
+    }
+
+    pub fn add_remote(
+        &self,
+        path: &Utf8Path,
+        remote: crate::Entry,
+    ) -> std::result::Result<(), crate::Entry> {
+        let node = self.nodes.get_mut(path);
+        if node.is_none() {
+            return Err(remote);
+        }
+        let mut node = node.unwrap();
+        node.add_remote(remote);
+        Ok(())
     }
 
     pub fn print_out(&self) {
