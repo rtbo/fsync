@@ -1,10 +1,8 @@
 use byte_unit::AdjustedByte;
 use fsync::loc::{inst, user};
 
-use crate::{Error, Result};
-
 /// If a single instance of fsyncd exists, get its name
-pub fn single_instance_name() -> Result<Option<String>> {
+pub fn single_instance_name() -> anyhow::Result<Option<String>> {
     let config_dir = user::config_dir()?;
     if !config_dir.exists() {
         return Ok(None);
@@ -22,15 +20,10 @@ pub fn single_instance_name() -> Result<Option<String>> {
     }
 }
 
-pub fn instance_port(instance_name: &str) -> Result<u16> {
+pub fn instance_port(instance_name: &str) -> anyhow::Result<u16> {
     let pf = inst::runtime_port_file(instance_name)?;
     if !pf.exists() {
-        return Err(Error::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!(
-                "Could not find {pf}. Are you sure the fsyncd {instance_name} instance is running?"
-            ),
-        )));
+        anyhow::bail!("Could not find {pf}. Are you sure the fsyncd {instance_name} instance is running?");
     }
     let content = std::fs::read(&pf)?;
     let content = String::from_utf8(content).map_err(|err| err.utf8_error())?;

@@ -4,7 +4,7 @@ use camino::Utf8PathBuf;
 use fsync::{ipc::FsyncClient, tree};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
-use crate::{utils, Error};
+use crate::utils;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -16,7 +16,7 @@ pub struct Args {
     path: Option<Utf8PathBuf>,
 }
 
-pub async fn main(args: Args) -> Result<(), Error> {
+pub async fn main(args: Args) -> anyhow::Result<()> {
     let instance_name = match args.instance_name {
         Some(name) => name,
         None => {
@@ -24,7 +24,7 @@ pub async fn main(args: Args) -> Result<(), Error> {
             if let Some(name) = name {
                 name
             } else {
-                return Err(Error::Custom("Could not find a single share, please specify --share-name command line argument".into()));
+                anyhow::bail!("Could not find a single share, please specify --share-name command line argument");
             }
         }
     };

@@ -4,8 +4,6 @@ use fsync::{oauth2, provider};
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Editor, Select, Text};
 
-use crate::Error;
-
 #[derive(clap::Args)]
 pub struct Args {
     /// Name of the share
@@ -26,7 +24,7 @@ enum ProviderOpts {
     GoogleDrive(provider::AppSecretOpts),
 }
 
-pub fn main(args: Args) -> Result<(), Error> {
+pub fn main(args: Args) -> anyhow::Result<()> {
     for (key, value) in std::env::vars() {
         println!("{key}  =  {value}");
     }
@@ -42,9 +40,7 @@ pub fn main(args: Args) -> Result<(), Error> {
 
     let config_dir = inst::config_dir(&name)?;
     if config_dir.exists() {
-        return Err(Error::Custom(format!(
-            "Configuration already exists: {config_dir}"
-        )));
+        anyhow::bail!("Configuration already exists: {config_dir}");
     }
 
     let local_dir = if let Some(local_dir) = args.local_dir {
@@ -103,7 +99,7 @@ pub fn main(args: Args) -> Result<(), Error> {
     Ok(())
 }
 
-async fn create_config(instance_name: &str, opts: InitOptions) -> Result<(), Error> {
+async fn create_config(instance_name: &str, opts: InitOptions) -> anyhow::Result<()> {
     let config_dir = inst::config_dir(instance_name)?;
     println!("Creating configuration directory: {config_dir}");
     tokio::fs::create_dir_all(config_dir).await?;
@@ -161,17 +157,17 @@ fn validate_name(input: &str) -> Result<Validation, CustomUserError> {
     validate_chars(invalid_chars)
 }
 
-fn map_error_message(msg: ErrorMessage) -> Error {
+fn map_error_message(msg: ErrorMessage) -> anyhow::Error {
     match msg {
-        ErrorMessage::Default => Error::Custom("Invalid input".into()),
-        ErrorMessage::Custom(msg) => Error::Custom(msg),
+        ErrorMessage::Default => anyhow::anyhow!("Invalid input"),
+        ErrorMessage::Custom(msg) => anyhow::anyhow!("{msg}"),
     }
 }
-fn map_validation_result(res: Result<Validation, CustomUserError>) -> Result<(), Error> {
+fn map_validation_result(res: anyhow::Result<Validation, CustomUserError>) -> anyhow::Result<()> {
     match res {
         Ok(Validation::Valid) => Ok(()),
         Ok(Validation::Invalid(msg)) => Err(map_error_message(msg)),
-        Err(err) => Err(Error::Custom(err.to_string())),
+        Err(err) => Err(anyhow::anyhow!("{err}")),
     }
 }
 
@@ -197,7 +193,7 @@ fn validate_path(input: &str) -> Result<Validation, CustomUserError> {
     validate_chars(invalid_chars)
 }
 
-fn google_drive() -> Result<provider::AppSecretOpts, Error> {
+fn google_drive() -> anyhow::Result<provider::AppSecretOpts> {
     let options = &[
         "Use built-in application secret",
         "Provide path to client_secret.json",
