@@ -8,14 +8,12 @@ use serde::{Deserialize, Serialize};
 pub mod cipher;
 pub mod config;
 pub mod http;
-pub mod ipc;
 pub mod loc;
 pub mod oauth2;
 pub mod provider;
-pub mod tree;
 
-mod storage;
-pub use crate::storage::*;
+mod fsync;
+pub use crate::fsync::*;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {

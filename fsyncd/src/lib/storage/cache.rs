@@ -2,14 +2,13 @@ use std::sync::Arc;
 
 use async_stream::try_stream;
 use bincode::Options;
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use dashmap::DashMap;
+use fsync::{self, PathId, PathIdBuf};
 use futures::{future::BoxFuture, Future, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::{io, task::JoinSet};
 use tokio_stream::StreamExt;
-
-use fsync::{Entry, EntryType, PathId, PathIdBuf};
 
 #[derive(Debug, Clone)]
 pub struct CacheStorage<S> {
@@ -19,7 +18,7 @@ pub struct CacheStorage<S> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CacheNode {
-    entry: Entry,
+    metadata: fsync::Metadata,
     _parent: Option<String>,
     children: Vec<String>,
 }
@@ -83,7 +82,7 @@ where
         entries.insert(
             String::new(),
             CacheNode {
-                entry: Entry::new("".to_string(), Utf8PathBuf::new(), EntryType::Directory),
+                metadata: fsync::Metadata::root(),
                 _parent: None,
                 children,
             },
@@ -100,13 +99,13 @@ where
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = anyhow::Result<Entry>> + Send {
+    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
         let parent_key = parent_path_id.map(|pid| pid.id).unwrap_or("");
         let parent = self.entries.get(parent_key).unwrap();
         try_stream! {
             for c in parent.children.iter() {
                 let c_ent = self.entries.get(c).unwrap();
-                yield c_ent.entry.clone();
+                yield c_ent.metadata.clone();
             }
         }
     }
@@ -130,9 +129,9 @@ where
 {
     fn create_file(
         &self,
-        metadata: &Entry,
+        metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = anyhow::Result<Entry>> + Send {
+    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
         async move { self.storage.create_file(metadata, data).await }
     }
 }
@@ -165,21 +164,25 @@ where
 
             children.push(ent.id().to_owned());
 
-            let ent_path_id = ent.path_id_buf();
             let parent_id = dir_path_id.as_ref().map(|dpi| dpi.id.clone());
             let entries = entries.clone();
             let storage = storage.clone();
             set.spawn(async move {
-                let children = match ent.typ() {
-                    EntryType::Directory => {
-                        populate_recurse(Some(ent_path_id), entries.clone(), storage).await?
+                let children = match &ent {
+                    fsync::Metadata::Directory { path, id, .. } => {
+                        populate_recurse(
+                            Some(PathId { path, id }.to_path_id_buf()),
+                            entries.clone(),
+                            storage,
+                        )
+                        .await?
                     }
                     _ => Vec::new(),
                 };
                 entries.insert(
                     ent.id().to_owned(),
                     CacheNode {
-                        entry: ent,
+                        metadata: ent,
                         _parent: parent_id,
                         children,
                     },

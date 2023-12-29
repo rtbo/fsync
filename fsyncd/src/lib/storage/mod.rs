@@ -1,6 +1,6 @@
+use fsync::{Metadata, PathId};
 use futures::{Stream, Future};
 use tokio::io;
-use fsync::{Entry, PathId};
 
 pub mod cache;
 pub mod fs;
@@ -10,7 +10,7 @@ pub trait DirEntries {
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = anyhow::Result<Entry>> + Send;
+    ) -> impl Stream<Item = anyhow::Result<Metadata>> + Send;
 }
 
 pub trait ReadFile {
@@ -23,9 +23,9 @@ pub trait ReadFile {
 pub trait CreateFile {
     fn create_file(
         &self,
-        metadata: &Entry,
+        metadata: &Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = anyhow::Result<Entry>> + Send;
+    ) -> impl Future<Output = anyhow::Result<Metadata>> + Send;
 }
 
 pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {}

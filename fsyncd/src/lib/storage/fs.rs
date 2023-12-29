@@ -1,9 +1,8 @@
 use std::fmt;
-use std::fs::Metadata;
 
 use async_stream::try_stream;
 use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
-use fsync::{Entry, EntryType, PathId};
+use fsync::{self, PathId};
 use futures::{Future, Stream};
 use tokio::{
     fs::{self, DirEntry},
@@ -108,7 +107,7 @@ impl super::DirEntries for Storage {
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = anyhow::Result<Entry>> + Send {
+    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
         let fs_base = match parent_path_id {
             Some(dir) => self.root.join(dir.path),
             None => self.root.clone(),
@@ -142,9 +141,9 @@ impl super::ReadFile for Storage {
 impl super::CreateFile for Storage {
     fn create_file(
         &self,
-        metadata: &Entry,
+        metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = anyhow::Result<Entry>> + Send {
+    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
         async move {
             debug_assert!(metadata.path().is_relative());
             let fs_path = self.root.join(metadata.path());
@@ -166,7 +165,7 @@ impl super::CreateFile for Storage {
                 }
             }
             let fs_metadata = tokio::fs::metadata(&fs_path).await?;
-            map_metadata(metadata.path(), &fs_metadata, &fs_path).await
+            map_metadata(metadata.path().to_owned(), &fs_metadata, &fs_path).await
         }
     }
 }
@@ -176,7 +175,7 @@ impl super::Storage for Storage {}
 async fn map_direntry(
     parent_path: Option<&Utf8Path>,
     direntry: &DirEntry,
-) -> anyhow::Result<Entry> {
+) -> anyhow::Result<fsync::Metadata> {
     let fs_path = Utf8PathBuf::try_from(direntry.path())?;
     let file_name = String::from_utf8(direntry.file_name().into_encoded_bytes())
         .map_err(|err| err.utf8_error())?;
@@ -184,33 +183,43 @@ async fn map_direntry(
         .map(|p| p.join(&file_name))
         .unwrap_or_else(|| Utf8PathBuf::from(&file_name));
     let metadata = direntry.metadata().await?;
-    map_metadata(&path, &metadata, &fs_path).await
+    map_metadata(path, &metadata, &fs_path).await
 }
 
 async fn map_metadata(
-    path: &Utf8Path,
-    metadata: &Metadata,
+    path: Utf8PathBuf,
+    metadata: &std::fs::Metadata,
     fs_path: &Utf8Path,
-) -> anyhow::Result<Entry> {
-    let typ = if metadata.is_symlink() {
+) -> anyhow::Result<fsync::Metadata> {
+    let metadata = if metadata.is_symlink() {
         let target = tokio::fs::read_link(fs_path).await?;
         let target = Utf8PathBuf::try_from(target)?;
-        check_symlink(path, &target)?;
-        EntryType::Symlink {
+        check_symlink(&path, &target)?;
+        fsync::Metadata::Symlink {
+            id: path.to_string(),
+            path,
             target: target.into_string(),
             size: metadata.len(),
             mtime: metadata.modified().ok().map(|mt| mt.into()),
         }
     } else if metadata.is_file() {
-        EntryType::Regular {
+        fsync::Metadata::Regular {
+            id: path.to_string(),
+            path,
             size: metadata.len(),
             mtime: metadata.modified().map(|mt| mt.into())?,
         }
     } else if metadata.is_dir() {
-        EntryType::Directory
+        fsync::Metadata::Directory {
+            id: path.to_string(),
+            path,
+        }
     } else {
-        EntryType::Special
+        fsync::Metadata::Special {
+            id: path.to_string(),
+            path,
+        }
     };
 
-    Ok(Entry::new(path.to_string(), path.to_path_buf(), typ))
+    Ok(metadata)
 }

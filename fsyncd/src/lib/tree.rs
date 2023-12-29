@@ -42,8 +42,8 @@ impl DiffTree {
     pub fn add_local(
         &self,
         path: &Utf8Path,
-        local: fsync::Entry,
-    ) -> std::result::Result<(), fsync::Entry> {
+        local: fsync::Metadata,
+    ) -> std::result::Result<(), fsync::Metadata> {
         let node = self.nodes.get_mut(path);
         if node.is_none() {
             return Err(local);
@@ -56,8 +56,8 @@ impl DiffTree {
     pub fn add_remote(
         &self,
         path: &Utf8Path,
-        remote: fsync::Entry,
-    ) -> std::result::Result<(), fsync::Entry> {
+        remote: fsync::Metadata,
+    ) -> std::result::Result<(), fsync::Metadata> {
         let node = self.nodes.get_mut(path);
         if node.is_none() {
             return Err(remote);
@@ -109,7 +109,7 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    fn both(&self, both: Option<(fsync::Entry, fsync::Entry)>) -> BoxFuture<'_, anyhow::Result<()>> {
+    fn both(&self, both: Option<(fsync::Metadata, fsync::Metadata)>) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let loc_entry = both.as_ref().map(|b| &b.0);
             let loc_children = entry_children_sorted(&*self.local, loc_entry);
@@ -184,8 +184,8 @@ where
                 (
                     Utf8PathBuf::default(),
                     tree::Entry::Both {
-                        local: fsync::Entry::default(),
-                        remote: fsync::Entry::default(),
+                        local: fsync::Metadata::default(),
+                        remote: fsync::Metadata::default(),
                     },
                 )
             };
@@ -197,7 +197,7 @@ where
         })
     }
 
-    fn local(&self, entry: fsync::Entry) -> BoxFuture<'_, anyhow::Result<()>> {
+    fn local(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
 
@@ -222,7 +222,7 @@ where
         })
     }
 
-    fn remote(&self, entry: fsync::Entry) -> BoxFuture<'_, anyhow::Result<()>> {
+    fn remote(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
 
@@ -250,8 +250,8 @@ where
 
 async fn entry_children_sorted<S>(
     storage: &S,
-    entry: Option<&fsync::Entry>,
-) -> anyhow::Result<Vec<fsync::Entry>>
+    entry: Option<&fsync::Metadata>,
+) -> anyhow::Result<Vec<fsync::Metadata>>
 where
     S: storage::Storage,
 {

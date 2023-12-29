@@ -2,9 +2,7 @@ use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
-use fsync::ipc::Fsync;
-use fsync::loc::inst;
-use fsync::tree::{self};
+use fsync::{self, Fsync, tree, loc::inst};
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};

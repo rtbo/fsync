@@ -3,7 +3,7 @@ use std::str;
 use async_stream::try_stream;
 use camino::{Utf8Path, Utf8PathBuf};
 use fsync::{http, oauth2};
-use fsync::{Entry, EntryType, PathId};
+use fsync::{self, PathId};
 use futures::{Future, Stream};
 use tokio::io;
 
@@ -40,7 +40,7 @@ impl super::DirEntries for GoogleDrive {
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = anyhow::Result<Entry>> + Send {
+    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
         let parent_id = parent_path_id.map(|di| di.id).unwrap_or("root");
         let base_dir = parent_path_id.map(|di| di.path);
         let q = format!("'{}' in parents", parent_id);
@@ -80,9 +80,9 @@ impl super::ReadFile for GoogleDrive {
 impl super::CreateFile for GoogleDrive {
     fn create_file(
         &self,
-        _metadata: &Entry,
+        _metadata: &fsync::Metadata,
         _data: impl io::AsyncRead,
-    ) -> impl Future<Output = anyhow::Result<Entry>> + Send {
+    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
         async { unimplemented!() }
         // debug_assert!(metadata.path().is_relative());
         // let path = self.root.join(metadata.path());
@@ -110,14 +110,14 @@ impl super::Storage for GoogleDrive {}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
-fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> anyhow::Result<Entry> {
+fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> anyhow::Result<fsync::Metadata> {
     let id = f.id.unwrap_or_default();
     let path = match base_dir {
         Some(di) => Utf8Path::new(di).join(f.name.as_deref().unwrap()),
         None => Utf8PathBuf::from(f.name.as_deref().unwrap()),
     };
-    let typ = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
-        EntryType::Directory
+    let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
+        fsync::Metadata::Directory{id, path}
     } else {
         let mtime = f.modified_time.ok_or_else(|| {
             anyhow::anyhow!("Expected to receive modifiedTime from Google for {path}")
@@ -126,10 +126,9 @@ fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> anyhow::Result<Entry> 
             .size
             .ok_or_else(|| anyhow::anyhow!("Expected to receive size from Google for {path}"))?
             as _;
-        EntryType::Regular { size, mtime }
+        fsync::Metadata::Regular { id, path, size, mtime }
     };
-
-    Ok(Entry::new(id, path, typ))
+    Ok(metadata)
 }
 
 mod api {
