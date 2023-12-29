@@ -90,8 +90,8 @@ enum Stat {
         local: fsync::Entry,
         remote: fsync::Entry,
     },
-    CopyToLocal(fsync::Entry),
-    CopyToRemote(fsync::Entry),
+    CopyRemoteToLocal(fsync::Entry),
+    CopyLocalToRemote(fsync::Entry),
     ReplaceLocalByRemote {
         local: fsync::Entry,
         remote: fsync::Entry,
@@ -134,12 +134,12 @@ impl StatReport {
                     report.count_local(local);
                     report.count_remote(remote);
                 }
-                Stat::CopyToLocal(entry) => {
+                Stat::CopyRemoteToLocal(entry) => {
                     report.count_local(entry);
                     report.count_remote(entry);
                     report.add_local(entry);
                 }
-                Stat::CopyToRemote(entry) => {
+                Stat::CopyLocalToRemote(entry) => {
                     report.count_local(entry);
                     report.count_remote(entry);
                     report.add_remote(entry);
@@ -388,7 +388,7 @@ impl SyncCommand {
         };
         match remember {
             Some(CopyChoice::Yes) => {
-                return self.copy_to_remote(entry).await;
+                return self.copy_local_to_remote(entry).await;
             }
             Some(CopyChoice::No) => {
                 return Ok(());
@@ -413,7 +413,7 @@ impl SyncCommand {
                     rem.copy_local_to_remote = Some(choice);
                 }
                 if choice == CopyChoice::Yes {
-                    self.copy_to_remote(entry).await
+                    self.copy_local_to_remote(entry).await
                 } else {
                     Ok(())
                 }
@@ -428,7 +428,7 @@ impl SyncCommand {
         };
         match remember {
             Some(CopyChoice::Yes) => {
-                return self.copy_to_local(entry).await;
+                return self.copy_remote_to_local(entry).await;
             }
             Some(CopyChoice::No) => {
                 return Ok(());
@@ -453,7 +453,7 @@ impl SyncCommand {
                     rem.copy_remote_to_local = Some(choice);
                 }
                 if choice == CopyChoice::Yes {
-                    self.copy_to_local(entry).await
+                    self.copy_remote_to_local(entry).await
                 } else {
                     Ok(())
                 }
@@ -579,6 +579,7 @@ impl SyncCommand {
 
         if loc_mtime == rem_mtime && loc_size == rem_size {
             // storing remote because has specific id, but local would also be OK
+            println!("Up-to-date: {}", local.path());
             self.good_to_go(remote).await;
             return Ok(());
         }
@@ -673,26 +674,29 @@ impl SyncCommand {
         Ok(())
     }
 
-    async fn copy_to_local(&self, entry: &fsync::Entry) -> crate::Result<()> {
+    async fn copy_remote_to_local(&self, entry: &fsync::Entry) -> crate::Result<()> {
         {
             let mut stats = self.stats.write().await;
-            stats.push(Stat::CopyToLocal(entry.clone()));
+            stats.push(Stat::CopyRemoteToLocal(entry.clone()));
         }
 
         if !self.args.dry_run {
-            // copy
+            self.client
+                .copy_remote_to_local(context::current(), entry.path().to_owned())
+                .await?
+                .map_err(|msg| Error::Deamon(msg))?;
         }
         Ok(())
     }
 
-    async fn copy_to_remote(&self, entry: &fsync::Entry) -> crate::Result<()> {
+    async fn copy_local_to_remote(&self, entry: &fsync::Entry) -> crate::Result<()> {
         {
             let mut stats = self.stats.write().await;
-            stats.push(Stat::CopyToRemote(entry.clone()));
+            stats.push(Stat::CopyLocalToRemote(entry.clone()));
         }
 
         if !self.args.dry_run {
-            // copy
+            todo!("copy local to remote");
         }
         Ok(())
     }
@@ -716,7 +720,7 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
-            // replace
+            todo!("replace local by remote");
         }
         Ok(())
     }
@@ -735,7 +739,7 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
-            // replace
+            todo!("replace remote by local");
         }
         Ok(())
     }
@@ -747,7 +751,7 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
-            // delete
+            todo!("delete local");
         }
         Ok(())
     }
