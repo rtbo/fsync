@@ -76,6 +76,7 @@ fn test_check_symlink() {
     check_symlink("dir/symlink", "/actual_file").expect_err("");
 }
 
+#[derive(Debug, Clone)]
 pub struct Storage {
     root: Utf8PathBuf,
 }
@@ -133,8 +134,8 @@ impl crate::ReadFile for Storage {
     }
 }
 
-impl crate::WriteFile for Storage {
-    async fn write_file(&self, metadata: &Entry, data: impl tokio::io::AsyncRead) -> Result<()> {
+impl crate::CreateFile for Storage {
+    async fn create_file(&self, metadata: &Entry, data: impl tokio::io::AsyncRead) -> Result<()> {
         debug_assert!(metadata.path().is_relative());
         let path = self.root.join(metadata.path());
         if path.is_dir() {

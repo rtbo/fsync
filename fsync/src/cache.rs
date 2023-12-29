@@ -112,7 +112,32 @@ where
     }
 }
 
-impl<S> crate::Storage for CacheStorage<S> where S: crate::DirEntries + Send + Sync + 'static {}
+impl<S> crate::ReadFile for CacheStorage<S>
+where
+    S: crate::ReadFile,
+{
+    async fn read_file<'a>(&self, path_id: PathId<'a>) -> crate::Result<impl tokio::io::AsyncRead> {
+        self.storage.read_file(path_id).await
+    }
+}
+
+impl<S> crate::CreateFile for CacheStorage<S>
+where
+    S: crate::CreateFile,
+{
+    async fn create_file(
+        &self,
+        metadata: &Entry,
+        data: impl tokio::io::AsyncRead,
+    ) -> crate::Result<()> {
+        self.storage.create_file(metadata, data).await
+    }
+}
+
+impl<S> crate::Storage for CacheStorage<S> where
+    S: crate::Storage
+{
+}
 
 fn bincode_options() -> impl bincode::Options {
     bincode::DefaultOptions::new()
