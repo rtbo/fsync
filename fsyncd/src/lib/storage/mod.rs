@@ -10,14 +10,14 @@ pub trait DirEntries {
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = crate::Result<Entry>> + Send;
+    ) -> impl Stream<Item = anyhow::Result<Entry>> + Send;
 }
 
 pub trait ReadFile {
     fn read_file<'a>(
         &'a self,
         path_id: PathId<'a>,
-    ) -> impl Future<Output = crate::Result<impl io::AsyncRead + Send>> + Send + 'a;
+    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead + Send>> + Send + 'a;
 }
 
 pub trait CreateFile {
@@ -25,7 +25,7 @@ pub trait CreateFile {
         &self,
         metadata: &Entry,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = crate::Result<Entry>> + Send;
+    ) -> impl Future<Output = anyhow::Result<Entry>> + Send;
 }
 
 pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {}

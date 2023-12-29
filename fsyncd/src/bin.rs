@@ -14,16 +14,13 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() -> fsyncd_lib::Result<()> {
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let config_file = inst::config_file(&cli.instance)?;
 
     if !&config_file.exists() {
-        return Err(fsyncd_lib::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("No such config file: {config_file}"),
-        )));
+        anyhow::bail!("No such config file: {config_file}");
     }
     println!("Found config file: {config_file}");
 
@@ -47,7 +44,7 @@ async fn main() -> fsyncd_lib::Result<()> {
     }
 }
 
-async fn start_service<L, R>(cli: Cli, local: L, remote: R) -> fsyncd_lib::Result<()>
+async fn start_service<L, R>(cli: Cli, local: L, remote: R) -> anyhow::Result<()>
 where
     L: storage::Storage,
     R: storage::Storage,
@@ -55,10 +52,9 @@ where
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
     let mut remote = storage::cache::CacheStorage::new(remote);
     match remote.load_from_disk(&remote_cache_path).await {
-        Err(fsyncd_lib::Error::Io(_)) => {
+        Err(_) => {
             remote.populate_from_entries().await?;
         }
-        Err(err) => Err(err)?,
         Ok(()) => (),
     }
 
@@ -81,7 +77,7 @@ where
     service.start(&cli.instance, abort_reg).await
 }
 
-fn handle_shutdown_signals<F, Fut>(shutdown: F) -> fsyncd_lib::Result<()>
+fn handle_shutdown_signals<F, Fut>(shutdown: F) -> anyhow::Result<()>
 where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: Future<Output = ()> + Send,

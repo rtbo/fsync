@@ -35,7 +35,7 @@ where
         }
     }
 
-    pub async fn load_from_disk(&mut self, path: &Utf8Path) -> crate::Result<()> {
+    pub async fn load_from_disk(&mut self, path: &Utf8Path) -> anyhow::Result<()> {
         use std::fs;
         use std::io::BufReader;
 
@@ -46,7 +46,7 @@ where
             let reader = BufReader::new(reader);
             let opts = bincode_options();
             let entries: DashMap<String, CacheNode> = opts.deserialize_from(reader)?;
-            Ok::<_, crate::Error>(entries)
+            Ok::<_, anyhow::Error>(entries)
         });
 
         let entries = handle.await.unwrap()?;
@@ -54,7 +54,7 @@ where
         Ok(())
     }
 
-    pub async fn save_to_disc(&self, path: &Utf8Path) -> crate::Result<()> {
+    pub async fn save_to_disc(&self, path: &Utf8Path) -> anyhow::Result<()> {
         use std::fs;
         use std::io::BufWriter;
 
@@ -66,7 +66,7 @@ where
             let writer = BufWriter::new(writer);
             let opts = bincode_options();
             opts.serialize_into(writer, &*entries)?;
-            Ok::<_, crate::Error>(())
+            Ok::<_, anyhow::Error>(())
         });
 
         handle.await.unwrap()
@@ -77,7 +77,7 @@ impl<S> CacheStorage<S>
 where
     S: super::DirEntries + Send + Sync + 'static,
 {
-    pub async fn populate_from_entries(&mut self) -> crate::Result<()> {
+    pub async fn populate_from_entries(&mut self) -> anyhow::Result<()> {
         let entries = Arc::new(DashMap::new());
         let children = populate_recurse(None, entries.clone(), self.storage.clone()).await?;
         entries.insert(
@@ -100,7 +100,7 @@ where
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = crate::Result<Entry>> + Send {
+    ) -> impl Stream<Item = anyhow::Result<Entry>> + Send {
         let parent_key = parent_path_id.map(|pid| pid.id).unwrap_or("");
         let parent = self.entries.get(parent_key).unwrap();
         try_stream! {
@@ -119,7 +119,7 @@ where
     fn read_file<'a>(
         &'a self,
         path_id: PathId<'a>,
-    ) -> impl Future<Output = crate::Result<impl io::AsyncRead>> + Send + 'a {
+    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead>> + Send + 'a {
         async move { self.storage.read_file(path_id).await }
     }
 }
@@ -132,7 +132,7 @@ where
         &self,
         metadata: &Entry,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = crate::Result<Entry>> + Send {
+    ) -> impl Future<Output = anyhow::Result<Entry>> + Send {
         async move { self.storage.create_file(metadata, data).await }
     }
 }
@@ -149,7 +149,7 @@ fn populate_recurse<'a, S>(
     dir_path_id: Option<PathIdBuf>,
     entries: Arc<DashMap<String, CacheNode>>,
     storage: Arc<S>,
-) -> BoxFuture<'a, crate::Result<Vec<String>>>
+) -> BoxFuture<'a, anyhow::Result<Vec<String>>>
 where
     S: super::DirEntries + Send + Sync + 'static,
 {
@@ -184,7 +184,7 @@ where
                         children,
                     },
                 );
-                Ok::<_, crate::Error>(())
+                Ok::<_, anyhow::Error>(())
             });
         }
 

@@ -8,6 +8,7 @@ authors = ["Rémi THEBAULT"]
 description = "A file synchronization service"
 
 [workspace.dependencies]
+anyhow = { version = "1.0.77", features = ["backtrace"] }
 async-stream = "0.3.5"
 async-trait = "0.1.74"
 camino = {version = "1.1.6", features = ["serde1"] }

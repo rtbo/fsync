@@ -3,13 +3,13 @@ use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
+use fsync::tree;
 use futures::{
     future::{self, BoxFuture},
     StreamExt, TryStreamExt,
 };
-use fsync::tree;
 
-use crate::{Result, storage};
+use crate::storage;
 
 #[derive(Debug)]
 pub struct DiffTree {
@@ -17,7 +17,7 @@ pub struct DiffTree {
 }
 
 impl DiffTree {
-    pub async fn from_cache<L, R>(local: Arc<L>, remote: Arc<R>) -> Result<Self>
+    pub async fn from_cache<L, R>(local: Arc<L>, remote: Arc<R>) -> anyhow::Result<Self>
     where
         L: storage::Storage,
         R: storage::Storage,
@@ -109,7 +109,7 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    fn both(&self, both: Option<(fsync::Entry, fsync::Entry)>) -> BoxFuture<'_, Result<()>> {
+    fn both(&self, both: Option<(fsync::Entry, fsync::Entry)>) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let loc_entry = both.as_ref().map(|b| &b.0);
             let loc_children = entry_children_sorted(&*self.local, loc_entry);
@@ -197,7 +197,7 @@ where
         })
     }
 
-    fn local(&self, entry: fsync::Entry) -> BoxFuture<'_, Result<()>> {
+    fn local(&self, entry: fsync::Entry) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
 
@@ -222,7 +222,7 @@ where
         })
     }
 
-    fn remote(&self, entry: fsync::Entry) -> BoxFuture<'_, Result<()>> {
+    fn remote(&self, entry: fsync::Entry) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
 
@@ -251,7 +251,7 @@ where
 async fn entry_children_sorted<S>(
     storage: &S,
     entry: Option<&fsync::Entry>,
-) -> Result<Vec<fsync::Entry>>
+) -> anyhow::Result<Vec<fsync::Entry>>
 where
     S: storage::Storage,
 {

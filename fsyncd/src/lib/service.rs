@@ -30,7 +30,7 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    pub async fn new(local: L, remote: R) -> crate::Result<Self> {
+    pub async fn new(local: L, remote: R) -> anyhow::Result<Self> {
         let local = Arc::new(local);
         let remote = Arc::new(remote);
         let tree = DiffTree::from_cache(local.clone(), remote.clone()).await?;
@@ -45,7 +45,7 @@ where
         &self,
         instance_name: &str,
         abort_reg: AbortRegistration,
-    ) -> crate::Result<()> {
+    ) -> anyhow::Result<()> {
         let server_addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), 0);
 
         let mut listener =
