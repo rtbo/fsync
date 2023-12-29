@@ -1,6 +1,6 @@
 use camino::Utf8PathBuf;
 use fsync::loc::{inst, user};
-use fsync::{backend, oauth2};
+use fsync::{oauth2, provider};
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Editor, Select, Text};
 
@@ -23,7 +23,7 @@ struct InitOptions {
 }
 
 enum ProviderOpts {
-    GoogleDrive(backend::gdrive::AppSecretOpts),
+    GoogleDrive(provider::AppSecretOpts),
 }
 
 pub fn main(args: Args) -> Result<(), Error> {
@@ -111,7 +111,7 @@ async fn create_config(instance_name: &str, opts: InitOptions) -> Result<(), Err
     let config = fsync::Config {
         local_dir: opts.local_dir.clone().into(),
         provider: match opts.provider_opts {
-            ProviderOpts::GoogleDrive(..) => fsync::Provider::GoogleDrive,
+            ProviderOpts::GoogleDrive(..) => provider::Provider::GoogleDrive,
         },
     };
     let config_json = serde_json::to_string_pretty(&config)?;
@@ -197,7 +197,7 @@ fn validate_path(input: &str) -> Result<Validation, CustomUserError> {
     validate_chars(invalid_chars)
 }
 
-fn google_drive() -> Result<backend::gdrive::AppSecretOpts, Error> {
+fn google_drive() -> Result<provider::AppSecretOpts, Error> {
     let options = &[
         "Use built-in application secret",
         "Provide path to client_secret.json",
@@ -211,19 +211,19 @@ fn google_drive() -> Result<backend::gdrive::AppSecretOpts, Error> {
     .prompt()?;
     let ind = options.iter().position(|e| *e == ans).unwrap();
     let opts = match ind {
-        0 => backend::gdrive::AppSecretOpts::Fsync,
-        1 => backend::gdrive::AppSecretOpts::JsonPath(
+        0 => provider::AppSecretOpts::Fsync,
+        1 => provider::AppSecretOpts::JsonPath(
             Text::new("Enter path to client_scret.json")
                 .prompt()?
                 .into(),
         ),
-        2 => backend::gdrive::AppSecretOpts::JsonContent(
+        2 => provider::AppSecretOpts::JsonContent(
             Editor::new("Enter content of client_secret.json").prompt()?,
         ),
         3 => {
             let client_id = Text::new("Client Id").prompt()?;
             let client_secret = Text::new("Client Secret").prompt()?;
-            backend::gdrive::AppSecretOpts::Credentials {
+            provider::AppSecretOpts::Credentials {
                 client_id,
                 client_secret,
             }

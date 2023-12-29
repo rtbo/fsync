@@ -4,7 +4,7 @@ use std::sync::Arc;
 use camino::Utf8PathBuf;
 use fsync::ipc::Fsync;
 use fsync::loc::inst;
-use fsync::tree::{self, DiffTree};
+use fsync::tree::{self};
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};
@@ -13,6 +13,11 @@ use tarpc::{
     server::{self, incoming::Incoming, Channel},
     tokio_serde::formats::Bincode,
 };
+
+
+use crate::tree::DiffTree;
+use crate::storage;
+
 #[derive(Debug, Clone)]
 pub struct Service<L, R> {
     local: Arc<L>,
@@ -22,10 +27,10 @@ pub struct Service<L, R> {
 
 impl<L, R> Service<L, R>
 where
-    L: fsync::Storage,
-    R: fsync::Storage,
+    L: storage::Storage,
+    R: storage::Storage,
 {
-    pub async fn new(local: L, remote: R) -> fsync::Result<Self> {
+    pub async fn new(local: L, remote: R) -> crate::Result<Self> {
         let local = Arc::new(local);
         let remote = Arc::new(remote);
         let tree = DiffTree::from_cache(local.clone(), remote.clone()).await?;
@@ -40,7 +45,7 @@ where
         &self,
         instance_name: &str,
         abort_reg: AbortRegistration,
-    ) -> fsync::Result<()> {
+    ) -> crate::Result<()> {
         let server_addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), 0);
 
         let mut listener =
@@ -83,8 +88,8 @@ where
 #[tarpc::server]
 impl<L, R> Fsync for Service<L, R>
 where
-    L: fsync::Storage,
-    R: fsync::Storage,
+    L: storage::Storage,
+    R: storage::Storage,
 {
     async fn entry(self, _: Context, path: Option<Utf8PathBuf>) -> Option<tree::Node> {
         self.tree.entry(path.as_deref())

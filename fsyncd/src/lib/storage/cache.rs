@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{io, task::JoinSet};
 use tokio_stream::StreamExt;
 
-use crate::{Entry, EntryType, PathId, PathIdBuf, Storage};
+use fsync::{Entry, EntryType, PathId, PathIdBuf};
 
 #[derive(Debug, Clone)]
 pub struct CacheStorage<S> {
@@ -26,7 +26,7 @@ struct CacheNode {
 
 impl<S> CacheStorage<S>
 where
-    S: Storage,
+    S: super::Storage,
 {
     pub fn new(storage: S) -> Self {
         Self {
@@ -75,7 +75,7 @@ where
 
 impl<S> CacheStorage<S>
 where
-    S: crate::DirEntries + Send + Sync + 'static,
+    S: super::DirEntries + Send + Sync + 'static,
 {
     pub async fn populate_from_entries(&mut self) -> crate::Result<()> {
         let entries = Arc::new(DashMap::new());
@@ -93,9 +93,9 @@ where
     }
 }
 
-impl<S> crate::DirEntries for CacheStorage<S>
+impl<S> super::DirEntries for CacheStorage<S>
 where
-    S: crate::DirEntries + Send + Sync + 'static,
+    S: super::DirEntries + Send + Sync + 'static,
 {
     fn dir_entries(
         &self,
@@ -112,9 +112,9 @@ where
     }
 }
 
-impl<S> crate::ReadFile for CacheStorage<S>
+impl<S> super::ReadFile for CacheStorage<S>
 where
-    S: crate::ReadFile + Sync + Send,
+    S: super::ReadFile + Sync + Send,
 {
     fn read_file<'a>(
         &'a self,
@@ -124,9 +124,9 @@ where
     }
 }
 
-impl<S> crate::CreateFile for CacheStorage<S>
+impl<S> super::CreateFile for CacheStorage<S>
 where
-    S: crate::CreateFile + Send + Sync,
+    S: super::CreateFile + Send + Sync,
 {
     fn create_file(
         &self,
@@ -137,7 +137,7 @@ where
     }
 }
 
-impl<S> crate::Storage for CacheStorage<S> where S: crate::Storage {}
+impl<S> super::Storage for CacheStorage<S> where S: super::Storage {}
 
 fn bincode_options() -> impl bincode::Options {
     bincode::DefaultOptions::new()
@@ -151,7 +151,7 @@ fn populate_recurse<'a, S>(
     storage: Arc<S>,
 ) -> BoxFuture<'a, crate::Result<Vec<String>>>
 where
-    S: crate::DirEntries + Send + Sync + 'static,
+    S: super::DirEntries + Send + Sync + 'static,
 {
     Box::pin(async move {
         let dirent = storage.dir_entries(dir_path_id.as_ref().map(|dpi| dpi.as_path_id()));

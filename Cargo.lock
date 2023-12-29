@@ -643,14 +643,26 @@ dependencies = [
 name = "fsyncd"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
+ "bincode",
  "camino",
+ "chrono",
  "clap",
+ "dashmap",
  "fsync",
  "futures",
+ "http",
+ "hyper",
+ "hyper-rustls",
+ "serde",
  "serde_json",
  "tarpc",
+ "thiserror",
  "tokio",
  "tokio-stream",
+ "tokio-util",
+ "url",
+ "yup-oauth2",
 ]
 
 [[package]]

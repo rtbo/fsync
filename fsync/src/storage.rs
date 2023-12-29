@@ -1,10 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Utc};
-use futures::{Future, Stream};
 use serde::{Deserialize, Serialize};
-use tokio::io;
-
-use crate::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EntryType {
@@ -160,27 +156,3 @@ impl<'a> From<PathId<'a>> for PathIdBuf {
         pid.to_path_id_buf()
     }
 }
-
-pub trait DirEntries {
-    fn dir_entries(
-        &self,
-        parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = Result<Entry>> + Send;
-}
-
-pub trait ReadFile {
-    fn read_file<'a>(
-        &'a self,
-        path_id: PathId<'a>,
-    ) -> impl Future<Output = Result<impl io::AsyncRead + Send>> + Send + 'a;
-}
-
-pub trait CreateFile {
-    fn create_file(
-        &self,
-        metadata: &Entry,
-        data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = Result<Entry>> + Send;
-}
-
-pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {}

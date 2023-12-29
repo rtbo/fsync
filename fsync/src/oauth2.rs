@@ -28,7 +28,7 @@ pub async fn load_secret(path: &Utf8Path) -> crate::Result<ApplicationSecret> {
     Ok(serde_json::from_str(json)?)
 }
 
-pub async fn installed_flow<C>(oauth2_params: Params<'_>, client: C) -> crate::Result<Authenticator>
+pub async fn installed_flow<C>(oauth2_params: Params<'_>, client: C) -> std::io::Result<Authenticator>
 where
     C: HyperClientBuilder<Connector = http::Connector>,
 {

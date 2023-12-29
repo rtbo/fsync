@@ -4,13 +4,12 @@
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 
-pub mod backend;
-pub mod cache;
 pub mod cipher;
 pub mod config;
 pub mod http;
 pub mod ipc;
 pub mod loc;
+pub mod provider;
 pub mod oauth2;
 pub mod tree;
 
@@ -18,14 +17,9 @@ mod storage;
 pub use crate::storage::*;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Provider {
-    GoogleDrive,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub local_dir: String,
-    pub provider: Provider,
+    pub provider: provider::Provider,
 }
 
 impl Config {
@@ -69,9 +63,6 @@ pub enum Error {
 
     #[error("{0}")]
     Http(#[from] http::Error),
-
-    #[error("file system related error: {0}")]
-    Fs(#[from] crate::backend::fs::Error),
 
     #[error("Custom error: {0}")]
     Custom(String),

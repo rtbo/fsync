@@ -9,7 +9,8 @@ use tokio::{
     io,
 };
 
-use crate::{Entry, EntryType, PathId, Result};
+use fsync::{Entry, EntryType, PathId};
+use crate::Result;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -105,7 +106,7 @@ impl Storage {
     }
 }
 
-impl crate::DirEntries for Storage {
+impl super::DirEntries for Storage {
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
@@ -129,7 +130,7 @@ impl crate::DirEntries for Storage {
     }
 }
 
-impl crate::ReadFile for Storage {
+impl super::ReadFile for Storage {
     fn read_file<'a>(
         &'a self,
         path_id: PathId<'a>,
@@ -140,7 +141,7 @@ impl crate::ReadFile for Storage {
     }
 }
 
-impl crate::CreateFile for Storage {
+impl super::CreateFile for Storage {
     fn create_file(
         &self,
         metadata: &Entry,
@@ -172,7 +173,7 @@ impl crate::CreateFile for Storage {
     }
 }
 
-impl crate::Storage for Storage {}
+impl super::Storage for Storage {}
 
 async fn map_direntry(parent_path: Option<&Utf8Path>, direntry: &DirEntry) -> Result<Entry> {
     let fs_path = Utf8PathBuf::try_from(direntry.path())?;
