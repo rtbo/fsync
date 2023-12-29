@@ -37,6 +37,9 @@ enum Error {
 
     #[error("Custom")]
     Custom(String),
+
+    #[error("Error from deamon: {0}")]
+    Deamon(String),
 }
 
 impl From<fsync::Error> for Error {
@@ -82,16 +85,8 @@ async fn main() -> process::ExitCode {
     let cli = Cli::parse();
     match main2(cli).await {
         Ok(()) => process::ExitCode::SUCCESS,
-        Err(Error::Custom(msg)) => {
-            eprintln!("{msg}");
-            process::ExitCode::FAILURE
-        }
-        Err(Error::Io(err)) => {
-            eprintln!("I/O Error: {err}");
-            process::ExitCode::FAILURE
-        }
         Err(err) => {
-            eprintln!("Error encoutered: {err}");
+            eprintln!("{err}");
             process::ExitCode::FAILURE
         }
     }
