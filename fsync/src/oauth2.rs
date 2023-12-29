@@ -5,7 +5,7 @@ use camino::Utf8Path;
 use futures::Future;
 use yup_oauth2::authenticator::HyperClientBuilder;
 use yup_oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
-pub use yup_oauth2::{ApplicationSecret, AccessToken};
+pub use yup_oauth2::{AccessToken, ApplicationSecret};
 
 use crate::http;
 

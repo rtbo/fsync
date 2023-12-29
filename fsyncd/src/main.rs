@@ -1,4 +1,3 @@
-
 use clap::Parser;
 use fsync::cache::CacheStorage;
 use fsync::oauth2;
