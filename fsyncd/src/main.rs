@@ -1,9 +1,7 @@
-use std::sync::Arc;
 
 use clap::Parser;
 use fsync::cache::CacheStorage;
 use fsync::oauth2;
-use fsync::tree::DiffTree;
 use fsync::{self, backend, loc::inst};
 use futures::stream::AbortHandle;
 use futures::Future;
@@ -66,12 +64,7 @@ where
         Ok(()) => (),
     }
 
-    let local = Arc::new(local);
-    let remote = Arc::new(remote);
-
-    let tree = DiffTree::from_cache(local, remote.clone()).await?;
-
-    let service = Service::new(tree);
+    let service = Service::new(local, remote.clone()).await?;
 
     let abort_reg = {
         let (abort_handle, abort_reg) = AbortHandle::new_pair();

@@ -15,22 +15,37 @@ use tarpc::{
 };
 
 #[derive(Debug, Clone)]
-pub struct Service {
+pub struct Service<L, R> {
+    local: Arc<L>,
+    remote: Arc<R>,
     tree: Arc<DiffTree>,
 }
 
 #[tarpc::server]
-impl Fsync for Service {
+impl<L, R> Fsync for Service<L, R> 
+where
+    L: fsync::Storage,
+    R: fsync::Storage,
+{
     async fn entry(self, _: Context, path: Option<Utf8PathBuf>) -> Option<tree::Node> {
         self.tree.entry(path.as_deref())
     }
 }
 
-impl Service {
-    pub fn new(tree: DiffTree) -> Self {
-        Self {
+impl<L, R> Service<L, R> 
+where
+    L: fsync::Storage,
+    R: fsync::Storage,
+{
+    pub async fn new(local: L, remote: R) -> fsync::Result<Self> {
+        let local = Arc::new(local);
+        let remote = Arc::new(remote);
+        let tree = DiffTree::from_cache(local.clone(), remote.clone()).await?;
+        Ok(Self {
+            local,
+            remote,
             tree: Arc::new(tree),
-        }
+        })
     }
 
     pub async fn start(
