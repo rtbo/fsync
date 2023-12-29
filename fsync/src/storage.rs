@@ -1,7 +1,8 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Utc};
-use futures::Stream;
+use futures::{Future, Stream};
 use serde::{Deserialize, Serialize};
+use tokio::io;
 
 use crate::Result;
 
@@ -168,11 +169,18 @@ pub trait DirEntries {
 }
 
 pub trait ReadFile {
-    async fn read_file(&self, path_id: PathId) -> Result<impl tokio::io::AsyncRead>;
+    fn read_file<'a>(
+        &'a self,
+        path_id: PathId<'a>,
+    ) -> impl Future<Output = Result<impl io::AsyncRead + Send>> + Send + 'a;
 }
 
 pub trait CreateFile {
-    async fn create_file(&self, metadata: &Entry, data: impl tokio::io::AsyncRead) -> Result<()>;
+    fn create_file(
+        &self,
+        metadata: &Entry,
+        data: impl io::AsyncRead + Send,
+    ) -> impl Future<Output = Result<Entry>> + Send;
 }
 
 pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {}

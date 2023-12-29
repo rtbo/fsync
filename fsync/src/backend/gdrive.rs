@@ -2,7 +2,8 @@ use std::str;
 
 use async_stream::try_stream;
 use camino::{Utf8Path, Utf8PathBuf};
-use futures::Stream;
+use futures::{Future, Stream};
+use tokio::io;
 
 use crate::{cipher, http, oauth2, DirEntries, Entry, EntryType, PathId};
 
@@ -145,17 +146,26 @@ impl DirEntries for GoogleDrive {
 }
 
 impl crate::ReadFile for GoogleDrive {
-    async fn read_file<'a>(&self, path_id: PathId<'a>) -> crate::Result<impl tokio::io::AsyncRead> {
+    fn read_file<'a>(
+        &'a self,
+        path_id: PathId<'a>,
+    ) -> impl Future<Output = crate::Result<impl io::AsyncRead>> + Send + 'a {
+        async {
         Ok(self
             .files_get_media(path_id.id)
             .await?
             .expect("Could not find file"))
+        }
     }
 }
 
 impl crate::CreateFile for GoogleDrive {
-    async fn create_file(&self, metadata: &Entry, data: impl tokio::io::AsyncRead) -> crate::Result<()> {
-        unimplemented!()
+    fn create_file(
+        &self,
+        metadata: &Entry,
+        data: impl io::AsyncRead,
+    ) -> impl Future<Output = crate::Result<Entry>> + Send {
+        async { unimplemented!() }
         // debug_assert!(metadata.path().is_relative());
         // let path = self.root.join(metadata.path());
         // if path.is_dir() {

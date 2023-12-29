@@ -4,9 +4,9 @@ use async_stream::try_stream;
 use bincode::Options;
 use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
-use futures::{future::BoxFuture, Stream};
+use futures::{future::BoxFuture, Future, Stream};
 use serde::{Deserialize, Serialize};
-use tokio::task::JoinSet;
+use tokio::{io, task::JoinSet};
 use tokio_stream::StreamExt;
 
 use crate::{Entry, EntryType, PathId, PathIdBuf, Storage};
@@ -114,30 +114,30 @@ where
 
 impl<S> crate::ReadFile for CacheStorage<S>
 where
-    S: crate::ReadFile,
+    S: crate::ReadFile + Sync + Send,
 {
-    async fn read_file<'a>(&self, path_id: PathId<'a>) -> crate::Result<impl tokio::io::AsyncRead> {
-        self.storage.read_file(path_id).await
+    fn read_file<'a>(
+        &'a self,
+        path_id: PathId<'a>,
+    ) -> impl Future<Output = crate::Result<impl io::AsyncRead>> + Send + 'a {
+        async move { self.storage.read_file(path_id).await }
     }
 }
 
 impl<S> crate::CreateFile for CacheStorage<S>
 where
-    S: crate::CreateFile,
+    S: crate::CreateFile + Send + Sync,
 {
-    async fn create_file(
+    fn create_file(
         &self,
         metadata: &Entry,
-        data: impl tokio::io::AsyncRead,
-    ) -> crate::Result<()> {
-        self.storage.create_file(metadata, data).await
+        data: impl io::AsyncRead + Send,
+    ) -> impl Future<Output = crate::Result<Entry>> + Send {
+        async move { self.storage.create_file(metadata, data).await }
     }
 }
 
-impl<S> crate::Storage for CacheStorage<S> where
-    S: crate::Storage
-{
-}
+impl<S> crate::Storage for CacheStorage<S> where S: crate::Storage {}
 
 fn bincode_options() -> impl bincode::Options {
     bincode::DefaultOptions::new()

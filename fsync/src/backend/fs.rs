@@ -3,8 +3,11 @@ use std::result;
 
 use async_stream::try_stream;
 use camino::{FromPathBufError, Utf8Component, Utf8Path, Utf8PathBuf};
-use futures::Stream;
-use tokio::fs::{self, DirEntry};
+use futures::{Future, Stream};
+use tokio::{
+    fs::{self, DirEntry},
+    io,
+};
 
 use crate::{Entry, EntryType, PathId, Result};
 
@@ -127,34 +130,45 @@ impl crate::DirEntries for Storage {
 }
 
 impl crate::ReadFile for Storage {
-    async fn read_file<'a>(&self, path_id: PathId<'a>) -> Result<impl tokio::io::AsyncRead> {
+    fn read_file<'a>(
+        &'a self,
+        path_id: PathId<'a>,
+    ) -> impl Future<Output = Result<impl io::AsyncRead>> + Send + 'a {
         debug_assert!(path_id.path.is_relative());
         let path = self.root.join(path_id.path);
-        Ok(tokio::fs::File::open(&path).await?)
+        async move { Ok(tokio::fs::File::open(&path).await?) }
     }
 }
 
 impl crate::CreateFile for Storage {
-    async fn create_file(&self, metadata: &Entry, data: impl tokio::io::AsyncRead) -> Result<()> {
-        debug_assert!(metadata.path().is_relative());
-        let path = self.root.join(metadata.path());
-        if path.is_dir() {
-            return Err(crate::Error::Custom(format!(
-                "{} is a directory",
-                metadata.path()
-            )));
+    fn create_file(
+        &self,
+        metadata: &Entry,
+        data: impl io::AsyncRead + Send,
+    ) -> impl Future<Output = Result<Entry>> + Send {
+        async move {
+            debug_assert!(metadata.path().is_relative());
+            let fs_path = self.root.join(metadata.path());
+            if fs_path.is_dir() {
+                return Err(crate::Error::Custom(format!(
+                    "{} is a directory",
+                    metadata.path()
+                )));
+            }
+            {
+                tokio::pin!(data);
+
+                let mut f = tokio::fs::File::create(&fs_path).await?;
+                tokio::io::copy(&mut data, &mut f).await?;
+
+                if let Some(mtime) = metadata.mtime() {
+                    let f = f.into_std().await;
+                    f.set_modified(mtime.into())?;
+                }
+            }
+            let fs_metadata = tokio::fs::metadata(&fs_path).await?;
+            map_metadata(metadata.path(), &fs_metadata, &fs_path).await
         }
-
-        tokio::pin!(data);
-
-        let mut f = tokio::fs::File::create(&path).await?;
-        tokio::io::copy(&mut data, &mut f).await?;
-
-        if let Some(mtime) = metadata.mtime() {
-            let f = f.into_std().await;
-            f.set_modified(mtime.into())?;
-        }
-        Ok(())
     }
 }
 
