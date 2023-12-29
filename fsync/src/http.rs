@@ -5,6 +5,6 @@ pub type Connector = HttpsConnector<HttpConnector>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Status")]
-    Status(http::Response<Body>),
+    #[error("HTTP status error: {0}")]
+    Status(http::status::StatusCode, http::Response<Body>),
 }

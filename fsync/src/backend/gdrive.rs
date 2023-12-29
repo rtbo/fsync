@@ -151,10 +151,10 @@ impl crate::ReadFile for GoogleDrive {
         path_id: PathId<'a>,
     ) -> impl Future<Output = crate::Result<impl io::AsyncRead>> + Send + 'a {
         async {
-        Ok(self
-            .files_get_media(path_id.id)
-            .await?
-            .expect("Could not find file"))
+            Ok(self
+                .files_get_media(path_id.id)
+                .await?
+                .expect("Could not find file"))
         }
     }
 }
@@ -433,7 +433,7 @@ mod utils {
             if res.status().is_success() || (allow_404 && res.status() == StatusCode::NOT_FOUND) {
                 Ok(res)
             } else {
-                Err(crate::http::Error::Status(res).into())
+                Err(crate::http::Error::Status(res.status(), res).into())
             }
         }
 
@@ -477,7 +477,7 @@ mod utils {
 
             let mut res = self.client.request(req).await?;
             if res.status() != StatusCode::OK {
-                return Err(crate::http::Error::Status(res).into());
+                return Err(crate::http::Error::Status(res.status(), res).into());
             }
             println!("{}", get_body_as_string(res.body_mut()).await);
             let location = &res.headers()[header::LOCATION];

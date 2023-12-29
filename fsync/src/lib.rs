@@ -46,7 +46,7 @@ impl Config {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("I/O error")]
+    #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
     #[error("Utf-8 error")]
@@ -67,13 +67,13 @@ pub enum Error {
     #[error("Hyper")]
     Hyper(#[from] hyper::Error),
 
-    #[error("Http")]
+    #[error("{0}")]
     Http(#[from] http::Error),
 
-    #[error("file system related error")]
+    #[error("file system related error: {0}")]
     Fs(#[from] crate::backend::fs::Error),
 
-    #[error("Custom error")]
+    #[error("Custom error: {0}")]
     Custom(String),
 }
 
