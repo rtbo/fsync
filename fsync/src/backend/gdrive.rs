@@ -88,10 +88,12 @@ impl AppSecretOpts {
     }
 }
 
+#[derive(Clone)]
 pub struct GoogleDrive {
     auth: oauth2::Authenticator,
     client: hyper::Client<http::Connector>,
     base_url: &'static str,
+    upload_base_url: &'static str,
     user_agent: String,
 }
 
@@ -109,6 +111,7 @@ impl GoogleDrive {
             auth,
             client,
             base_url: "https://www.googleapis.com/drive/v3",
+            upload_base_url: "https://www.googleapis.com/upload/drive/v3",
             user_agent,
         })
     }
@@ -150,6 +153,31 @@ impl crate::ReadFile for GoogleDrive {
     }
 }
 
+impl crate::CreateFile for GoogleDrive {
+    async fn create_file(&self, metadata: &Entry, data: impl tokio::io::AsyncRead) -> crate::Result<()> {
+        unimplemented!()
+        // debug_assert!(metadata.path().is_relative());
+        // let path = self.root.join(metadata.path());
+        // if path.is_dir() {
+        //     return Err(crate::Error::Custom(format!(
+        //         "{} is a directory",
+        //         metadata.path()
+        //     )));
+        // }
+
+        // tokio::pin!(data);
+
+        // let mut f = tokio::fs::File::create(&path).await?;
+        // tokio::io::copy(&mut data, &mut f).await?;
+
+        // if let Some(mtime) = metadata.mtime() {
+        //     let f = f.into_std().await;
+        //     f.set_modified(mtime.into())?;
+        // }
+        // Ok(())
+    }
+}
+
 impl crate::Storage for GoogleDrive {}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
@@ -180,25 +208,39 @@ fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> crate::Result<Entry> {
 mod api {
     use chrono::{DateTime, Utc};
     use http::StatusCode;
-    use serde::{Deserialize, Deserializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use tokio::io;
 
     use super::utils;
 
-    #[derive(Default, Clone, Debug, Deserialize)]
+    #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct File {
         pub id: Option<String>,
         pub name: Option<String>,
         pub modified_time: Option<DateTime<Utc>>,
-        #[serde(default, deserialize_with = "size_from_str")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "size_to_str",
+            deserialize_with = "size_from_str"
+        )]
         pub size: Option<u64>,
         pub mime_type: Option<String>,
     }
 
-    fn size_from_str<'a, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+    fn size_to_str<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
     where
-        D: Deserializer<'a>,
+        S: Serializer,
+    {
+        let value = value.expect("size_to_str shouldn't be called for None");
+        let value = value.to_string();
+        serializer.serialize_str(&value)
+    }
+
+    fn size_from_str<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+    where
+        D: Deserializer<'de>,
     {
         use std::str::FromStr;
 
@@ -231,6 +273,30 @@ mod api {
         }
     }
 
+    #[derive(Debug, Copy, Clone)]
+    pub enum UploadType {
+        Simple,
+        Multipart,
+        Resumable,
+    }
+
+    impl AsRef<str> for UploadType {
+        fn as_ref(&self) -> &str {
+            match self {
+                UploadType::Simple => "simple",
+                UploadType::Multipart => "multipart",
+                UploadType::Resumable => "resumable",
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct UploadParams {
+        pub typ: UploadType,
+        pub size: Option<u64>,
+        pub mime_type: Option<String>,
+    }
+
     const METADATA_FIELDS: &str = "id,name,size,modifiedTime,mimeType";
 
     impl super::GoogleDrive {
@@ -258,7 +324,10 @@ mod api {
             Ok(file_list)
         }
 
-        pub async fn files_get_media(&self, file_id: &str) -> crate::Result<Option<impl io::AsyncRead>> {
+        pub async fn files_get_media(
+            &self,
+            file_id: &str,
+        ) -> crate::Result<Option<impl io::AsyncRead>> {
             let path = format!("/files/{file_id}");
             let query_params = &[("fields", METADATA_FIELDS), ("alt", "media")];
             let res = self
@@ -283,14 +352,30 @@ mod api {
                 )))
             }
         }
+
+        pub async fn files_create<D>(&self, metadata: &File, data: D) -> crate::Result<()>
+        where
+            D: io::AsyncRead,
+        {
+            let upload_params = UploadParams {
+                typ: UploadType::Resumable,
+                size: metadata.size,
+                mime_type: metadata.mime_type.clone(),
+            };
+            let upload_url = self
+                .post_upload_request(&[Scope::Full], "/files", &upload_params, Some(metadata))
+                .await?;
+            unimplemented!("files_create")
+        }
     }
 }
 
 mod utils {
     use std::borrow::Borrow;
 
-    use http::{Request, Response, StatusCode};
+    use http::{header, HeaderValue, Request, Response, StatusCode};
     use hyper::Body;
+    use serde::Serialize;
     use url::Url;
 
     use super::api;
@@ -307,18 +392,6 @@ mod utils {
             Ok(token)
         }
 
-        pub fn url_with_query<P, Q, K, V>(&self, path: P, query_params: Q) -> Url
-        where
-            P: AsRef<str>,
-            Q: IntoIterator,
-            Q::Item: Borrow<(K, V)>,
-            K: AsRef<str>,
-            V: AsRef<str>,
-        {
-            let base = format!("{}{}", self.base_url, path.as_ref());
-            Url::parse_with_params(&base, query_params).unwrap()
-        }
-
         pub async fn get_request_query<Q, K, V>(
             &self,
             scopes: &[api::Scope],
@@ -333,13 +406,13 @@ mod utils {
             V: AsRef<str>,
         {
             let token = self.fetch_token(scopes).await?;
-            let url = self.url_with_query(path, query_params);
+            let url = url_with_query(&self.base_url, path, query_params);
 
             let req = Request::builder()
                 .uri(url.as_str())
-                .header(hyper::header::USER_AGENT, &self.user_agent)
+                .header(header::USER_AGENT, &self.user_agent)
                 .header(
-                    hyper::header::AUTHORIZATION,
+                    header::AUTHORIZATION,
                     format!("Bearer {}", token.token().unwrap()),
                 )
                 .body(hyper::body::Body::empty())
@@ -353,6 +426,66 @@ mod utils {
                 Err(crate::http::Error::Status(res).into())
             }
         }
+
+        pub async fn post_upload_request<B>(
+            &self,
+            scopes: &[api::Scope],
+            path: &str,
+            params: &api::UploadParams,
+            body: Option<&B>,
+        ) -> crate::Result<String>
+        where
+            B: Serialize,
+        {
+            let token = self.fetch_token(scopes).await?;
+
+            let query_params = &[("uploadType", params.typ)];
+            let url = url_with_query(&self.upload_base_url, path, query_params);
+            let mut req = Request::builder()
+                .method("POST")
+                .uri(url.as_str())
+                .header(header::USER_AGENT, &self.user_agent)
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {}", token.token().unwrap()),
+                );
+            if let Some(mt) = &params.mime_type {
+                req = req.header("X-Upload-Content-Type", mt);
+            }
+            if let Some(sz) = params.size {
+                req = req.header("X-Upload-Content-Length", sz);
+            }
+
+            let body = body.map(serde_json::to_string).transpose()?;
+            if let Some(body) = body.as_deref() {
+                req = req
+                    .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+                    .header(header::CONTENT_LENGTH, body.len());
+            }
+            let body = body.unwrap_or_default();
+            let req = req.body(hyper::body::Body::from(body)).unwrap();
+
+            let mut res = self.client.request(req).await?;
+            if res.status() != StatusCode::OK {
+                return Err(crate::http::Error::Status(res).into());
+            }
+            println!("{}", get_body_as_string(res.body_mut()).await);
+            let location = &res.headers()[header::LOCATION];
+            Ok(location.to_str().unwrap().to_string())
+        }
+    }
+
+    pub fn url_with_query<B, P, Q, K, V>(base_url: B, path: P, query_params: Q) -> Url
+    where
+        B: AsRef<str>,
+        P: AsRef<str>,
+        Q: IntoIterator,
+        Q::Item: Borrow<(K, V)>,
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        let base = format!("{}{}", base_url.as_ref(), path.as_ref());
+        Url::parse_with_params(&base, query_params).unwrap()
     }
 
     pub async fn get_body_as_string(body: &mut Body) -> String {
