@@ -14,7 +14,6 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tarpc = { workspace = true }
-thiserror = { workspace = true }
 tokio = { workspace = true }
 yup-oauth2 = { workspace = true }
 

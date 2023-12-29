@@ -634,7 +634,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tarpc",
- "thiserror",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -662,7 +661,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tarpc",
- "thiserror",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -684,7 +682,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tarpc",
- "thiserror",
  "tokio",
  "yup-oauth2",
 ]
