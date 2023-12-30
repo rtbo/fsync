@@ -1,11 +1,7 @@
 use std::str;
 
 use async_stream::try_stream;
-use fsync::{
-    http, oauth2,
-    path::{Path, PathBuf},
-    PathId,
-};
+use fsync::{http, oauth2, path::PathBuf, PathIdBuf};
 use futures::Stream;
 use tokio::io;
 
@@ -38,14 +34,15 @@ impl GoogleDrive {
     }
 }
 
-impl super::DirEntries for GoogleDrive {
+impl super::id::DirEntries for GoogleDrive {
     fn dir_entries(
         &self,
-        parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
-        let parent_id = parent_path_id.map(|di| di.id).unwrap_or("root");
-        let base_dir = parent_path_id.map(|di| di.path);
-        let q = format!("'{}' in parents", parent_id);
+        parent_path_id: Option<PathIdBuf>,
+    ) -> impl Stream<Item = anyhow::Result<(String, fsync::Metadata)>> + Send {
+        let q = parent_path_id
+            .as_ref()
+            .map(|pid| format!("'{}' in parents", pid.id))
+            .unwrap_or_else(|| "'root' in parents".to_string());
         let mut next_page_token: Option<String> = None;
 
         try_stream! {
@@ -54,7 +51,7 @@ impl super::DirEntries for GoogleDrive {
                 next_page_token = file_list.next_page_token;
                 if let Some(files) = file_list.files {
                     for f in files {
-                        yield map_file(base_dir, f)?;
+                        yield map_file(parent_path_id.clone(), f)?;
                     }
                 }
                 if next_page_token.is_none() {
@@ -65,21 +62,21 @@ impl super::DirEntries for GoogleDrive {
     }
 }
 
-impl super::ReadFile for GoogleDrive {
-    async fn read_file<'a>(&'a self, path_id: PathId<'a>) -> anyhow::Result<impl io::AsyncRead> {
+impl super::id::ReadFile for GoogleDrive {
+    async fn read_file(&self, path_id: PathIdBuf) -> anyhow::Result<impl io::AsyncRead> {
         Ok(self
-            .files_get_media(path_id.id)
+            .files_get_media(&path_id.id)
             .await?
             .expect("Could not find file"))
     }
 }
 
-impl super::CreateFile for GoogleDrive {
+impl super::id::CreateFile for GoogleDrive {
     async fn create_file(
         &self,
         _metadata: &fsync::Metadata,
         _data: impl io::AsyncRead,
-    ) -> anyhow::Result<fsync::Metadata> {
+    ) -> anyhow::Result<(String, fsync::Metadata)> {
         unimplemented!()
         // debug_assert!(metadata.path().is_relative());
         // let path = self.root.join(metadata.path());
@@ -103,18 +100,21 @@ impl super::CreateFile for GoogleDrive {
     }
 }
 
-impl super::Storage for GoogleDrive {}
+impl super::id::Storage for GoogleDrive {}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
-fn map_file(base_dir: Option<&Path>, f: api::File) -> anyhow::Result<fsync::Metadata> {
+fn map_file(
+    base_dir: Option<PathIdBuf>,
+    f: api::File,
+) -> anyhow::Result<(String, fsync::Metadata)> {
     let id = f.id.unwrap_or_default();
     let path = match base_dir {
-        Some(di) => Path::new(di).join(f.name.as_deref().unwrap()),
+        Some(di) => di.path.join(f.name.as_deref().unwrap()),
         None => PathBuf::from(f.name.as_deref().unwrap()),
     };
     let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
-        fsync::Metadata::Directory { id, path }
+        fsync::Metadata::Directory { path }
     } else {
         let mtime = f.modified_time.ok_or_else(|| {
             anyhow::anyhow!("Expected to receive modifiedTime from Google for {path}")
@@ -123,14 +123,9 @@ fn map_file(base_dir: Option<&Path>, f: api::File) -> anyhow::Result<fsync::Meta
             .size
             .ok_or_else(|| anyhow::anyhow!("Expected to receive size from Google for {path}"))?
             as _;
-        fsync::Metadata::Regular {
-            id,
-            path,
-            size,
-            mtime,
-        }
+        fsync::Metadata::Regular { path, size, mtime }
     };
-    Ok(metadata)
+    Ok((id, metadata))
 }
 
 mod api {

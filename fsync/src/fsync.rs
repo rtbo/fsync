@@ -6,24 +6,20 @@ use crate::path::{Path, PathBuf};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Metadata {
     Directory {
-        id: String,
         path: PathBuf,
     },
     Regular {
-        id: String,
         path: PathBuf,
         size: u64,
         mtime: DateTime<Utc>,
     },
     Symlink {
-        id: String,
         path: PathBuf,
         target: String,
         size: u64,
         mtime: Option<DateTime<Utc>>,
     },
     Special {
-        id: String,
         path: PathBuf,
     },
 }
@@ -31,17 +27,7 @@ pub enum Metadata {
 impl Metadata {
     pub fn root() -> Self {
         Self::Directory {
-            id: Default::default(),
             path: Default::default(),
-        }
-    }
-
-    pub fn id(&self) -> &str {
-        match self {
-            Self::Directory { id, .. } => id,
-            Self::Regular { id, .. } => id,
-            Self::Symlink { id, .. } => id,
-            Self::Special { id, .. } => id,
         }
     }
 
@@ -52,19 +38,6 @@ impl Metadata {
             Self::Symlink { path, .. } => path,
             Self::Special { path, .. } => path,
         }
-    }
-
-    pub fn path_id(&self) -> PathId<'_> {
-        match self {
-            Self::Directory { path, id, .. } => PathId { path, id },
-            Self::Regular { path, id, .. } => PathId { path, id },
-            Self::Symlink { path, id, .. } => PathId { path, id },
-            Self::Special { path, id, .. } => PathId { path, id },
-        }
-    }
-
-    pub fn path_id_buf(&self) -> PathIdBuf {
-        self.path_id().to_path_id_buf()
     }
 
     pub fn path_or_root(&self) -> &str {

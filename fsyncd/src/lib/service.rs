@@ -102,7 +102,7 @@ where
             tree::Entry::Remote(remote) => {
                 let read = self
                     .remote
-                    .read_file(remote.path_id())
+                    .read_file(remote.path().to_owned())
                     .await
                     .map_err(|err| err.to_string())?;
                 let local = self
