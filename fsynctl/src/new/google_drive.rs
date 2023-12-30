@@ -1,13 +1,43 @@
 use std::str;
 
 use camino::Utf8PathBuf;
-use serde::{Deserialize, Serialize};
+use fsync::{cipher, loc::inst, oauth2};
+use inquire::{Editor, Select, Text};
 
-use crate::{cipher, oauth2};
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Provider {
-    GoogleDrive,
+pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
+    let options = &[
+        "Use built-in application secret",
+        "Provide path to client_secret.json",
+        "Paste content of client_secret.json",
+        "Enter Google Drive application credentials",
+    ];
+    let ans = Select::new(
+        "Google Drive applidation secret is required",
+        options.to_vec(),
+    )
+    .prompt()?;
+    let ind = options.iter().position(|e| *e == ans).unwrap();
+    let opts = match ind {
+        0 => AppSecretOpts::Fsync,
+        1 => AppSecretOpts::JsonPath(
+            Text::new("Enter path to client_scret.json")
+                .prompt()?
+                .into(),
+        ),
+        2 => {
+            AppSecretOpts::JsonContent(Editor::new("Enter content of client_secret.json").prompt()?)
+        }
+        3 => {
+            let client_id = Text::new("Client Id").prompt()?;
+            let client_secret = Text::new("Client Secret").prompt()?;
+            AppSecretOpts::Credentials {
+                client_id,
+                client_secret,
+            }
+        }
+        _ => panic!("Did not recognize answer: {ans}"),
+    };
+    Ok(super::ProviderOpts::GoogleDrive(opts))
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +72,7 @@ fn test_get_appsecret() -> anyhow::Result<()> {
 }
 
 impl AppSecretOpts {
-    pub fn get(self) -> anyhow::Result<oauth2::ApplicationSecret> {
+    pub fn get(&self) -> anyhow::Result<oauth2::ApplicationSecret> {
         match self {
             AppSecretOpts::Fsync => {
                 const CIPHERED_SECRET: &str = concat!(
@@ -59,19 +89,19 @@ impl AppSecretOpts {
                 Ok(serde_json::from_str(&secret_json)?)
             }
             AppSecretOpts::JsonPath(path) => {
-                let secret_json = std::fs::read(path)?;
+                let secret_json = std::fs::read(&path)?;
                 let secret_json = str::from_utf8(&secret_json)?;
-                Ok(yup_oauth2::parse_application_secret(secret_json)?)
+                Ok(oauth2::parse_application_secret(secret_json)?)
             }
             AppSecretOpts::JsonContent(secret_json) => {
-                Ok(yup_oauth2::parse_application_secret(secret_json)?)
+                Ok(oauth2::parse_application_secret(&secret_json)?)
             }
             AppSecretOpts::Credentials {
                 client_id,
                 client_secret,
             } => Ok(oauth2::ApplicationSecret {
-                client_id,
-                client_secret,
+                client_id: client_id.clone(),
+                client_secret: client_secret.clone(),
                 token_uri: "https://oauth2.googleapis.com/token".into(),
                 auth_uri: "https://accounts.google.com/o/oauth2/auth".into(),
                 redirect_uris: vec!["http://localhost".into()],
@@ -83,5 +113,10 @@ impl AppSecretOpts {
                 client_x509_cert_url: None,
             }),
         }
+    }
+
+    pub async fn create_config(&self, instance_name: &str) -> anyhow::Result<()> {
+        let app_secret = self.get()?;
+        oauth2::save_secret(&inst::oauth_secret_file(instance_name)?, &app_secret).await
     }
 }

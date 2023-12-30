@@ -1,32 +1,35 @@
 #![allow(async_fn_in_trait)]
 #![feature(async_closure)]
 
-use anyhow::Context;
-use camino::Utf8Path;
+use std::{fmt, str};
+
 use serde::{Deserialize, Serialize};
 
 pub mod cipher;
 pub mod config;
-pub mod http;
 pub mod loc;
 pub mod oauth2;
-pub mod provider;
 
 mod fsync;
+pub use crate::config::Config;
 pub use crate::fsync::*;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Config {
-    pub local_dir: String,
-    pub provider: provider::Provider,
+pub enum Provider {
+    GoogleDrive,
 }
 
-impl Config {
-    pub async fn load_from_file(path: &Utf8Path) -> anyhow::Result<Self> {
-        let config_json = tokio::fs::read(&path)
-            .await
-            .with_context(|| format!("Failed to read config from {path}"))?;
-        let config_json = std::str::from_utf8(&config_json)?;
-        Ok(serde_json::from_str(config_json)?)
+impl fmt::Display for Provider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Provider::GoogleDrive => f.write_str("Google Drive"),
+        }
     }
+}
+
+pub mod http {
+    use hyper::client::HttpConnector;
+    use hyper_rustls::HttpsConnector;
+
+    pub type Connector = HttpsConnector<HttpConnector>;
 }
