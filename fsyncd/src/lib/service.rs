@@ -1,8 +1,7 @@
 use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Arc;
 
-use camino::Utf8PathBuf;
-use fsync::{self, loc::inst, tree, Fsync};
+use fsync::{self, loc::inst, path::PathBuf, tree, Fsync};
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};
@@ -88,11 +87,11 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    async fn entry(self, _: Context, path: Option<Utf8PathBuf>) -> Option<tree::Node> {
+    async fn entry(self, _: Context, path: Option<PathBuf>) -> Option<tree::Node> {
         self.tree.entry(path.as_deref())
     }
 
-    async fn copy_remote_to_local(self, _: Context, path: Utf8PathBuf) -> Result<(), String> {
+    async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> Result<(), String> {
         let entry = self.tree.entry(Some(&path));
         if entry.is_none() {
             return Err(format!("no such entry in remote drive: {path}"));

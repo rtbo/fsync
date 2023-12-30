@@ -11,8 +11,15 @@ pub mod loc;
 pub mod oauth2;
 
 mod fsync;
+
 pub use crate::config::Config;
 pub use crate::fsync::*;
+
+pub mod path {
+    pub use camino::Utf8Path as Path;
+    pub use camino::Utf8PathBuf as PathBuf;
+    pub use camino::Utf8Component as Component;
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Provider {

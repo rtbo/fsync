@@ -3,8 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use camino::Utf8PathBuf;
-use fsync::{tree, FsyncClient};
+use fsync::{path::PathBuf, tree, FsyncClient};
 use futures::future::{self, BoxFuture};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
@@ -17,7 +16,7 @@ pub struct Args {
     instance_name: Option<String>,
 
     /// Path to the entry (root if not specified)
-    path: Option<Utf8PathBuf>,
+    path: Option<PathBuf>,
 }
 
 pub async fn main(args: Args) -> anyhow::Result<()> {

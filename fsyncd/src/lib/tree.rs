@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 
-use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
-use fsync::tree;
+use fsync::{
+    path::{Path, PathBuf},
+    tree,
+};
 use futures::{
     future::{self, BoxFuture},
     StreamExt, TryStreamExt,
@@ -13,7 +15,7 @@ use crate::storage;
 
 #[derive(Debug)]
 pub struct DiffTree {
-    nodes: Arc<DashMap<Utf8PathBuf, tree::Node>>,
+    nodes: Arc<DashMap<PathBuf, tree::Node>>,
 }
 
 impl DiffTree {
@@ -34,14 +36,14 @@ impl DiffTree {
         Ok(Self { nodes })
     }
 
-    pub fn entry(&self, path: Option<&Utf8Path>) -> Option<tree::Node> {
-        let key = path.unwrap_or(Utf8Path::new(""));
+    pub fn entry(&self, path: Option<&Path>) -> Option<tree::Node> {
+        let key = path.unwrap_or(Path::new(""));
         self.nodes.get(key).map(|node| node.clone())
     }
 
     pub fn add_local(
         &self,
-        path: &Utf8Path,
+        path: &Path,
         local: fsync::Metadata,
     ) -> std::result::Result<(), fsync::Metadata> {
         let node = self.nodes.get_mut(path);
@@ -55,7 +57,7 @@ impl DiffTree {
 
     pub fn add_remote(
         &self,
-        path: &Utf8Path,
+        path: &Path,
         remote: fsync::Metadata,
     ) -> std::result::Result<(), fsync::Metadata> {
         let node = self.nodes.get_mut(path);
@@ -68,16 +70,16 @@ impl DiffTree {
     }
 
     pub fn print_out(&self) {
-        let root = self.nodes.get(Utf8Path::new(""));
+        let root = self.nodes.get(Path::new(""));
         if let Some(root) = root {
             for child_name in root.children() {
-                let path = Utf8Path::new(child_name);
+                let path = Path::new(child_name);
                 self._print_out(path, 0);
             }
         }
     }
 
-    fn _print_out(&self, path: &Utf8Path, indent: usize) {
+    fn _print_out(&self, path: &Path, indent: usize) {
         let node = self.nodes.get(path).unwrap();
         let marker = match node.entry() {
             tree::Entry::Both { .. } => "B",
@@ -101,7 +103,7 @@ impl DiffTree {
 struct DiffTreeBuild<L, R> {
     local: Arc<L>,
     remote: Arc<R>,
-    nodes: Arc<DashMap<Utf8PathBuf, tree::Node>>,
+    nodes: Arc<DashMap<PathBuf, tree::Node>>,
 }
 
 impl<L, R> DiffTreeBuild<L, R>
@@ -185,7 +187,7 @@ where
                 (path, tree::Entry::Both { local, remote })
             } else {
                 (
-                    Utf8PathBuf::default(),
+                    PathBuf::default(),
                     tree::Entry::Both {
                         local: fsync::Metadata::default(),
                         remote: fsync::Metadata::default(),

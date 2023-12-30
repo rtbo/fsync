@@ -1,8 +1,11 @@
 use std::str;
 
 use async_stream::try_stream;
-use camino::{Utf8Path, Utf8PathBuf};
-use fsync::{http, oauth2, PathId};
+use fsync::{
+    http, oauth2,
+    path::{Path, PathBuf},
+    PathId,
+};
 use futures::Stream;
 use tokio::io;
 
@@ -104,11 +107,11 @@ impl super::Storage for GoogleDrive {}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
-fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> anyhow::Result<fsync::Metadata> {
+fn map_file(base_dir: Option<&Path>, f: api::File) -> anyhow::Result<fsync::Metadata> {
     let id = f.id.unwrap_or_default();
     let path = match base_dir {
-        Some(di) => Utf8Path::new(di).join(f.name.as_deref().unwrap()),
-        None => Utf8PathBuf::from(f.name.as_deref().unwrap()),
+        Some(di) => Path::new(di).join(f.name.as_deref().unwrap()),
+        None => PathBuf::from(f.name.as_deref().unwrap()),
     };
     let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
         fsync::Metadata::Directory { id, path }

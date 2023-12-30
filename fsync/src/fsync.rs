@@ -1,29 +1,30 @@
-use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+
+use crate::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Metadata {
     Directory {
         id: String,
-        path: Utf8PathBuf,
+        path: PathBuf,
     },
     Regular {
         id: String,
-        path: Utf8PathBuf,
+        path: PathBuf,
         size: u64,
         mtime: DateTime<Utc>,
     },
     Symlink {
         id: String,
-        path: Utf8PathBuf,
+        path: PathBuf,
         target: String,
         size: u64,
         mtime: Option<DateTime<Utc>>,
     },
     Special {
         id: String,
-        path: Utf8PathBuf,
+        path: PathBuf,
     },
 }
 
@@ -44,7 +45,7 @@ impl Metadata {
         }
     }
 
-    pub fn path(&self) -> &Utf8Path {
+    pub fn path(&self) -> &Path {
         match self {
             Self::Directory { path, .. } => path,
             Self::Regular { path, .. } => path,
@@ -127,7 +128,7 @@ impl Default for Metadata {
 #[derive(Debug, Copy, Clone)]
 pub struct PathId<'a> {
     pub id: &'a str,
-    pub path: &'a Utf8Path,
+    pub path: &'a Path,
 }
 
 impl<'a> PathId<'a> {
@@ -142,7 +143,7 @@ impl<'a> PathId<'a> {
 #[derive(Debug, Clone)]
 pub struct PathIdBuf {
     pub id: String,
-    pub path: Utf8PathBuf,
+    pub path: PathBuf,
 }
 
 impl PathIdBuf {
@@ -161,8 +162,10 @@ impl<'a> From<PathId<'a>> for PathIdBuf {
 }
 
 pub mod tree {
-    use camino::Utf8Path;
     use serde::{Deserialize, Serialize};
+
+    use crate::path::Path;
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Entry {
         Local(super::Metadata),
@@ -210,7 +213,7 @@ pub mod tree {
             &self.children
         }
 
-        pub fn path(&self) -> &Utf8Path {
+        pub fn path(&self) -> &Path {
             match &self.entry {
                 Entry::Both { local, remote } => {
                     debug_assert_eq!(local.path(), remote.path());
@@ -251,6 +254,6 @@ pub mod tree {
 
 #[tarpc::service]
 pub trait Fsync {
-    async fn entry(path: Option<Utf8PathBuf>) -> Option<tree::Node>;
-    async fn copy_remote_to_local(path: Utf8PathBuf) -> Result<(), String>;
+    async fn entry(path: Option<PathBuf>) -> Option<tree::Node>;
+    async fn copy_remote_to_local(path: PathBuf) -> Result<(), String>;
 }

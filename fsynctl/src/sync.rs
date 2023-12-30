@@ -6,8 +6,10 @@ use std::{
 };
 
 use byte_unit::AdjustedByte;
-use camino::{Utf8Path, Utf8PathBuf};
-use fsync::{tree, FsyncClient};
+use fsync::{
+    path::{Path, PathBuf},
+    tree, FsyncClient,
+};
 use futures::future::BoxFuture;
 use inquire::Select;
 use tarpc::{client, context, tokio_serde::formats::Bincode};
@@ -31,7 +33,7 @@ pub struct Args {
     dry_run: bool,
 
     /// Path of the entry to sync (root if not specified)
-    path: Option<Utf8PathBuf>,
+    path: Option<PathBuf>,
 }
 
 pub async fn main(args: Args) -> anyhow::Result<()> {
@@ -496,7 +498,7 @@ impl SyncCommand {
         }
     }
 
-    async fn special_file(&self, path: &Utf8Path) -> anyhow::Result<()> {
+    async fn special_file(&self, path: &Path) -> anyhow::Result<()> {
         let message = format!("{path}: Unsupported special file (block, socket...).",);
         let options = vec!["Interrupt", "Ignore"];
         let ans = tokio::task::spawn_blocking(move || Select::new(&message, options).prompt());

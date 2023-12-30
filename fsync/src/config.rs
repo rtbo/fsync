@@ -1,7 +1,8 @@
 use anyhow::Context;
-use camino::{Utf8Path, Utf8PathBuf};
 use glob::{MatchOptions, Pattern, PatternError};
 use serde::{Deserialize, Serialize};
+
+use crate::path::{Path, PathBuf};
 
 #[derive(Default)]
 pub struct PatternList(Vec<Pattern>, MatchOptions);
@@ -16,7 +17,7 @@ impl PatternList {
         Ok(PatternList(patterns?, opts))
     }
 
-    pub fn matches_with<P: AsRef<Utf8Path>>(&self, path: P) -> bool {
+    pub fn matches_with<P: AsRef<Path>>(&self, path: P) -> bool {
         self.0
             .iter()
             .any(|p| p.matches_with(path.as_ref().as_str(), self.1))
@@ -25,12 +26,12 @@ impl PatternList {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
-    pub local_dir: Utf8PathBuf,
+    pub local_dir: PathBuf,
     pub provider: crate::Provider,
 }
 
 impl Config {
-    pub async fn load_from_file(path: &Utf8Path) -> anyhow::Result<Self> {
+    pub async fn load_from_file(path: &Path) -> anyhow::Result<Self> {
         let config_json = tokio::fs::read(&path)
             .await
             .with_context(|| format!("Failed to read config from {path}"))?;

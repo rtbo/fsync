@@ -1,7 +1,6 @@
 use std::net::{IpAddr, Ipv6Addr};
 
-use camino::Utf8PathBuf;
-use fsync::{tree, FsyncClient};
+use fsync::{path::PathBuf, tree, FsyncClient};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
 use crate::utils;
@@ -13,7 +12,7 @@ pub struct Args {
     instance_name: Option<String>,
 
     /// Path to the entry
-    path: Option<Utf8PathBuf>,
+    path: Option<PathBuf>,
 }
 
 pub async fn main(args: Args) -> anyhow::Result<()> {

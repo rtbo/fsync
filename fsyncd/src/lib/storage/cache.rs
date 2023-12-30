@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use async_stream::try_stream;
 use bincode::Options;
-use camino::Utf8Path;
 use dashmap::DashMap;
-use fsync::{self, PathId, PathIdBuf};
+use fsync::{path::Path, PathId, PathIdBuf};
 use futures::{future::BoxFuture, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::{io, task::JoinSet};
@@ -34,7 +33,7 @@ where
         }
     }
 
-    pub async fn load_from_disk(&mut self, path: &Utf8Path) -> anyhow::Result<()> {
+    pub async fn load_from_disk(&mut self, path: &Path) -> anyhow::Result<()> {
         use std::fs;
         use std::io::BufReader;
 
@@ -53,7 +52,7 @@ where
         Ok(())
     }
 
-    pub async fn save_to_disc(&self, path: &Utf8Path) -> anyhow::Result<()> {
+    pub async fn save_to_disc(&self, path: &Path) -> anyhow::Result<()> {
         use std::fs;
         use std::io::BufWriter;
 

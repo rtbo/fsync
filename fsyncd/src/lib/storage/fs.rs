@@ -1,8 +1,10 @@
 use std::fmt;
 
 use async_stream::try_stream;
-use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
-use fsync::PathId;
+use fsync::{
+    path::{self, Path, PathBuf},
+    PathId,
+};
 use futures::Stream;
 use tokio::{
     fs::{self, DirEntry},
@@ -11,7 +13,7 @@ use tokio::{
 
 #[derive(Debug)]
 pub struct OutOfTreeSymlink {
-    path: Utf8PathBuf,
+    path: PathBuf,
     target: String,
 }
 
@@ -25,8 +27,8 @@ impl std::error::Error for OutOfTreeSymlink {}
 
 fn check_symlink<P1, P2>(link: P1, target: P2) -> Result<(), OutOfTreeSymlink>
 where
-    P1: AsRef<Utf8Path>,
-    P2: AsRef<Utf8Path>,
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
 {
     let link = link.as_ref();
     let target = target.as_ref();
@@ -51,17 +53,17 @@ where
         .chain(target.components())
     {
         match comp {
-            Utf8Component::Prefix(pref) => panic!("unexpected prefix component: {pref:?}"),
-            Utf8Component::RootDir => panic!("unexpected root component in {link:?} -> {target:?}"),
-            Utf8Component::CurDir => (),
-            Utf8Component::ParentDir if num_comps <= 0 => {
+            path::Component::Prefix(pref) => panic!("unexpected prefix component: {pref:?}"),
+            path::Component::RootDir => panic!("unexpected root component in {link:?} -> {target:?}"),
+            path::Component::CurDir => (),
+            path::Component::ParentDir if num_comps <= 0 => {
                 return Err(OutOfTreeSymlink {
                     path: link.to_owned(),
                     target: target.to_string(),
                 });
             }
-            Utf8Component::ParentDir => num_comps -= 1,
-            Utf8Component::Normal(_) => num_comps += 1,
+            path::Component::ParentDir => num_comps -= 1,
+            path::Component::Normal(_) => num_comps += 1,
         }
     }
 
@@ -79,7 +81,7 @@ fn test_check_symlink() {
 
 #[derive(Debug, Clone)]
 pub struct Storage {
-    root: Utf8PathBuf,
+    root: PathBuf,
 }
 
 impl Storage {
@@ -87,7 +89,7 @@ impl Storage {
     /// Panics if [root] is not an absolute path.
     pub fn new<P>(root: P) -> Self
     where
-        P: AsRef<Utf8Path>,
+        P: AsRef<Path>,
     {
         let root = root.as_ref();
 
@@ -98,7 +100,7 @@ impl Storage {
         }
     }
 
-    pub fn root(&self) -> &Utf8Path {
+    pub fn root(&self) -> &Path {
         &self.root
     }
 }
@@ -168,27 +170,27 @@ impl super::CreateFile for Storage {
 impl super::Storage for Storage {}
 
 async fn map_direntry(
-    parent_path: Option<&Utf8Path>,
+    parent_path: Option<&Path>,
     direntry: &DirEntry,
 ) -> anyhow::Result<fsync::Metadata> {
-    let fs_path = Utf8PathBuf::try_from(direntry.path())?;
+    let fs_path = PathBuf::try_from(direntry.path())?;
     let file_name = String::from_utf8(direntry.file_name().into_encoded_bytes())
         .map_err(|err| err.utf8_error())?;
     let path = parent_path
         .map(|p| p.join(&file_name))
-        .unwrap_or_else(|| Utf8PathBuf::from(&file_name));
+        .unwrap_or_else(|| PathBuf::from(&file_name));
     let metadata = direntry.metadata().await?;
     map_metadata(path, &metadata, &fs_path).await
 }
 
 async fn map_metadata(
-    path: Utf8PathBuf,
+    path: PathBuf,
     metadata: &std::fs::Metadata,
-    fs_path: &Utf8Path,
+    fs_path: &Path,
 ) -> anyhow::Result<fsync::Metadata> {
     let metadata = if metadata.is_symlink() {
         let target = tokio::fs::read_link(fs_path).await?;
-        let target = Utf8PathBuf::try_from(target)?;
+        let target = PathBuf::try_from(target)?;
         check_symlink(&path, &target)?;
         fsync::Metadata::Symlink {
             id: path.to_string(),
