@@ -1,10 +1,9 @@
 use clap::Parser;
-use fsync::{oauth2, provider};
-use fsync::{self, loc::inst};
+use fsync::loc::inst;
+use fsync::oauth2;
+use fsyncd_lib::{service, storage};
 use futures::stream::AbortHandle;
 use futures::Future;
-use fsyncd_lib::{storage, service};
-
 
 #[derive(Parser)]
 #[command(name = "fsyncd")]
@@ -37,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     match &config.provider {
-        provider::Provider::GoogleDrive => {
+        fsync::Provider::GoogleDrive => {
             let remote = storage::gdrive::GoogleDrive::new(oauth2_params).await?;
             start_service(cli, local, remote).await
         }

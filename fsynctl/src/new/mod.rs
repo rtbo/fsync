@@ -47,8 +47,6 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
             .map(Utf8PathBuf::from)?
     };
 
-    const GOOGLE_DRIVE_PROVIDER: &str = "Google Drive";
-
     let providers = vec![fsync::Provider::GoogleDrive];
     let provider = tokio::task::spawn_blocking(move || {
         Select::new("Select drive provider", providers).prompt()

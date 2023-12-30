@@ -48,7 +48,7 @@ async fn main() -> process::ExitCode {
 async fn main2(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         Commands::List => list::main(),
-        Commands::New(args) => new::main(args),
+        Commands::New(args) => new::main(args).await,
         Commands::Entry(args) => entry::main(args).await,
         Commands::Tree(args) => tree::main(args).await,
         Commands::Sync(args) => sync::main(args).await,
