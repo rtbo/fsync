@@ -2,7 +2,7 @@
 name = "fsynctl"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 fsync = { path = "../fsync" }

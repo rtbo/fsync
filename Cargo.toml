@@ -6,6 +6,7 @@ resolver = "2"
 version = "0.1.0"
 authors = ["Rémi THEBAULT"]
 description = "A file synchronization service"
+edition = "2021"
 
 [workspace.dependencies]
 anyhow = { version = "1.0.77", features = ["backtrace"] }
