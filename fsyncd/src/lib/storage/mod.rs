@@ -1,5 +1,5 @@
 use fsync::{Metadata, PathId};
-use futures::{Stream, Future};
+use futures::{Future, Stream};
 use tokio::io;
 
 pub mod cache;

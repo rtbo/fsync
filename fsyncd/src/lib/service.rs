@@ -2,7 +2,7 @@ use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
-use fsync::{self, Fsync, tree, loc::inst};
+use fsync::{self, loc::inst, tree, Fsync};
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};
@@ -12,9 +12,8 @@ use tarpc::{
     tokio_serde::formats::Bincode,
 };
 
-
-use crate::tree::DiffTree;
 use crate::storage;
+use crate::tree::DiffTree;
 
 #[derive(Debug, Clone)]
 pub struct Service<L, R> {

@@ -1,4 +1,4 @@
-use camino::{Utf8PathBuf, Utf8Path};
+use camino::{Utf8Path, Utf8PathBuf};
 use fsync::loc::{inst, user};
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Select, Text};
@@ -105,7 +105,11 @@ async fn prompt_provider_opts(provider: fsync::Provider) -> anyhow::Result<Provi
     }
 }
 
-async fn create_config(instance_name: &str, local_dir: &Utf8Path, opts: &ProviderOpts) -> anyhow::Result<()> {
+async fn create_config(
+    instance_name: &str,
+    local_dir: &Utf8Path,
+    opts: &ProviderOpts,
+) -> anyhow::Result<()> {
     let config_dir = inst::config_dir(instance_name)?;
     println!("Creating configuration directory: {config_dir}");
     tokio::fs::create_dir_all(config_dir).await?;

@@ -9,7 +9,7 @@ use yup_oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, Installed
 use crate::http;
 
 pub type Authenticator = yup_oauth2::authenticator::Authenticator<http::Connector>;
-pub use yup_oauth2::{AccessToken, ApplicationSecret, parse_application_secret};
+pub use yup_oauth2::{parse_application_secret, AccessToken, ApplicationSecret};
 
 pub struct Params<'a> {
     pub app_secret: ApplicationSecret,
@@ -28,7 +28,10 @@ pub async fn load_secret(path: &Utf8Path) -> anyhow::Result<ApplicationSecret> {
     Ok(serde_json::from_str(json)?)
 }
 
-pub async fn installed_flow<C>(oauth2_params: Params<'_>, client: C) -> std::io::Result<Authenticator>
+pub async fn installed_flow<C>(
+    oauth2_params: Params<'_>,
+    client: C,
+) -> std::io::Result<Authenticator>
 where
     C: HyperClientBuilder<Connector = http::Connector>,
 {

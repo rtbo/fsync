@@ -484,9 +484,13 @@ impl SyncCommand {
                 Ok(())
             }
 
-            (fsync::Metadata::Directory{ .. }, _) => self.local_dir_remote_file(local, remote).await,
+            (fsync::Metadata::Directory { .. }, _) => {
+                self.local_dir_remote_file(local, remote).await
+            }
 
-            (_, fsync::Metadata::Directory{ .. }) => self.local_file_remote_dir(local, remote).await,
+            (_, fsync::Metadata::Directory { .. }) => {
+                self.local_file_remote_dir(local, remote).await
+            }
 
             (_, _) => self.both_reg_files(local, remote).await,
         }

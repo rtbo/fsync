@@ -5,8 +5,7 @@ pub mod user {
     use camino::Utf8PathBuf;
 
     pub fn home_dir() -> anyhow::Result<Utf8PathBuf> {
-        let dir =
-            dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Can't get HOME directory"))?;
+        let dir = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Can't get HOME directory"))?;
         Ok(Utf8PathBuf::from_path_buf(dir).unwrap())
     }
 
@@ -25,8 +24,7 @@ pub mod user {
     }
 
     pub fn cache_dir() -> anyhow::Result<Utf8PathBuf> {
-        let dir =
-            dirs::cache_dir().ok_or_else(|| anyhow::anyhow!("Can't get cache directory"))?;
+        let dir = dirs::cache_dir().ok_or_else(|| anyhow::anyhow!("Can't get cache directory"))?;
         let dir = Utf8PathBuf::from_path_buf(dir).expect("Non Utf8 path");
         Ok(dir.join("fsync"))
     }

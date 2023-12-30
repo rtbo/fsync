@@ -4,7 +4,7 @@ use std::{
 };
 
 use camino::Utf8PathBuf;
-use fsync::{FsyncClient, tree};
+use fsync::{tree, FsyncClient};
 use futures::future::{self, BoxFuture};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 

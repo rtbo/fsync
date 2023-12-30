@@ -109,7 +109,10 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    fn both(&self, both: Option<(fsync::Metadata, fsync::Metadata)>) -> BoxFuture<'_, anyhow::Result<()>> {
+    fn both(
+        &self,
+        both: Option<(fsync::Metadata, fsync::Metadata)>,
+    ) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let loc_entry = both.as_ref().map(|b| &b.0);
             let loc_children = entry_children_sorted(&*self.local, loc_entry);

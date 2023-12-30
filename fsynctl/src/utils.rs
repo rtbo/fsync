@@ -23,7 +23,9 @@ pub fn single_instance_name() -> anyhow::Result<Option<String>> {
 pub fn instance_port(instance_name: &str) -> anyhow::Result<u16> {
     let pf = inst::runtime_port_file(instance_name)?;
     if !pf.exists() {
-        anyhow::bail!("Could not find {pf}. Are you sure the fsyncd {instance_name} instance is running?");
+        anyhow::bail!(
+            "Could not find {pf}. Are you sure the fsyncd {instance_name} instance is running?"
+        );
     }
     let content = std::fs::read(&pf)?;
     let content = String::from_utf8(content).map_err(|err| err.utf8_error())?;

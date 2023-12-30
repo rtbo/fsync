@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv6Addr};
 
 use camino::Utf8PathBuf;
-use fsync::{FsyncClient, tree};
+use fsync::{tree, FsyncClient};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
 use crate::utils;

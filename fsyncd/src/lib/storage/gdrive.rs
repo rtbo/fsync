@@ -2,8 +2,8 @@ use std::str;
 
 use async_stream::try_stream;
 use camino::{Utf8Path, Utf8PathBuf};
-use fsync::{http, oauth2};
 use fsync::{self, PathId};
+use fsync::{http, oauth2};
 use futures::{Future, Stream};
 use tokio::io;
 
@@ -117,7 +117,7 @@ fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> anyhow::Result<fsync::
         None => Utf8PathBuf::from(f.name.as_deref().unwrap()),
     };
     let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
-        fsync::Metadata::Directory{id, path}
+        fsync::Metadata::Directory { id, path }
     } else {
         let mtime = f.modified_time.ok_or_else(|| {
             anyhow::anyhow!("Expected to receive modifiedTime from Google for {path}")
@@ -126,7 +126,12 @@ fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> anyhow::Result<fsync::
             .size
             .ok_or_else(|| anyhow::anyhow!("Expected to receive size from Google for {path}"))?
             as _;
-        fsync::Metadata::Regular { id, path, size, mtime }
+        fsync::Metadata::Regular {
+            id,
+            path,
+            size,
+            mtime,
+        }
     };
     Ok(metadata)
 }
