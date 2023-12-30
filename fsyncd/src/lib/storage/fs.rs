@@ -1,10 +1,7 @@
 use std::fmt;
 
 use async_stream::try_stream;
-use fsync::{
-    path::{self, Path, PathBuf},
-    PathId,
-};
+use fsync::path::{self, Path, PathBuf};
 use futures::Stream;
 use tokio::{
     fs::{self, DirEntry},
@@ -54,7 +51,9 @@ where
     {
         match comp {
             path::Component::Prefix(pref) => panic!("unexpected prefix component: {pref:?}"),
-            path::Component::RootDir => panic!("unexpected root component in {link:?} -> {target:?}"),
+            path::Component::RootDir => {
+                panic!("unexpected root component in {link:?} -> {target:?}")
+            }
             path::Component::CurDir => (),
             path::Component::ParentDir if num_comps <= 0 => {
                 return Err(OutOfTreeSymlink {
@@ -108,20 +107,19 @@ impl Storage {
 impl super::DirEntries for Storage {
     fn dir_entries(
         &self,
-        parent_path_id: Option<PathId>,
+        parent_path: Option<PathBuf>,
     ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
-        let fs_base = match parent_path_id {
-            Some(dir) => self.root.join(dir.path),
+        let fs_base = match parent_path.as_ref() {
+            Some(dir) => self.root.join(dir),
             None => self.root.clone(),
         };
-        let parent_path = parent_path_id.map(|pid| pid.path);
         try_stream! {
             let mut read_dir = fs::read_dir(&fs_base).await?;
             loop {
                 match read_dir.next_entry().await? {
                     None => break,
                     Some(direntry) => {
-                        yield map_direntry(parent_path, &direntry).await?;
+                        yield map_direntry(parent_path.as_deref(), &direntry).await?;
                     }
                 }
             }
@@ -130,9 +128,9 @@ impl super::DirEntries for Storage {
 }
 
 impl super::ReadFile for Storage {
-    async fn read_file<'a>(&'a self, path_id: PathId<'a>) -> anyhow::Result<impl io::AsyncRead> {
-        debug_assert!(path_id.path.is_relative());
-        let path = self.root.join(path_id.path);
+    async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
+        debug_assert!(path.is_relative());
+        let path = self.root.join(path);
         Ok(tokio::fs::File::open(&path).await?)
     }
 }
@@ -193,7 +191,6 @@ async fn map_metadata(
         let target = PathBuf::try_from(target)?;
         check_symlink(&path, &target)?;
         fsync::Metadata::Symlink {
-            id: path.to_string(),
             path,
             target: target.into_string(),
             size: metadata.len(),
@@ -201,21 +198,14 @@ async fn map_metadata(
         }
     } else if metadata.is_file() {
         fsync::Metadata::Regular {
-            id: path.to_string(),
             path,
             size: metadata.len(),
             mtime: metadata.modified().map(|mt| mt.into())?,
         }
     } else if metadata.is_dir() {
-        fsync::Metadata::Directory {
-            id: path.to_string(),
-            path,
-        }
+        fsync::Metadata::Directory { path }
     } else {
-        fsync::Metadata::Special {
-            id: path.to_string(),
-            path,
-        }
+        fsync::Metadata::Special { path }
     };
 
     Ok(metadata)

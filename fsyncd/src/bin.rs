@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
 async fn start_service<L, R>(cli: Cli, local: L, remote: R) -> anyhow::Result<()>
 where
     L: storage::Storage,
-    R: storage::Storage,
+    R: storage::id::Storage,
 {
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
     let mut remote = storage::cache::CacheStorage::new(remote);

@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Arc;
 
-use fsync::{self, loc::inst, path::PathBuf, tree, Fsync};
+use fsync::{self, loc::inst, path::PathBuf, Fsync};
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};
@@ -12,7 +12,7 @@ use tarpc::{
 };
 
 use crate::storage;
-use crate::tree::DiffTree;
+use crate::tree::{self, DiffTree};
 
 #[derive(Debug, Clone)]
 pub struct Service<L, R> {
@@ -87,8 +87,8 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    async fn entry(self, _: Context, path: Option<PathBuf>) -> Option<tree::Node> {
-        self.tree.entry(path.as_deref())
+    async fn entry(self, _: Context, path: Option<PathBuf>) -> Option<fsync::tree::Node> {
+        self.tree.entry(path.as_deref()).map(Into::into)
     }
 
     async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> Result<(), String> {
@@ -102,7 +102,7 @@ where
             tree::Entry::Remote(remote) => {
                 let read = self
                     .remote
-                    .read_file(remote.path_id())
+                    .read_file(remote.path().to_owned())
                     .await
                     .map_err(|err| err.to_string())?;
                 let local = self

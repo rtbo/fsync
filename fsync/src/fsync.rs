@@ -6,24 +6,20 @@ use crate::path::{Path, PathBuf};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Metadata {
     Directory {
-        id: String,
         path: PathBuf,
     },
     Regular {
-        id: String,
         path: PathBuf,
         size: u64,
         mtime: DateTime<Utc>,
     },
     Symlink {
-        id: String,
         path: PathBuf,
         target: String,
         size: u64,
         mtime: Option<DateTime<Utc>>,
     },
     Special {
-        id: String,
         path: PathBuf,
     },
 }
@@ -31,17 +27,7 @@ pub enum Metadata {
 impl Metadata {
     pub fn root() -> Self {
         Self::Directory {
-            id: Default::default(),
             path: Default::default(),
-        }
-    }
-
-    pub fn id(&self) -> &str {
-        match self {
-            Self::Directory { id, .. } => id,
-            Self::Regular { id, .. } => id,
-            Self::Symlink { id, .. } => id,
-            Self::Special { id, .. } => id,
         }
     }
 
@@ -52,19 +38,6 @@ impl Metadata {
             Self::Symlink { path, .. } => path,
             Self::Special { path, .. } => path,
         }
-    }
-
-    pub fn path_id(&self) -> PathId<'_> {
-        match self {
-            Self::Directory { path, id, .. } => PathId { path, id },
-            Self::Regular { path, id, .. } => PathId { path, id },
-            Self::Symlink { path, id, .. } => PathId { path, id },
-            Self::Special { path, id, .. } => PathId { path, id },
-        }
-    }
-
-    pub fn path_id_buf(&self) -> PathIdBuf {
-        self.path_id().to_path_id_buf()
     }
 
     pub fn path_or_root(&self) -> &str {
@@ -125,42 +98,6 @@ impl Default for Metadata {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct PathId<'a> {
-    pub id: &'a str,
-    pub path: &'a Path,
-}
-
-impl<'a> PathId<'a> {
-    pub fn to_path_id_buf(&self) -> PathIdBuf {
-        PathIdBuf {
-            id: self.id.into(),
-            path: self.path.into(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PathIdBuf {
-    pub id: String,
-    pub path: PathBuf,
-}
-
-impl PathIdBuf {
-    pub fn as_path_id(&self) -> PathId<'_> {
-        PathId {
-            id: &self.id,
-            path: &self.path,
-        }
-    }
-}
-
-impl<'a> From<PathId<'a>> for PathIdBuf {
-    fn from(pid: PathId<'a>) -> Self {
-        pid.to_path_id_buf()
-    }
-}
-
 pub mod tree {
     use serde::{Deserialize, Serialize};
 
@@ -174,24 +111,6 @@ pub mod tree {
             local: super::Metadata,
             remote: super::Metadata,
         },
-    }
-
-    impl Entry {
-        fn with_remote(self, remote: super::Metadata) -> Self {
-            match self {
-                Entry::Local(local) => Entry::Both { local, remote },
-                Entry::Remote(..) => Entry::Remote(remote),
-                Entry::Both { local, .. } => Entry::Both { local, remote },
-            }
-        }
-
-        fn with_local(self, local: super::Metadata) -> Self {
-            match self {
-                Entry::Remote(remote) => Entry::Both { local, remote },
-                Entry::Local(..) => Entry::Local(local),
-                Entry::Both { remote, .. } => Entry::Both { local, remote },
-            }
-        }
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -234,20 +153,6 @@ pub mod tree {
 
         pub fn is_both(&self) -> bool {
             matches!(self.entry, Entry::Both { .. })
-        }
-
-        pub fn add_local(&mut self, local: super::Metadata) {
-            use std::mem;
-            let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-            let valid = mem::replace(&mut self.entry, invalid);
-            self.entry = valid.with_local(local);
-        }
-
-        pub fn add_remote(&mut self, remote: super::Metadata) {
-            use std::mem;
-            let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-            let valid = mem::replace(&mut self.entry, invalid);
-            self.entry = valid.with_remote(remote);
         }
     }
 }
