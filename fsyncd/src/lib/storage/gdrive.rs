@@ -1,9 +1,11 @@
 use std::str;
 
 use async_stream::try_stream;
-use fsync::{http, oauth2, path::PathBuf, PathIdBuf};
+use fsync::{http, oauth2, path::PathBuf};
 use futures::Stream;
 use tokio::io;
+
+use super::id::IdBuf;
 
 #[derive(Clone)]
 pub struct GoogleDrive {
@@ -37,11 +39,11 @@ impl GoogleDrive {
 impl super::id::DirEntries for GoogleDrive {
     fn dir_entries(
         &self,
-        parent_path_id: Option<PathIdBuf>,
-    ) -> impl Stream<Item = anyhow::Result<(String, fsync::Metadata)>> + Send {
+        parent_path_id: Option<(IdBuf, PathBuf)>,
+    ) -> impl Stream<Item = anyhow::Result<(IdBuf, fsync::Metadata)>> + Send {
         let q = parent_path_id
             .as_ref()
-            .map(|pid| format!("'{}' in parents", pid.id))
+            .map(|pid| format!("'{}' in parents", pid.0))
             .unwrap_or_else(|| "'root' in parents".to_string());
         let mut next_page_token: Option<String> = None;
 
@@ -63,9 +65,9 @@ impl super::id::DirEntries for GoogleDrive {
 }
 
 impl super::id::ReadFile for GoogleDrive {
-    async fn read_file(&self, path_id: PathIdBuf) -> anyhow::Result<impl io::AsyncRead> {
+    async fn read_file(&self, id: IdBuf) -> anyhow::Result<impl io::AsyncRead> {
         Ok(self
-            .files_get_media(&path_id.id)
+            .files_get_media(id.as_str())
             .await?
             .expect("Could not find file"))
     }
@@ -76,7 +78,7 @@ impl super::id::CreateFile for GoogleDrive {
         &self,
         _metadata: &fsync::Metadata,
         _data: impl io::AsyncRead,
-    ) -> anyhow::Result<(String, fsync::Metadata)> {
+    ) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
         unimplemented!()
         // debug_assert!(metadata.path().is_relative());
         // let path = self.root.join(metadata.path());
@@ -105,12 +107,12 @@ impl super::id::Storage for GoogleDrive {}
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
 fn map_file(
-    base_dir: Option<PathIdBuf>,
+    parent_path_id: Option<(IdBuf, PathBuf)>,
     f: api::File,
-) -> anyhow::Result<(String, fsync::Metadata)> {
+) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
     let id = f.id.unwrap_or_default();
-    let path = match base_dir {
-        Some(di) => di.path.join(f.name.as_deref().unwrap()),
+    let path = match parent_path_id {
+        Some(di) => di.1.join(f.name.as_deref().unwrap()),
         None => PathBuf::from(f.name.as_deref().unwrap()),
     };
     let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
@@ -134,12 +136,14 @@ mod api {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use tokio::io;
 
+    use crate::storage::id::IdBuf;
+
     use super::utils;
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct File {
-        pub id: Option<String>,
+        pub id: Option<IdBuf>,
         pub name: Option<String>,
         pub modified_time: Option<DateTime<Utc>>,
         #[serde(

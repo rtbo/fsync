@@ -98,42 +98,6 @@ impl Default for Metadata {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct PathId<'a> {
-    pub id: &'a str,
-    pub path: &'a Path,
-}
-
-impl<'a> PathId<'a> {
-    pub fn to_path_id_buf(&self) -> PathIdBuf {
-        PathIdBuf {
-            id: self.id.into(),
-            path: self.path.into(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PathIdBuf {
-    pub id: String,
-    pub path: PathBuf,
-}
-
-impl PathIdBuf {
-    pub fn as_path_id(&self) -> PathId<'_> {
-        PathId {
-            id: &self.id,
-            path: &self.path,
-        }
-    }
-}
-
-impl<'a> From<PathId<'a>> for PathIdBuf {
-    fn from(pid: PathId<'a>) -> Self {
-        pid.to_path_id_buf()
-    }
-}
-
 pub mod tree {
     use serde::{Deserialize, Serialize};
 
