@@ -2,20 +2,119 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use fsync::{
-    path::{Path, PathBuf},
-    tree,
-};
+use fsync::path::{Path, PathBuf};
 use futures::{
     future::{self, BoxFuture},
     StreamExt, TryStreamExt,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::storage;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Entry {
+    Local(fsync::Metadata),
+    Remote(fsync::Metadata),
+    Both {
+        local: fsync::Metadata,
+        remote: fsync::Metadata,
+    },
+}
+
+impl Entry {
+    fn with_remote(self, remote: fsync::Metadata) -> Self {
+        match self {
+            Entry::Local(local) => Entry::Both { local, remote },
+            Entry::Remote(..) => Entry::Remote(remote),
+            Entry::Both { local, .. } => Entry::Both { local, remote },
+        }
+    }
+
+    fn with_local(self, local: fsync::Metadata) -> Self {
+        match self {
+            Entry::Remote(remote) => Entry::Both { local, remote },
+            Entry::Local(..) => Entry::Local(local),
+            Entry::Both { remote, .. } => Entry::Both { local, remote },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Node {
+    entry: Entry,
+    children: Vec<String>,
+}
+
+impl Node {
+    pub fn new(entry: Entry, children: Vec<String>) -> Self {
+        Self { entry, children }
+    }
+
+    pub fn entry(&self) -> &Entry {
+        &self.entry
+    }
+
+    pub fn children(&self) -> &[String] {
+        &self.children
+    }
+
+    pub fn path(&self) -> &Path {
+        match &self.entry {
+            Entry::Both { local, remote } => {
+                debug_assert_eq!(local.path(), remote.path());
+                local.path()
+            }
+            Entry::Local(entry) => entry.path(),
+            Entry::Remote(entry) => entry.path(),
+        }
+    }
+
+    pub fn is_local_only(&self) -> bool {
+        matches!(self.entry, Entry::Local(..))
+    }
+
+    pub fn is_remote_only(&self) -> bool {
+        matches!(self.entry, Entry::Remote(..))
+    }
+
+    pub fn is_both(&self) -> bool {
+        matches!(self.entry, Entry::Both { .. })
+    }
+
+    pub fn add_local(&mut self, local: fsync::Metadata) {
+        use std::mem;
+        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+        let valid = mem::replace(&mut self.entry, invalid);
+        self.entry = valid.with_local(local);
+    }
+
+    pub fn add_remote(&mut self, remote: fsync::Metadata) {
+        use std::mem;
+        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+        let valid = mem::replace(&mut self.entry, invalid);
+        self.entry = valid.with_remote(remote);
+    }
+}
+
+impl From<Entry> for fsync::tree::Entry {
+    fn from(value: Entry) -> Self {
+        match value {
+            Entry::Local(metadata) => fsync::tree::Entry::Local(metadata),
+            Entry::Remote(metadata) => fsync::tree::Entry::Remote(metadata),
+            Entry::Both { local, remote } => fsync::tree::Entry::Both { local, remote },
+        }
+    }
+}
+
+impl From<Node> for fsync::tree::Node {
+    fn from(value: Node) -> Self {
+        fsync::tree::Node::new(value.entry.into(), value.children)
+    }
+}
+
 #[derive(Debug)]
 pub struct DiffTree {
-    nodes: Arc<DashMap<PathBuf, tree::Node>>,
+    nodes: Arc<DashMap<PathBuf, Node>>,
 }
 
 impl DiffTree {
@@ -36,7 +135,7 @@ impl DiffTree {
         Ok(Self { nodes })
     }
 
-    pub fn entry(&self, path: Option<&Path>) -> Option<tree::Node> {
+    pub fn entry(&self, path: Option<&Path>) -> Option<Node> {
         let key = path.unwrap_or(Path::new(""));
         self.nodes.get(key).map(|node| node.clone())
     }
@@ -82,9 +181,9 @@ impl DiffTree {
     fn _print_out(&self, path: &Path, indent: usize) {
         let node = self.nodes.get(path).unwrap();
         let marker = match node.entry() {
-            tree::Entry::Both { .. } => "B",
-            tree::Entry::Local { .. } => "L",
-            tree::Entry::Remote { .. } => "R",
+            Entry::Both { .. } => "B",
+            Entry::Local { .. } => "L",
+            Entry::Remote { .. } => "R",
         };
 
         println!(
@@ -103,7 +202,7 @@ impl DiffTree {
 struct DiffTreeBuild<L, R> {
     local: Arc<L>,
     remote: Arc<R>,
-    nodes: Arc<DashMap<PathBuf, tree::Node>>,
+    nodes: Arc<DashMap<PathBuf, Node>>,
 }
 
 impl<L, R> DiffTreeBuild<L, R>
@@ -184,18 +283,18 @@ where
             let (path, entry) = if let Some((local, remote)) = both {
                 assert_eq!(local.path(), remote.path());
                 let path = local.path().to_owned();
-                (path, tree::Entry::Both { local, remote })
+                (path, Entry::Both { local, remote })
             } else {
                 (
                     PathBuf::default(),
-                    tree::Entry::Both {
+                    Entry::Both {
                         local: fsync::Metadata::default(),
                         remote: fsync::Metadata::default(),
                     },
                 )
             };
 
-            let node = tree::Node::new(entry, children);
+            let node = Node::new(entry, children);
             self.nodes.insert(path, node);
 
             Ok(())
@@ -220,8 +319,8 @@ where
             }
 
             let path = entry.path().to_owned();
-            let entry = tree::Entry::Local(entry);
-            let node = tree::Node::new(entry, child_names);
+            let entry = Entry::Local(entry);
+            let node = Node::new(entry, child_names);
             self.nodes.insert(path, node);
             Ok(())
         })
@@ -245,8 +344,8 @@ where
             }
 
             let path = entry.path().to_owned();
-            let entry = tree::Entry::Remote(entry);
-            let node = tree::Node::new(entry, child_names);
+            let entry = Entry::Remote(entry);
+            let node = Node::new(entry, child_names);
             self.nodes.insert(path, node);
             Ok(())
         })

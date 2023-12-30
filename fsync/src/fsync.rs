@@ -176,24 +176,6 @@ pub mod tree {
         },
     }
 
-    impl Entry {
-        fn with_remote(self, remote: super::Metadata) -> Self {
-            match self {
-                Entry::Local(local) => Entry::Both { local, remote },
-                Entry::Remote(..) => Entry::Remote(remote),
-                Entry::Both { local, .. } => Entry::Both { local, remote },
-            }
-        }
-
-        fn with_local(self, local: super::Metadata) -> Self {
-            match self {
-                Entry::Remote(remote) => Entry::Both { local, remote },
-                Entry::Local(..) => Entry::Local(local),
-                Entry::Both { remote, .. } => Entry::Both { local, remote },
-            }
-        }
-    }
-
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Node {
         entry: Entry,
@@ -234,20 +216,6 @@ pub mod tree {
 
         pub fn is_both(&self) -> bool {
             matches!(self.entry, Entry::Both { .. })
-        }
-
-        pub fn add_local(&mut self, local: super::Metadata) {
-            use std::mem;
-            let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-            let valid = mem::replace(&mut self.entry, invalid);
-            self.entry = valid.with_local(local);
-        }
-
-        pub fn add_remote(&mut self, remote: super::Metadata) {
-            use std::mem;
-            let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-            let valid = mem::replace(&mut self.entry, invalid);
-            self.entry = valid.with_remote(remote);
         }
     }
 }
