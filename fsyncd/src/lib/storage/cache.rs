@@ -5,7 +5,7 @@ use bincode::Options;
 use camino::Utf8Path;
 use dashmap::DashMap;
 use fsync::{self, PathId, PathIdBuf};
-use futures::{future::BoxFuture, Future, Stream};
+use futures::{future::BoxFuture, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::{io, task::JoinSet};
 use tokio_stream::StreamExt;
@@ -115,11 +115,8 @@ impl<S> super::ReadFile for CacheStorage<S>
 where
     S: super::ReadFile + Sync + Send,
 {
-    fn read_file<'a>(
-        &'a self,
-        path_id: PathId<'a>,
-    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead>> + Send + 'a {
-        async move { self.storage.read_file(path_id).await }
+    async fn read_file<'a>(&'a self, path_id: PathId<'a>) -> anyhow::Result<impl io::AsyncRead> {
+        self.storage.read_file(path_id).await
     }
 }
 
@@ -127,12 +124,12 @@ impl<S> super::CreateFile for CacheStorage<S>
 where
     S: super::CreateFile + Send + Sync,
 {
-    fn create_file(
+    async fn create_file(
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
-        async move { self.storage.create_file(metadata, data).await }
+    ) -> anyhow::Result<fsync::Metadata> {
+        self.storage.create_file(metadata, data).await
     }
 }
 

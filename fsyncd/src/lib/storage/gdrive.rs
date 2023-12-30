@@ -2,9 +2,8 @@ use std::str;
 
 use async_stream::try_stream;
 use camino::{Utf8Path, Utf8PathBuf};
-use fsync::{self, PathId};
-use fsync::{http, oauth2};
-use futures::{Future, Stream};
+use fsync::{http, oauth2, PathId};
+use futures::Stream;
 use tokio::io;
 
 #[derive(Clone)]
@@ -64,26 +63,21 @@ impl super::DirEntries for GoogleDrive {
 }
 
 impl super::ReadFile for GoogleDrive {
-    fn read_file<'a>(
-        &'a self,
-        path_id: PathId<'a>,
-    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead>> + Send + 'a {
-        async {
-            Ok(self
-                .files_get_media(path_id.id)
-                .await?
-                .expect("Could not find file"))
-        }
+    async fn read_file<'a>(&'a self, path_id: PathId<'a>) -> anyhow::Result<impl io::AsyncRead> {
+        Ok(self
+            .files_get_media(path_id.id)
+            .await?
+            .expect("Could not find file"))
     }
 }
 
 impl super::CreateFile for GoogleDrive {
-    fn create_file(
+    async fn create_file(
         &self,
         _metadata: &fsync::Metadata,
         _data: impl io::AsyncRead,
-    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
-        async { unimplemented!() }
+    ) -> anyhow::Result<fsync::Metadata> {
+        unimplemented!()
         // debug_assert!(metadata.path().is_relative());
         // let path = self.root.join(metadata.path());
         // if path.is_dir() {
@@ -337,7 +331,7 @@ mod utils {
             V: AsRef<str>,
         {
             let token = self.fetch_token(scopes).await?;
-            let url = url_with_query(&self.base_url, path, query_params);
+            let url = url_with_query(self.base_url, path, query_params);
 
             let req = Request::builder()
                 .uri(url.as_str())

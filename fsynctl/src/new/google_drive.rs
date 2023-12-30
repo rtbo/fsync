@@ -89,12 +89,12 @@ impl AppSecretOpts {
                 Ok(serde_json::from_str(&secret_json)?)
             }
             AppSecretOpts::JsonPath(path) => {
-                let secret_json = std::fs::read(&path)?;
+                let secret_json = std::fs::read(path)?;
                 let secret_json = str::from_utf8(&secret_json)?;
                 Ok(oauth2::parse_application_secret(secret_json)?)
             }
             AppSecretOpts::JsonContent(secret_json) => {
-                Ok(oauth2::parse_application_secret(&secret_json)?)
+                Ok(oauth2::parse_application_secret(secret_json)?)
             }
             AppSecretOpts::Credentials {
                 client_id,

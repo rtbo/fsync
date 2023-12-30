@@ -50,11 +50,8 @@ where
 {
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
     let mut remote = storage::cache::CacheStorage::new(remote);
-    match remote.load_from_disk(&remote_cache_path).await {
-        Err(_) => {
-            remote.populate_from_entries().await?;
-        }
-        Ok(()) => (),
+    if remote.load_from_disk(&remote_cache_path).await.is_err() {
+        remote.populate_from_entries().await?;
     }
 
     let service = service::Service::new(local, remote.clone()).await?;

@@ -2,8 +2,8 @@ use std::fmt;
 
 use async_stream::try_stream;
 use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
-use fsync::{self, PathId};
-use futures::{Future, Stream};
+use fsync::PathId;
+use futures::Stream;
 use tokio::{
     fs::{self, DirEntry},
     io,
@@ -128,45 +128,40 @@ impl super::DirEntries for Storage {
 }
 
 impl super::ReadFile for Storage {
-    fn read_file<'a>(
-        &'a self,
-        path_id: PathId<'a>,
-    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead>> + Send + 'a {
+    async fn read_file<'a>(&'a self, path_id: PathId<'a>) -> anyhow::Result<impl io::AsyncRead> {
         debug_assert!(path_id.path.is_relative());
         let path = self.root.join(path_id.path);
-        async move { Ok(tokio::fs::File::open(&path).await?) }
+        Ok(tokio::fs::File::open(&path).await?)
     }
 }
 
 impl super::CreateFile for Storage {
-    fn create_file(
+    async fn create_file(
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
-        async move {
-            debug_assert!(metadata.path().is_relative());
-            let fs_path = self.root.join(metadata.path());
-            if fs_path.is_dir() {
-                anyhow::bail!("{} exists and is a directory", metadata.path());
-            }
-            if fs_path.exists() {
-                anyhow::bail!("{} already exists", metadata.path());
-            }
-            {
-                tokio::pin!(data);
-
-                let mut f = tokio::fs::File::create(&fs_path).await?;
-                tokio::io::copy(&mut data, &mut f).await?;
-
-                if let Some(mtime) = metadata.mtime() {
-                    let f = f.into_std().await;
-                    f.set_modified(mtime.into())?;
-                }
-            }
-            let fs_metadata = tokio::fs::metadata(&fs_path).await?;
-            map_metadata(metadata.path().to_owned(), &fs_metadata, &fs_path).await
+    ) -> anyhow::Result<fsync::Metadata> {
+        debug_assert!(metadata.path().is_relative());
+        let fs_path = self.root.join(metadata.path());
+        if fs_path.is_dir() {
+            anyhow::bail!("{} exists and is a directory", metadata.path());
         }
+        if fs_path.exists() {
+            anyhow::bail!("{} already exists", metadata.path());
+        }
+        {
+            tokio::pin!(data);
+
+            let mut f = tokio::fs::File::create(&fs_path).await?;
+            tokio::io::copy(&mut data, &mut f).await?;
+
+            if let Some(mtime) = metadata.mtime() {
+                let f = f.into_std().await;
+                f.set_modified(mtime.into())?;
+            }
+        }
+        let fs_metadata = tokio::fs::metadata(&fs_path).await?;
+        map_metadata(metadata.path().to_owned(), &fs_metadata, &fs_path).await
     }
 }
 

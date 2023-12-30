@@ -108,7 +108,7 @@ where
                     .map_err(|err| err.to_string())?;
                 let local = self
                     .local
-                    .create_file(&remote, read)
+                    .create_file(remote, read)
                     .await
                     .map_err(|err| err.to_string())?;
                 self.tree.add_local(&path, local).unwrap();
