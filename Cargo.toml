@@ -8,6 +8,7 @@ authors = ["Rémi THEBAULT"]
 description = "A file synchronization service"
 
 [workspace.dependencies]
+anyhow = { version = "1.0.77", features = ["backtrace"] }
 async-stream = "0.3.5"
 async-trait = "0.1.74"
 camino = {version = "1.1.6", features = ["serde1"] }
@@ -17,7 +18,6 @@ futures = "0.3.29"
 serde = "1.0.193"
 serde_json = "1.0.108"
 tarpc = { version = "0.33.0", features = ["full"] }
-thiserror = "1.0.50"
 tokio = { version = "1.33.0", features = [
     "fs",
     "macros",

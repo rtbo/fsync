@@ -4,15 +4,34 @@ version.workspace = true
 authors.workspace = true
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "fsyncd_lib"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "fsyncd"
+path = "src/bin.rs"
 
 [dependencies]
 fsync = { path = "../fsync" }
 
+anyhow = { workspace = true }
+async-stream = { workspace = true }
 camino = { workspace = true }
+chrono = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tarpc = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
+yup-oauth2 = { workspace = true }
+
+bincode = "1.3.3"
+dashmap = { version = "5.5.3", features = ["serde"] }
+http = "0.2.9"
+hyper = { version = "0.14", features = ["client", "http2", "stream"] }
+hyper-rustls = { version = "0.24", features = ["http2"] }
+tokio-util = { version = "0.7.10", features = ["compat"] }
+url = "2.5.0"

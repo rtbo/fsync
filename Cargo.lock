@@ -104,9 +104,12 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.75"
+version = "1.0.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4668cab20f66d8d020e1fbc0ebe47217433c1b6c8f2040faf858554e394ace6"
+checksum = "c9d19de80eff169429ac1e9f48fffb163916b448a44e8e046186232046d9e1f9"
+dependencies = [
+ "backtrace",
+]
 
 [[package]]
 name = "arrayvec"
@@ -611,6 +614,7 @@ name = "fsync"
 version = "0.1.0"
 dependencies = [
  "aes",
+ "anyhow",
  "async-stream",
  "async-trait",
  "base64 0.21.5",
@@ -630,7 +634,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tarpc",
- "thiserror",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -643,20 +646,33 @@ dependencies = [
 name = "fsyncd"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-stream",
+ "bincode",
  "camino",
+ "chrono",
  "clap",
+ "dashmap",
  "fsync",
  "futures",
+ "http",
+ "hyper",
+ "hyper-rustls",
+ "serde",
  "serde_json",
  "tarpc",
  "tokio",
  "tokio-stream",
+ "tokio-util",
+ "url",
+ "yup-oauth2",
 ]
 
 [[package]]
 name = "fsynctl"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "byte-unit",
  "camino",
  "clap",
@@ -666,7 +682,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tarpc",
- "thiserror",
  "tokio",
  "yup-oauth2",
 ]

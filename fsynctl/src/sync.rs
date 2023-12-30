@@ -7,13 +7,13 @@ use std::{
 
 use byte_unit::AdjustedByte;
 use camino::{Utf8Path, Utf8PathBuf};
-use fsync::{ipc::FsyncClient, tree};
+use fsync::{tree, FsyncClient};
 use futures::future::BoxFuture;
 use inquire::Select;
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 use tokio::sync::RwLock;
 
-use crate::{utils, Error};
+use crate::utils;
 
 #[derive(clap::Args, Debug)]
 pub struct Args {
@@ -34,7 +34,7 @@ pub struct Args {
     path: Option<Utf8PathBuf>,
 }
 
-pub async fn main(args: Args) -> crate::Result<()> {
+pub async fn main(args: Args) -> anyhow::Result<()> {
     let instance_name = match &args.instance_name {
         Some(name) => name.clone(),
         None => {
@@ -42,7 +42,7 @@ pub async fn main(args: Args) -> crate::Result<()> {
             if let Some(name) = name {
                 name
             } else {
-                return Err(Error::Custom("Could not find a single share, please specify --share-name command line argument".into()));
+                anyhow::bail!("Could not find a single share, please specify --share-name command line argument");
             }
         }
     };
@@ -57,10 +57,10 @@ pub async fn main(args: Args) -> crate::Result<()> {
 
     let node = client.entry(context::current(), args.path.clone()).await?;
     if node.is_none() {
-        return Err(Error::Custom(format!(
+        anyhow::bail!(
             "No such entry: {}",
-            args.path.clone().unwrap_or("(root)".into())
-        )));
+            args.path.as_ref().map(|p| p.as_str()).unwrap_or("(root)")
+        );
     }
     let node = node.unwrap();
     let cmd = SyncCommand {
@@ -87,21 +87,21 @@ pub async fn main(args: Args) -> crate::Result<()> {
 #[derive(Debug, Clone)]
 enum Stat {
     Ignored {
-        local: fsync::Entry,
-        remote: fsync::Entry,
+        local: fsync::Metadata,
+        remote: fsync::Metadata,
     },
-    CopyRemoteToLocal(fsync::Entry),
-    CopyLocalToRemote(fsync::Entry),
+    CopyRemoteToLocal(fsync::Metadata),
+    CopyLocalToRemote(fsync::Metadata),
     ReplaceLocalByRemote {
-        local: fsync::Entry,
-        remote: fsync::Entry,
+        local: fsync::Metadata,
+        remote: fsync::Metadata,
     },
     ReplaceRemoteByLocal {
-        local: fsync::Entry,
-        remote: fsync::Entry,
+        local: fsync::Metadata,
+        remote: fsync::Metadata,
     },
-    DeleteLocal(fsync::Entry),
-    GoodToGo(fsync::Entry),
+    DeleteLocal(fsync::Metadata),
+    GoodToGo(fsync::Metadata),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -184,7 +184,7 @@ impl StatReport {
         report
     }
 
-    fn count_local(&mut self, local: &fsync::Entry) {
+    fn count_local(&mut self, local: &fsync::Metadata) {
         if local.is_file() {
             self.local_files += 1;
         }
@@ -193,7 +193,7 @@ impl StatReport {
         }
     }
 
-    fn count_remote(&mut self, remote: &fsync::Entry) {
+    fn count_remote(&mut self, remote: &fsync::Metadata) {
         if remote.is_file() {
             self.remote_files += 1;
         }
@@ -202,7 +202,7 @@ impl StatReport {
         }
     }
 
-    fn add_local(&mut self, entry: &fsync::Entry) {
+    fn add_local(&mut self, entry: &fsync::Metadata) {
         if entry.is_file() {
             self.downloaded_files += 1;
         }
@@ -212,7 +212,7 @@ impl StatReport {
         }
     }
 
-    fn add_remote(&mut self, entry: &fsync::Entry) {
+    fn add_remote(&mut self, entry: &fsync::Metadata) {
         if entry.is_file() {
             self.uploaded_files += 1;
         }
@@ -332,7 +332,7 @@ struct SyncCommand {
 }
 
 impl SyncCommand {
-    fn node<'a>(&'a self, node: &'a tree::Node) -> BoxFuture<'a, crate::Result<()>> {
+    fn node<'a>(&'a self, node: &'a tree::Node) -> BoxFuture<'a, anyhow::Result<()>> {
         Box::pin(async {
             self.entry(node.entry()).await?;
             if self.args.recurse {
@@ -347,7 +347,7 @@ impl SyncCommand {
         })
     }
 
-    async fn entry(&self, entry: &tree::Entry) -> crate::Result<()> {
+    async fn entry(&self, entry: &tree::Entry) -> anyhow::Result<()> {
         match entry {
             tree::Entry::Local(entry) => self.local_to_remote(entry).await,
             tree::Entry::Remote(entry) => self.remote_to_local(entry).await,
@@ -381,7 +381,7 @@ impl SyncCommand {
         options
     }
 
-    async fn local_to_remote(&self, entry: &fsync::Entry) -> crate::Result<()> {
+    async fn local_to_remote(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
         let remember = {
             let rem = self.remember.read().await;
             rem.copy_local_to_remote
@@ -421,7 +421,7 @@ impl SyncCommand {
         }
     }
 
-    async fn remote_to_local(&self, entry: &fsync::Entry) -> crate::Result<()> {
+    async fn remote_to_local(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
         let remember = {
             let rem = self.remember.read().await;
             rem.copy_remote_to_local
@@ -461,16 +461,17 @@ impl SyncCommand {
         }
     }
 
-    async fn both(&self, local: &fsync::Entry, remote: &fsync::Entry) -> crate::Result<()> {
+    async fn both(&self, local: &fsync::Metadata, remote: &fsync::Metadata) -> anyhow::Result<()> {
         assert_eq!(local.path(), remote.path());
-        match (local.typ(), remote.typ()) {
-            (fsync::EntryType::Special, _) | (_, fsync::EntryType::Special) => {
-                self.special_file(local.path()).await
-            }
-            (fsync::EntryType::Symlink { .. }, _) | (_, fsync::EntryType::Symlink { .. }) => {
+        match (local, remote) {
+            (fsync::Metadata::Special { path, .. }, _)
+            | (_, fsync::Metadata::Special { path, .. }) => self.special_file(path).await,
+
+            (fsync::Metadata::Symlink { .. }, _) | (_, fsync::Metadata::Symlink { .. }) => {
                 unimplemented!("sync symlink")
             }
-            (fsync::EntryType::Directory, fsync::EntryType::Directory) => {
+
+            (fsync::Metadata::Directory { .. }, fsync::Metadata::Directory { .. }) => {
                 if !self.args.recurse {
                     println!(
                         concat!(
@@ -482,36 +483,39 @@ impl SyncCommand {
                 }
                 Ok(())
             }
-            (fsync::EntryType::Directory, _) => self.local_dir_remote_file(local, remote).await,
-            (_, fsync::EntryType::Directory) => self.local_file_remote_dir(local, remote).await,
+
+            (fsync::Metadata::Directory{ .. }, _) => self.local_dir_remote_file(local, remote).await,
+
+            (_, fsync::Metadata::Directory{ .. }) => self.local_file_remote_dir(local, remote).await,
+
             (_, _) => self.both_reg_files(local, remote).await,
         }
     }
 
-    async fn special_file(&self, path: &Utf8Path) -> crate::Result<()> {
+    async fn special_file(&self, path: &Utf8Path) -> anyhow::Result<()> {
         let message = format!("{path}: Unsupported special file (block, socket...).",);
         let options = vec!["Interrupt", "Ignore"];
         let ans = tokio::task::spawn_blocking(move || Select::new(&message, options).prompt());
         let ans = ans.await.unwrap()?;
         if ans == "Interrupt" {
-            return Err(Error::Custom("Interrupted".into()));
+            anyhow::bail!("Interrupted");
         }
         Ok(())
     }
 
     async fn local_dir_remote_file(
         &self,
-        _local: &fsync::Entry,
-        _remote: &fsync::Entry,
-    ) -> crate::Result<()> {
+        _local: &fsync::Metadata,
+        _remote: &fsync::Metadata,
+    ) -> anyhow::Result<()> {
         unimplemented!("local dir and remote file")
     }
 
     async fn local_file_remote_dir(
         &self,
-        _local: &fsync::Entry,
-        _remote: &fsync::Entry,
-    ) -> crate::Result<()> {
+        _local: &fsync::Metadata,
+        _remote: &fsync::Metadata,
+    ) -> anyhow::Result<()> {
         unimplemented!("local file and remote dir")
     }
 
@@ -569,9 +573,9 @@ impl SyncCommand {
 
     async fn both_reg_files(
         &self,
-        local: &fsync::Entry,
-        remote: &fsync::Entry,
-    ) -> crate::Result<()> {
+        local: &fsync::Metadata,
+        remote: &fsync::Metadata,
+    ) -> anyhow::Result<()> {
         let loc_mtime = local.mtime().unwrap();
         let loc_size = local.size().unwrap();
         let rem_mtime = remote.mtime().unwrap();
@@ -585,13 +589,12 @@ impl SyncCommand {
         }
 
         if loc_mtime == rem_mtime && loc_size != rem_size {
-            let msg = format!(
+            anyhow::bail!(
                 r#"{} has same modification time but different size.
 Something went wrong somewhere.
 Aborting"#,
                 local.path()
             );
-            return Err(Error::Custom(msg));
         }
 
         let remember = {
@@ -638,9 +641,9 @@ Aborting"#,
     async fn execute_conflict_choice(
         &self,
         choice: ConflictChoice,
-        local: &fsync::Entry,
-        remote: &fsync::Entry,
-    ) -> crate::Result<()> {
+        local: &fsync::Metadata,
+        remote: &fsync::Metadata,
+    ) -> anyhow::Result<()> {
         match choice {
             ConflictChoice::Ignore => self.ignore(local, remote).await,
             ConflictChoice::ReplaceOldestByMostRecent => {
@@ -662,7 +665,11 @@ Aborting"#,
 }
 
 impl SyncCommand {
-    async fn ignore(&self, local: &fsync::Entry, remote: &fsync::Entry) -> crate::Result<()> {
+    async fn ignore(
+        &self,
+        local: &fsync::Metadata,
+        remote: &fsync::Metadata,
+    ) -> anyhow::Result<()> {
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::Ignored {
@@ -674,7 +681,7 @@ impl SyncCommand {
         Ok(())
     }
 
-    async fn copy_remote_to_local(&self, entry: &fsync::Entry) -> crate::Result<()> {
+    async fn copy_remote_to_local(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::CopyRemoteToLocal(entry.clone()));
@@ -684,12 +691,13 @@ impl SyncCommand {
             self.client
                 .copy_remote_to_local(context::current(), entry.path().to_owned())
                 .await?
-                .map_err(|msg| Error::Deamon(msg))?;
+                // TODO: clean errors from Fsync
+                .map_err(|msg| anyhow::anyhow!("Deamon error: {msg}"))?;
         }
         Ok(())
     }
 
-    async fn copy_local_to_remote(&self, entry: &fsync::Entry) -> crate::Result<()> {
+    async fn copy_local_to_remote(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::CopyLocalToRemote(entry.clone()));
@@ -701,16 +709,16 @@ impl SyncCommand {
         Ok(())
     }
 
-    async fn good_to_go(&self, entry: &fsync::Entry) {
+    async fn good_to_go(&self, entry: &fsync::Metadata) {
         let mut stats = self.stats.write().await;
         stats.push(Stat::GoodToGo(entry.clone()));
     }
 
     async fn replace_local_by_remote(
         &self,
-        local: &fsync::Entry,
-        remote: &fsync::Entry,
-    ) -> crate::Result<()> {
+        local: &fsync::Metadata,
+        remote: &fsync::Metadata,
+    ) -> anyhow::Result<()> {
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::ReplaceLocalByRemote {
@@ -727,9 +735,9 @@ impl SyncCommand {
 
     async fn replace_remote_by_local(
         &self,
-        local: &fsync::Entry,
-        remote: &fsync::Entry,
-    ) -> crate::Result<()> {
+        local: &fsync::Metadata,
+        remote: &fsync::Metadata,
+    ) -> anyhow::Result<()> {
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::ReplaceRemoteByLocal {
@@ -744,7 +752,7 @@ impl SyncCommand {
         Ok(())
     }
 
-    async fn delete_local(&self, local: &fsync::Entry) -> crate::Result<()> {
+    async fn delete_local(&self, local: &fsync::Metadata) -> anyhow::Result<()> {
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::DeleteLocal(local.clone()));

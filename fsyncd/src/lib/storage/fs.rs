@@ -1,31 +1,29 @@
-use std::fs::Metadata;
-use std::result;
+use std::fmt;
 
 use async_stream::try_stream;
-use camino::{FromPathBufError, Utf8Component, Utf8Path, Utf8PathBuf};
+use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
+use fsync::{self, PathId};
 use futures::{Future, Stream};
 use tokio::{
     fs::{self, DirEntry},
     io,
 };
 
-use crate::{Entry, EntryType, PathId, Result};
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("name is not Utf8")]
-    NotUtf8Name(#[from] FromPathBufError),
-    #[error("symlink {path:?} -> {target:?} points out of tree")]
-    OutOfTreeSymlink { path: String, target: String },
+#[derive(Debug)]
+pub struct OutOfTreeSymlink {
+    path: Utf8PathBuf,
+    target: String,
 }
 
-impl From<FromPathBufError> for crate::Error {
-    fn from(err: FromPathBufError) -> crate::Error {
-        Error::NotUtf8Name(err).into()
+impl fmt::Display for OutOfTreeSymlink {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Out of tree symlink: {} -> {}", self.path, self.target)
     }
 }
 
-fn check_symlink<P1, P2>(link: P1, target: P2) -> result::Result<(), Error>
+impl std::error::Error for OutOfTreeSymlink {}
+
+fn check_symlink<P1, P2>(link: P1, target: P2) -> Result<(), OutOfTreeSymlink>
 where
     P1: AsRef<Utf8Path>,
     P2: AsRef<Utf8Path>,
@@ -38,8 +36,8 @@ where
         "must be called with link relative to storage root"
     );
     if target.is_absolute() {
-        return Err(Error::OutOfTreeSymlink {
-            path: link.to_string(),
+        return Err(OutOfTreeSymlink {
+            path: link.to_owned(),
             target: target.to_string(),
         });
     }
@@ -57,8 +55,8 @@ where
             Utf8Component::RootDir => panic!("unexpected root component in {link:?} -> {target:?}"),
             Utf8Component::CurDir => (),
             Utf8Component::ParentDir if num_comps <= 0 => {
-                return Err(Error::OutOfTreeSymlink {
-                    path: link.to_string(),
+                return Err(OutOfTreeSymlink {
+                    path: link.to_owned(),
                     target: target.to_string(),
                 });
             }
@@ -105,11 +103,11 @@ impl Storage {
     }
 }
 
-impl crate::DirEntries for Storage {
+impl super::DirEntries for Storage {
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = Result<Entry>> + Send {
+    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
         let fs_base = match parent_path_id {
             Some(dir) => self.root.join(dir.path),
             None => self.root.clone(),
@@ -129,31 +127,31 @@ impl crate::DirEntries for Storage {
     }
 }
 
-impl crate::ReadFile for Storage {
+impl super::ReadFile for Storage {
     fn read_file<'a>(
         &'a self,
         path_id: PathId<'a>,
-    ) -> impl Future<Output = Result<impl io::AsyncRead>> + Send + 'a {
+    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead>> + Send + 'a {
         debug_assert!(path_id.path.is_relative());
         let path = self.root.join(path_id.path);
         async move { Ok(tokio::fs::File::open(&path).await?) }
     }
 }
 
-impl crate::CreateFile for Storage {
+impl super::CreateFile for Storage {
     fn create_file(
         &self,
-        metadata: &Entry,
+        metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = Result<Entry>> + Send {
+    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
         async move {
             debug_assert!(metadata.path().is_relative());
             let fs_path = self.root.join(metadata.path());
             if fs_path.is_dir() {
-                return Err(crate::Error::Custom(format!(
-                    "{} is a directory",
-                    metadata.path()
-                )));
+                anyhow::bail!("{} exists and is a directory", metadata.path());
+            }
+            if fs_path.exists() {
+                anyhow::bail!("{} already exists", metadata.path());
             }
             {
                 tokio::pin!(data);
@@ -167,14 +165,17 @@ impl crate::CreateFile for Storage {
                 }
             }
             let fs_metadata = tokio::fs::metadata(&fs_path).await?;
-            map_metadata(metadata.path(), &fs_metadata, &fs_path).await
+            map_metadata(metadata.path().to_owned(), &fs_metadata, &fs_path).await
         }
     }
 }
 
-impl crate::Storage for Storage {}
+impl super::Storage for Storage {}
 
-async fn map_direntry(parent_path: Option<&Utf8Path>, direntry: &DirEntry) -> Result<Entry> {
+async fn map_direntry(
+    parent_path: Option<&Utf8Path>,
+    direntry: &DirEntry,
+) -> anyhow::Result<fsync::Metadata> {
     let fs_path = Utf8PathBuf::try_from(direntry.path())?;
     let file_name = String::from_utf8(direntry.file_name().into_encoded_bytes())
         .map_err(|err| err.utf8_error())?;
@@ -182,29 +183,43 @@ async fn map_direntry(parent_path: Option<&Utf8Path>, direntry: &DirEntry) -> Re
         .map(|p| p.join(&file_name))
         .unwrap_or_else(|| Utf8PathBuf::from(&file_name));
     let metadata = direntry.metadata().await?;
-    map_metadata(&path, &metadata, &fs_path).await
+    map_metadata(path, &metadata, &fs_path).await
 }
 
-async fn map_metadata(path: &Utf8Path, metadata: &Metadata, fs_path: &Utf8Path) -> Result<Entry> {
-    let typ = if metadata.is_symlink() {
+async fn map_metadata(
+    path: Utf8PathBuf,
+    metadata: &std::fs::Metadata,
+    fs_path: &Utf8Path,
+) -> anyhow::Result<fsync::Metadata> {
+    let metadata = if metadata.is_symlink() {
         let target = tokio::fs::read_link(fs_path).await?;
         let target = Utf8PathBuf::try_from(target)?;
-        check_symlink(path, &target)?;
-        EntryType::Symlink {
+        check_symlink(&path, &target)?;
+        fsync::Metadata::Symlink {
+            id: path.to_string(),
+            path,
             target: target.into_string(),
             size: metadata.len(),
             mtime: metadata.modified().ok().map(|mt| mt.into()),
         }
     } else if metadata.is_file() {
-        EntryType::Regular {
+        fsync::Metadata::Regular {
+            id: path.to_string(),
+            path,
             size: metadata.len(),
             mtime: metadata.modified().map(|mt| mt.into())?,
         }
     } else if metadata.is_dir() {
-        EntryType::Directory
+        fsync::Metadata::Directory {
+            id: path.to_string(),
+            path,
+        }
     } else {
-        EntryType::Special
+        fsync::Metadata::Special {
+            id: path.to_string(),
+            path,
+        }
     };
 
-    Ok(Entry::new(path.to_string(), path.to_path_buf(), typ))
+    Ok(metadata)
 }

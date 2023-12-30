@@ -1,12 +1,10 @@
 use clap::Parser;
-use fsync::cache::CacheStorage;
-use fsync::oauth2;
-use fsync::{self, backend, loc::inst};
+use fsync::{oauth2, provider};
+use fsync::{self, loc::inst};
 use futures::stream::AbortHandle;
 use futures::Future;
-use service::Service;
+use fsyncd_lib::{storage, service};
 
-mod service;
 
 #[derive(Parser)]
 #[command(name = "fsyncd")]
@@ -16,22 +14,20 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() -> fsync::Result<()> {
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let config_file = inst::config_file(&cli.instance)?;
+
     if !&config_file.exists() {
-        return Err(fsync::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("No such config file: {config_file}"),
-        )));
+        anyhow::bail!("No such config file: {config_file}");
     }
     println!("Found config file: {config_file}");
 
     let config = fsync::Config::load_from_file(&config_file).await?;
     println!("Loaded config: {config:?}");
 
-    let local = fsync::backend::fs::Storage::new(&config.local_dir);
+    let local = storage::fs::Storage::new(&config.local_dir);
 
     let app_secret = oauth2::load_secret(&inst::oauth_secret_file(&cli.instance)?).await?;
     let token_cache_path = &inst::token_cache_file(&cli.instance)?;
@@ -41,29 +37,28 @@ async fn main() -> fsync::Result<()> {
     };
 
     match &config.provider {
-        fsync::Provider::GoogleDrive => {
-            let remote = backend::gdrive::GoogleDrive::new(oauth2_params).await?;
+        provider::Provider::GoogleDrive => {
+            let remote = storage::gdrive::GoogleDrive::new(oauth2_params).await?;
             start_service(cli, local, remote).await
         }
     }
 }
 
-async fn start_service<L, R>(cli: Cli, local: L, remote: R) -> fsync::Result<()>
+async fn start_service<L, R>(cli: Cli, local: L, remote: R) -> anyhow::Result<()>
 where
-    L: fsync::Storage,
-    R: fsync::Storage,
+    L: storage::Storage,
+    R: storage::Storage,
 {
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
-    let mut remote = CacheStorage::new(remote);
+    let mut remote = storage::cache::CacheStorage::new(remote);
     match remote.load_from_disk(&remote_cache_path).await {
-        Err(fsync::Error::Io(_)) => {
+        Err(_) => {
             remote.populate_from_entries().await?;
         }
-        Err(err) => Err(err)?,
         Ok(()) => (),
     }
 
-    let service = Service::new(local, remote.clone()).await?;
+    let service = service::Service::new(local, remote.clone()).await?;
 
     let abort_reg = {
         let (abort_handle, abort_reg) = AbortHandle::new_pair();
@@ -82,7 +77,7 @@ where
     service.start(&cli.instance, abort_reg).await
 }
 
-fn handle_shutdown_signals<F, Fut>(shutdown: F) -> fsync::Result<()>
+fn handle_shutdown_signals<F, Fut>(shutdown: F) -> anyhow::Result<()>
 where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: Future<Output = ()> + Send,

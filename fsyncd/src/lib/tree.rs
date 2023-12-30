@@ -3,105 +3,24 @@ use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
+use fsync::tree;
 use futures::{
     future::{self, BoxFuture},
     StreamExt, TryStreamExt,
 };
-use serde::{Deserialize, Serialize};
 
-use crate::{Result, Storage};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Entry {
-    Local(crate::Entry),
-    Remote(crate::Entry),
-    Both {
-        local: crate::Entry,
-        remote: crate::Entry,
-    },
-}
-
-impl Entry {
-    fn with_remote(self, remote: crate::Entry) -> Self {
-        match self {
-            Entry::Local(local) => Entry::Both { local, remote },
-            Entry::Remote(..) => Entry::Remote(remote),
-            Entry::Both { local, .. } => Entry::Both { local, remote },
-        }
-    }
-
-    fn with_local(self, local: crate::Entry) -> Self {
-        match self {
-            Entry::Remote(remote) => Entry::Both { local, remote },
-            Entry::Local(..) => Entry::Local(local),
-            Entry::Both { remote, .. } => Entry::Both { local, remote },
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Node {
-    entry: Entry,
-    children: Vec<String>,
-}
-
-impl Node {
-    pub fn entry(&self) -> &Entry {
-        &self.entry
-    }
-
-    pub fn children(&self) -> &[String] {
-        &self.children
-    }
-
-    pub fn path(&self) -> &Utf8Path {
-        match &self.entry {
-            Entry::Both { local, remote } => {
-                debug_assert_eq!(local.path(), remote.path());
-                local.path()
-            }
-            Entry::Local(entry) => entry.path(),
-            Entry::Remote(entry) => entry.path(),
-        }
-    }
-
-    pub fn is_local_only(&self) -> bool {
-        matches!(self.entry, Entry::Local(..))
-    }
-
-    pub fn is_remote_only(&self) -> bool {
-        matches!(self.entry, Entry::Remote(..))
-    }
-
-    pub fn is_both(&self) -> bool {
-        matches!(self.entry, Entry::Both { .. })
-    }
-
-    pub fn add_local(&mut self, local: crate::Entry) {
-        use std::mem;
-        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.with_local(local);
-    }
-
-    pub fn add_remote(&mut self, remote: crate::Entry) {
-        use std::mem;
-        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.with_remote(remote);
-    }
-}
+use crate::storage;
 
 #[derive(Debug)]
 pub struct DiffTree {
-    nodes: Arc<DashMap<Utf8PathBuf, Node>>,
+    nodes: Arc<DashMap<Utf8PathBuf, tree::Node>>,
 }
 
 impl DiffTree {
-    pub async fn from_cache<L, R>(local: Arc<L>, remote: Arc<R>) -> Result<Self>
+    pub async fn from_cache<L, R>(local: Arc<L>, remote: Arc<R>) -> anyhow::Result<Self>
     where
-        L: Storage,
-        R: Storage,
+        L: storage::Storage,
+        R: storage::Storage,
     {
         let nodes = Arc::new(DashMap::new());
 
@@ -115,7 +34,7 @@ impl DiffTree {
         Ok(Self { nodes })
     }
 
-    pub fn entry(&self, path: Option<&Utf8Path>) -> Option<Node> {
+    pub fn entry(&self, path: Option<&Utf8Path>) -> Option<tree::Node> {
         let key = path.unwrap_or(Utf8Path::new(""));
         self.nodes.get(key).map(|node| node.clone())
     }
@@ -123,8 +42,8 @@ impl DiffTree {
     pub fn add_local(
         &self,
         path: &Utf8Path,
-        local: crate::Entry,
-    ) -> std::result::Result<(), crate::Entry> {
+        local: fsync::Metadata,
+    ) -> std::result::Result<(), fsync::Metadata> {
         let node = self.nodes.get_mut(path);
         if node.is_none() {
             return Err(local);
@@ -137,8 +56,8 @@ impl DiffTree {
     pub fn add_remote(
         &self,
         path: &Utf8Path,
-        remote: crate::Entry,
-    ) -> std::result::Result<(), crate::Entry> {
+        remote: fsync::Metadata,
+    ) -> std::result::Result<(), fsync::Metadata> {
         let node = self.nodes.get_mut(path);
         if node.is_none() {
             return Err(remote);
@@ -151,7 +70,7 @@ impl DiffTree {
     pub fn print_out(&self) {
         let root = self.nodes.get(Utf8Path::new(""));
         if let Some(root) = root {
-            for child_name in &root.children {
+            for child_name in root.children() {
                 let path = Utf8Path::new(child_name);
                 self._print_out(path, 0);
             }
@@ -160,10 +79,10 @@ impl DiffTree {
 
     fn _print_out(&self, path: &Utf8Path, indent: usize) {
         let node = self.nodes.get(path).unwrap();
-        let marker = match node.entry {
-            Entry::Both { .. } => "B",
-            Entry::Local { .. } => "L",
-            Entry::Remote { .. } => "R",
+        let marker = match node.entry() {
+            tree::Entry::Both { .. } => "B",
+            tree::Entry::Local { .. } => "L",
+            tree::Entry::Remote { .. } => "R",
         };
 
         println!(
@@ -172,7 +91,7 @@ impl DiffTree {
             path.file_name().unwrap()
         );
 
-        for child_name in &node.children {
+        for child_name in node.children() {
             let path = path.join(child_name);
             self._print_out(&path, indent + 1);
         }
@@ -182,15 +101,15 @@ impl DiffTree {
 struct DiffTreeBuild<L, R> {
     local: Arc<L>,
     remote: Arc<R>,
-    nodes: Arc<DashMap<Utf8PathBuf, Node>>,
+    nodes: Arc<DashMap<Utf8PathBuf, tree::Node>>,
 }
 
 impl<L, R> DiffTreeBuild<L, R>
 where
-    L: Storage,
-    R: Storage,
+    L: storage::Storage,
+    R: storage::Storage,
 {
-    fn both(&self, both: Option<(crate::Entry, crate::Entry)>) -> BoxFuture<'_, Result<()>> {
+    fn both(&self, both: Option<(fsync::Metadata, fsync::Metadata)>) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let loc_entry = both.as_ref().map(|b| &b.0);
             let loc_children = entry_children_sorted(&*self.local, loc_entry);
@@ -260,25 +179,25 @@ where
             let (path, entry) = if let Some((local, remote)) = both {
                 assert_eq!(local.path(), remote.path());
                 let path = local.path().to_owned();
-                (path, Entry::Both { local, remote })
+                (path, tree::Entry::Both { local, remote })
             } else {
                 (
                     Utf8PathBuf::default(),
-                    Entry::Both {
-                        local: crate::Entry::default(),
-                        remote: crate::Entry::default(),
+                    tree::Entry::Both {
+                        local: fsync::Metadata::default(),
+                        remote: fsync::Metadata::default(),
                     },
                 )
             };
 
-            let node = Node { entry, children };
+            let node = tree::Node::new(entry, children);
             self.nodes.insert(path, node);
 
             Ok(())
         })
     }
 
-    fn local(&self, entry: crate::Entry) -> BoxFuture<'_, Result<()>> {
+    fn local(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
 
@@ -296,17 +215,14 @@ where
             }
 
             let path = entry.path().to_owned();
-            let entry = Entry::Local(entry);
-            let node = Node {
-                entry,
-                children: child_names,
-            };
+            let entry = tree::Entry::Local(entry);
+            let node = tree::Node::new(entry, child_names);
             self.nodes.insert(path, node);
             Ok(())
         })
     }
 
-    fn remote(&self, entry: crate::Entry) -> BoxFuture<'_, Result<()>> {
+    fn remote(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
 
@@ -324,11 +240,8 @@ where
             }
 
             let path = entry.path().to_owned();
-            let entry = Entry::Remote(entry);
-            let node = Node {
-                entry,
-                children: child_names,
-            };
+            let entry = tree::Entry::Remote(entry);
+            let node = tree::Node::new(entry, child_names);
             self.nodes.insert(path, node);
             Ok(())
         })
@@ -337,10 +250,10 @@ where
 
 async fn entry_children_sorted<S>(
     storage: &S,
-    entry: Option<&crate::Entry>,
-) -> Result<Vec<crate::Entry>>
+    entry: Option<&fsync::Metadata>,
+) -> anyhow::Result<Vec<fsync::Metadata>>
 where
-    S: Storage,
+    S: storage::Storage,
 {
     if let Some(entry) = entry {
         if !entry.is_dir() {

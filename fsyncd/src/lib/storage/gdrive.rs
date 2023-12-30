@@ -2,92 +2,10 @@ use std::str;
 
 use async_stream::try_stream;
 use camino::{Utf8Path, Utf8PathBuf};
+use fsync::{http, oauth2};
+use fsync::{self, PathId};
 use futures::{Future, Stream};
 use tokio::io;
-
-use crate::{cipher, http, oauth2, DirEntries, Entry, EntryType, PathId};
-
-#[derive(Debug, Clone)]
-pub enum AppSecretOpts {
-    /// Use built-in google-drive app
-    Fsync,
-    /// Use custom google-drive app (path to client_secret.json)
-    JsonPath(Utf8PathBuf),
-    /// Use custom google-drive app (content of client_secret.json)
-    JsonContent(String),
-    /// Use custom google-drive app (client credentials)
-    Credentials {
-        client_id: String,
-        client_secret: String,
-    },
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum SecretError {
-    #[error("I/O error")]
-    Io(#[from] std::io::Error),
-}
-
-#[test]
-fn test_get_appsecret() -> crate::Result<()> {
-    let appsecret = AppSecretOpts::Fsync.get()?;
-    assert_eq!(appsecret.token_uri, "https://oauth2.googleapis.com/token");
-    assert_eq!(
-        appsecret.auth_uri,
-        "https://accounts.google.com/o/oauth2/auth"
-    );
-    assert_eq!(appsecret.redirect_uris, ["http://localhost"]);
-    assert_eq!(
-        appsecret.auth_provider_x509_cert_url,
-        Some("https://www.googleapis.com/oauth2/v1/certs".into())
-    );
-    Ok(())
-}
-
-impl AppSecretOpts {
-    pub fn get(self) -> crate::Result<oauth2::ApplicationSecret> {
-        match self {
-            AppSecretOpts::Fsync => {
-                const CIPHERED_SECRET: &str = concat!(
-                    "nRkHq/y6fB6MxEP+XUpoYuYY3oF3WAYcYEF62twEnls4INPhV/WWVuA5tCw4B8fpHk8nXkMhrQU6g",
-                    "WAv9k7MeMa94t2CA1eB3ADhtD1QwteGffKJ/pFxolASh0s8Gs0JdP4RpzgjAAOpRPtrBHgTM6W1It",
-                    "UIsQ5mHFSahZyS0obuh9FeXESsetUz0CDQr5l1IG2m4E1c/I790TtLBHut8YDBQs1pNptuaBwDCV7",
-                    "DbdXcicbdftiVH9jYd2lt/IvxBi4C7+F8LXS65WGZSYiBrQDb2qkdeasM9tbiGl0/+Yze3ETUA/SN",
-                    "urji8/o1fGwcygL8mTsp7DkkOxkjHn18N/a5b8MjhZouxfNvBPKC80AgcdLwmdCXVJ0t7OFobpWxz",
-                    "3j57A5URFHyhzj1RqUiui9xldG+AhF69op+QEQSPQ7bWrun6gOYaB1vUvwNt0MzzqM/SUaWVEeT54",
-                    "UEVHKqTHva+NBsIzFS/dIsiAYNV8OVcuojl8jPVKlqJJGoS1NO8hog6Gk35GXHZKyIJj/vlzsSOoC",
-                    "/5i/Qajyl1/nFfJKUsy+qDZbFkdyevN2UVDFW/wCqLoRJj7P09cHyE8QrHDC9JA"
-                );
-                let secret_json = cipher::decipher_text(CIPHERED_SECRET);
-                Ok(serde_json::from_str(&secret_json)?)
-            }
-            AppSecretOpts::JsonPath(path) => {
-                let secret_json = std::fs::read(path)?;
-                let secret_json = str::from_utf8(&secret_json)?;
-                Ok(yup_oauth2::parse_application_secret(secret_json)?)
-            }
-            AppSecretOpts::JsonContent(secret_json) => {
-                Ok(yup_oauth2::parse_application_secret(secret_json)?)
-            }
-            AppSecretOpts::Credentials {
-                client_id,
-                client_secret,
-            } => Ok(oauth2::ApplicationSecret {
-                client_id,
-                client_secret,
-                token_uri: "https://oauth2.googleapis.com/token".into(),
-                auth_uri: "https://accounts.google.com/o/oauth2/auth".into(),
-                redirect_uris: vec!["http://localhost".into()],
-                project_id: None,
-                client_email: None,
-                auth_provider_x509_cert_url: Some(
-                    "https://www.googleapis.com/oauth2/v1/certs".into(),
-                ),
-                client_x509_cert_url: None,
-            }),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct GoogleDrive {
@@ -99,7 +17,7 @@ pub struct GoogleDrive {
 }
 
 impl GoogleDrive {
-    pub async fn new(oauth2_params: oauth2::Params<'_>) -> crate::Result<Self> {
+    pub async fn new(oauth2_params: oauth2::Params<'_>) -> anyhow::Result<Self> {
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()
             .https_only()
@@ -118,11 +36,11 @@ impl GoogleDrive {
     }
 }
 
-impl DirEntries for GoogleDrive {
+impl super::DirEntries for GoogleDrive {
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = crate::Result<Entry>> + Send {
+    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
         let parent_id = parent_path_id.map(|di| di.id).unwrap_or("root");
         let base_dir = parent_path_id.map(|di| di.path);
         let q = format!("'{}' in parents", parent_id);
@@ -145,11 +63,11 @@ impl DirEntries for GoogleDrive {
     }
 }
 
-impl crate::ReadFile for GoogleDrive {
+impl super::ReadFile for GoogleDrive {
     fn read_file<'a>(
         &'a self,
         path_id: PathId<'a>,
-    ) -> impl Future<Output = crate::Result<impl io::AsyncRead>> + Send + 'a {
+    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead>> + Send + 'a {
         async {
             Ok(self
                 .files_get_media(path_id.id)
@@ -159,12 +77,12 @@ impl crate::ReadFile for GoogleDrive {
     }
 }
 
-impl crate::CreateFile for GoogleDrive {
+impl super::CreateFile for GoogleDrive {
     fn create_file(
         &self,
-        metadata: &Entry,
-        data: impl io::AsyncRead,
-    ) -> impl Future<Output = crate::Result<Entry>> + Send {
+        _metadata: &fsync::Metadata,
+        _data: impl io::AsyncRead,
+    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
         async { unimplemented!() }
         // debug_assert!(metadata.path().is_relative());
         // let path = self.root.join(metadata.path());
@@ -188,31 +106,29 @@ impl crate::CreateFile for GoogleDrive {
     }
 }
 
-impl crate::Storage for GoogleDrive {}
+impl super::Storage for GoogleDrive {}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
-fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> crate::Result<Entry> {
+fn map_file(base_dir: Option<&Utf8Path>, f: api::File) -> anyhow::Result<fsync::Metadata> {
     let id = f.id.unwrap_or_default();
     let path = match base_dir {
         Some(di) => Utf8Path::new(di).join(f.name.as_deref().unwrap()),
         None => Utf8PathBuf::from(f.name.as_deref().unwrap()),
     };
-    let typ = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
-        EntryType::Directory
+    let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
+        fsync::Metadata::Directory{id, path}
     } else {
         let mtime = f.modified_time.ok_or_else(|| {
-            crate::Error::Custom(format!(
-                "Expected to receive modifiedTime from Google for {path}"
-            ))
+            anyhow::anyhow!("Expected to receive modifiedTime from Google for {path}")
         })?;
-        let size = f.size.ok_or_else(|| {
-            crate::Error::Custom(format!("Expected to receive size from Google for {path}"))
-        })? as _;
-        EntryType::Regular { size, mtime }
+        let size = f
+            .size
+            .ok_or_else(|| anyhow::anyhow!("Expected to receive size from Google for {path}"))?
+            as _;
+        fsync::Metadata::Regular { id, path, size, mtime }
     };
-
-    Ok(Entry::new(id, path, typ))
+    Ok(metadata)
 }
 
 mod api {
@@ -314,7 +230,7 @@ mod api {
             &self,
             q: String,
             page_token: Option<String>,
-        ) -> crate::Result<FileList> {
+        ) -> anyhow::Result<FileList> {
             let mut query_params = vec![
                 ("q", q),
                 ("fields", format!("files({METADATA_FIELDS})")),
@@ -337,7 +253,7 @@ mod api {
         pub async fn files_get_media(
             &self,
             file_id: &str,
-        ) -> crate::Result<Option<impl io::AsyncRead>> {
+        ) -> anyhow::Result<Option<impl io::AsyncRead>> {
             let path = format!("/files/{file_id}");
             let query_params = &[("fields", METADATA_FIELDS), ("alt", "media")];
             let res = self
@@ -363,7 +279,7 @@ mod api {
             }
         }
 
-        pub async fn files_create<D>(&self, metadata: &File, data: D) -> crate::Result<()>
+        pub async fn files_create<D>(&self, metadata: &File, _data: D) -> anyhow::Result<()>
         where
             D: io::AsyncRead,
         {
@@ -372,7 +288,7 @@ mod api {
                 size: metadata.size,
                 mime_type: metadata.mime_type.clone(),
             };
-            let upload_url = self
+            let _upload_url = self
                 .post_upload_request(&[Scope::Full], "/files", &upload_params, Some(metadata))
                 .await?;
             unimplemented!("files_create")
@@ -383,16 +299,16 @@ mod api {
 mod utils {
     use std::borrow::Borrow;
 
-    use http::{header, HeaderValue, Request, Response, StatusCode};
+    use fsync::oauth2::AccessToken;
+    use http::{header, Request, Response, StatusCode};
     use hyper::Body;
     use serde::Serialize;
     use url::Url;
 
     use super::api;
-    use crate::oauth2::AccessToken;
 
     impl super::GoogleDrive {
-        pub async fn fetch_token(&self, scopes: &[api::Scope]) -> crate::Result<AccessToken> {
+        pub async fn fetch_token(&self, scopes: &[api::Scope]) -> anyhow::Result<AccessToken> {
             let token = self.auth.token(scopes).await?;
 
             if token.is_expired() {
@@ -408,7 +324,7 @@ mod utils {
             path: &str,
             query_params: Q,
             allow_404: bool,
-        ) -> crate::Result<Response<Body>>
+        ) -> anyhow::Result<Response<Body>>
         where
             Q: IntoIterator,
             Q::Item: Borrow<(K, V)>,
@@ -433,7 +349,7 @@ mod utils {
             if res.status().is_success() || (allow_404 && res.status() == StatusCode::NOT_FOUND) {
                 Ok(res)
             } else {
-                Err(crate::http::Error::Status(res.status(), res).into())
+                Err(anyhow::anyhow!("GET {url} returned {}", res.status()))
             }
         }
 
@@ -443,7 +359,7 @@ mod utils {
             path: &str,
             params: &api::UploadParams,
             body: Option<&B>,
-        ) -> crate::Result<String>
+        ) -> anyhow::Result<String>
         where
             B: Serialize,
         {
@@ -477,7 +393,7 @@ mod utils {
 
             let mut res = self.client.request(req).await?;
             if res.status() != StatusCode::OK {
-                return Err(crate::http::Error::Status(res.status(), res).into());
+                anyhow::bail!("POST {url} returned {}", res.status());
             }
             println!("{}", get_body_as_string(res.body_mut()).await);
             let location = &res.headers()[header::LOCATION];

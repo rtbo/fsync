@@ -4,11 +4,11 @@ use std::{
 };
 
 use camino::Utf8PathBuf;
-use fsync::{ipc::FsyncClient, tree};
+use fsync::{FsyncClient, tree};
 use futures::future::{self, BoxFuture};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
-use crate::{utils, Error};
+use crate::utils;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -20,7 +20,7 @@ pub struct Args {
     path: Option<Utf8PathBuf>,
 }
 
-pub async fn main(args: Args) -> crate::Result<()> {
+pub async fn main(args: Args) -> anyhow::Result<()> {
     let instance_name = match args.instance_name {
         Some(name) => name,
         None => {
@@ -28,7 +28,7 @@ pub async fn main(args: Args) -> crate::Result<()> {
             if let Some(name) = name {
                 name
             } else {
-                return Err(Error::Custom("Could not find a single share, please specify --share-name command line argument".into()));
+                anyhow::bail!("Could not find a single share, please specify --share-name command line argument");
             }
         }
     };
@@ -63,7 +63,7 @@ fn walk(
     client: Arc<FsyncClient>,
     prefix: String,
     node: tree::Node,
-) -> BoxFuture<'static, crate::Result<()>> {
+) -> BoxFuture<'static, anyhow::Result<()>> {
     Box::pin(async move {
         let dir = node.path();
         let joinvec: Vec<_> = node

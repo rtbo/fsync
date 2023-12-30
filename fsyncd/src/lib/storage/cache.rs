@@ -2,14 +2,13 @@ use std::sync::Arc;
 
 use async_stream::try_stream;
 use bincode::Options;
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use dashmap::DashMap;
+use fsync::{self, PathId, PathIdBuf};
 use futures::{future::BoxFuture, Future, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::{io, task::JoinSet};
 use tokio_stream::StreamExt;
-
-use crate::{Entry, EntryType, PathId, PathIdBuf, Storage};
 
 #[derive(Debug, Clone)]
 pub struct CacheStorage<S> {
@@ -19,14 +18,14 @@ pub struct CacheStorage<S> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CacheNode {
-    entry: Entry,
+    metadata: fsync::Metadata,
     _parent: Option<String>,
     children: Vec<String>,
 }
 
 impl<S> CacheStorage<S>
 where
-    S: Storage,
+    S: super::Storage,
 {
     pub fn new(storage: S) -> Self {
         Self {
@@ -35,7 +34,7 @@ where
         }
     }
 
-    pub async fn load_from_disk(&mut self, path: &Utf8Path) -> crate::Result<()> {
+    pub async fn load_from_disk(&mut self, path: &Utf8Path) -> anyhow::Result<()> {
         use std::fs;
         use std::io::BufReader;
 
@@ -46,7 +45,7 @@ where
             let reader = BufReader::new(reader);
             let opts = bincode_options();
             let entries: DashMap<String, CacheNode> = opts.deserialize_from(reader)?;
-            Ok::<_, crate::Error>(entries)
+            Ok::<_, anyhow::Error>(entries)
         });
 
         let entries = handle.await.unwrap()?;
@@ -54,7 +53,7 @@ where
         Ok(())
     }
 
-    pub async fn save_to_disc(&self, path: &Utf8Path) -> crate::Result<()> {
+    pub async fn save_to_disc(&self, path: &Utf8Path) -> anyhow::Result<()> {
         use std::fs;
         use std::io::BufWriter;
 
@@ -66,7 +65,7 @@ where
             let writer = BufWriter::new(writer);
             let opts = bincode_options();
             opts.serialize_into(writer, &*entries)?;
-            Ok::<_, crate::Error>(())
+            Ok::<_, anyhow::Error>(())
         });
 
         handle.await.unwrap()
@@ -75,15 +74,15 @@ where
 
 impl<S> CacheStorage<S>
 where
-    S: crate::DirEntries + Send + Sync + 'static,
+    S: super::DirEntries + Send + Sync + 'static,
 {
-    pub async fn populate_from_entries(&mut self) -> crate::Result<()> {
+    pub async fn populate_from_entries(&mut self) -> anyhow::Result<()> {
         let entries = Arc::new(DashMap::new());
         let children = populate_recurse(None, entries.clone(), self.storage.clone()).await?;
         entries.insert(
             String::new(),
             CacheNode {
-                entry: Entry::new("".to_string(), Utf8PathBuf::new(), EntryType::Directory),
+                metadata: fsync::Metadata::root(),
                 _parent: None,
                 children,
             },
@@ -93,51 +92,51 @@ where
     }
 }
 
-impl<S> crate::DirEntries for CacheStorage<S>
+impl<S> super::DirEntries for CacheStorage<S>
 where
-    S: crate::DirEntries + Send + Sync + 'static,
+    S: super::DirEntries + Send + Sync + 'static,
 {
     fn dir_entries(
         &self,
         parent_path_id: Option<PathId>,
-    ) -> impl Stream<Item = crate::Result<Entry>> + Send {
+    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
         let parent_key = parent_path_id.map(|pid| pid.id).unwrap_or("");
         let parent = self.entries.get(parent_key).unwrap();
         try_stream! {
             for c in parent.children.iter() {
                 let c_ent = self.entries.get(c).unwrap();
-                yield c_ent.entry.clone();
+                yield c_ent.metadata.clone();
             }
         }
     }
 }
 
-impl<S> crate::ReadFile for CacheStorage<S>
+impl<S> super::ReadFile for CacheStorage<S>
 where
-    S: crate::ReadFile + Sync + Send,
+    S: super::ReadFile + Sync + Send,
 {
     fn read_file<'a>(
         &'a self,
         path_id: PathId<'a>,
-    ) -> impl Future<Output = crate::Result<impl io::AsyncRead>> + Send + 'a {
+    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead>> + Send + 'a {
         async move { self.storage.read_file(path_id).await }
     }
 }
 
-impl<S> crate::CreateFile for CacheStorage<S>
+impl<S> super::CreateFile for CacheStorage<S>
 where
-    S: crate::CreateFile + Send + Sync,
+    S: super::CreateFile + Send + Sync,
 {
     fn create_file(
         &self,
-        metadata: &Entry,
+        metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = crate::Result<Entry>> + Send {
+    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
         async move { self.storage.create_file(metadata, data).await }
     }
 }
 
-impl<S> crate::Storage for CacheStorage<S> where S: crate::Storage {}
+impl<S> super::Storage for CacheStorage<S> where S: super::Storage {}
 
 fn bincode_options() -> impl bincode::Options {
     bincode::DefaultOptions::new()
@@ -149,9 +148,9 @@ fn populate_recurse<'a, S>(
     dir_path_id: Option<PathIdBuf>,
     entries: Arc<DashMap<String, CacheNode>>,
     storage: Arc<S>,
-) -> BoxFuture<'a, crate::Result<Vec<String>>>
+) -> BoxFuture<'a, anyhow::Result<Vec<String>>>
 where
-    S: crate::DirEntries + Send + Sync + 'static,
+    S: super::DirEntries + Send + Sync + 'static,
 {
     Box::pin(async move {
         let dirent = storage.dir_entries(dir_path_id.as_ref().map(|dpi| dpi.as_path_id()));
@@ -165,26 +164,30 @@ where
 
             children.push(ent.id().to_owned());
 
-            let ent_path_id = ent.path_id_buf();
             let parent_id = dir_path_id.as_ref().map(|dpi| dpi.id.clone());
             let entries = entries.clone();
             let storage = storage.clone();
             set.spawn(async move {
-                let children = match ent.typ() {
-                    EntryType::Directory => {
-                        populate_recurse(Some(ent_path_id), entries.clone(), storage).await?
+                let children = match &ent {
+                    fsync::Metadata::Directory { path, id, .. } => {
+                        populate_recurse(
+                            Some(PathId { path, id }.to_path_id_buf()),
+                            entries.clone(),
+                            storage,
+                        )
+                        .await?
                     }
                     _ => Vec::new(),
                 };
                 entries.insert(
                     ent.id().to_owned(),
                     CacheNode {
-                        entry: ent,
+                        metadata: ent,
                         _parent: parent_id,
                         children,
                     },
                 );
-                Ok::<_, crate::Error>(())
+                Ok::<_, anyhow::Error>(())
             });
         }
 

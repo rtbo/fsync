@@ -1,8 +1,6 @@
 use fsync::loc::user;
 
-use crate::Error;
-
-pub fn list_drives() -> Result<Vec<String>, Error> {
+pub fn list_drives() -> anyhow::Result<Vec<String>> {
     let config_dir = user::config_dir()?;
     if !config_dir.exists() {
         return Ok(Vec::new());
@@ -18,7 +16,7 @@ pub fn list_drives() -> Result<Vec<String>, Error> {
     Ok(drives)
 }
 
-pub fn main() -> Result<(), Error> {
+pub fn main() -> anyhow::Result<()> {
     let drives = list_drives()?;
     if drives.is_empty() {
         println!("(no fsync service yet)");
