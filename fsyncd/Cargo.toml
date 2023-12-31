@@ -17,7 +17,6 @@ fsync = { path = "../fsync" }
 
 anyhow = { workspace = true }
 async-stream = { workspace = true }
-camino = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }

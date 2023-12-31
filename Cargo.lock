@@ -649,7 +649,6 @@ dependencies = [
  "anyhow",
  "async-stream",
  "bincode",
- "camino",
  "chrono",
  "clap",
  "dashmap",
@@ -674,7 +673,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "byte-unit",
- "camino",
  "clap",
  "fsync",
  "futures",
