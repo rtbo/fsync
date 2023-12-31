@@ -54,7 +54,7 @@ impl Default for &Id {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct IdBuf {
@@ -82,14 +82,6 @@ impl fmt::Debug for IdBuf {
 impl fmt::Display for IdBuf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.inner)
-    }
-}
-
-impl Default for IdBuf {
-    fn default() -> Self {
-        IdBuf {
-            inner: Default::default(),
-        }
     }
 }
 

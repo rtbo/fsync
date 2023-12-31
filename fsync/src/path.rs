@@ -1,3 +1,4 @@
+#![allow(clippy::non_canonical_partial_ord_impl)]
 //! A path module to represent paths in a repo.
 //! In fsync, fsync::path is used for repository paths, where as
 //! camino is used for file system.
@@ -668,7 +669,7 @@ impl Path {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct PathBuf {
@@ -707,7 +708,7 @@ impl PathBuf {
     /// ```
     #[must_use = "`self` will be dropped if the result is not used"]
     pub fn into_std_path_buf(self) -> PathBuf {
-        self.into()
+        self
     }
 
     /// Creates a new `PathBuf` with a given capacity used to create the
@@ -998,14 +999,6 @@ impl fmt::Display for PathBuf {
     }
 }
 
-impl Default for PathBuf {
-    fn default() -> Self {
-        PathBuf {
-            inner: Default::default(),
-        }
-    }
-}
-
 impl ops::Deref for PathBuf {
     type Target = Path;
 
@@ -1182,7 +1175,7 @@ impl hash::Hash for Path {
 
                 component_start += match tail {
                     [b'.'] => 1,
-                    [b'.', sep @ _, ..] if is_sep_byte(*sep) => 1,
+                    [b'.', sep, ..] if is_sep_byte(*sep) => 1,
                     _ => 0,
                 };
             }
