@@ -1,5 +1,5 @@
 use anyhow::Context;
-use camino::{Utf8Path, Utf8PathBuf};
+use crate::path::{FsPath, FsPathBuf};
 use glob::{MatchOptions, Pattern, PatternError};
 use serde::{Deserialize, Serialize};
 
@@ -27,12 +27,12 @@ impl PatternList {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
-    pub local_dir: Utf8PathBuf,
+    pub local_dir: FsPathBuf,
     pub provider: crate::Provider,
 }
 
 impl Config {
-    pub async fn load_from_file(path: &Utf8Path) -> anyhow::Result<Self> {
+    pub async fn load_from_file(path: &FsPath) -> anyhow::Result<Self> {
         let config_json = tokio::fs::read(&path)
             .await
             .with_context(|| format!("Failed to read config from {path}"))?;

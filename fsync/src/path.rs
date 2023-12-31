@@ -9,8 +9,10 @@ use std::iter::FusedIterator;
 use std::ops;
 use std::str;
 
-use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
+
+pub use camino::Utf8Path as FsPath;
+pub use camino::Utf8PathBuf as FsPathBuf;
 
 #[must_use]
 pub fn is_separator(c: char) -> bool {
@@ -423,20 +425,19 @@ impl Path {
         &self.inner
     }
 
-    /// Converts this path to a camino::Utf8Path.
+    /// Converts this path to a FsPath.
     /// The conversion is cost-free.
     ///
     /// # Examples
     ///
     /// ```
-    /// use fsync::path::Path;
-    /// use camino::Utf8Path;
+    /// use fsync::path::{FsPath, Path};
     ///
-    /// let s = Path::new("foo.txt").as_utf8_path();
-    /// assert_eq!(s, Utf8Path::new("foo.txt"));
+    /// let s = Path::new("foo.txt").as_fs_path();
+    /// assert_eq!(s, FsPath::new("foo.txt"));
     /// ```
-    pub fn as_utf8_path(&self) -> &Utf8Path {
-        Utf8Path::new(self.as_str())
+    pub fn as_fs_path(&self) -> &FsPath {
+        FsPath::new(self.as_str())
     }
 
     /// Converts a `Path` to an owned [`PathBuf`].
@@ -687,24 +688,23 @@ impl PathBuf {
         }
     }
 
-    /// Converts a `Utf8PathBuf` to a [`PathBuf`].
+    /// Converts a `PathBuf` to a [`std::path::PathBuf`].
     ///
-    /// This is equivalent to the `From<Utf8PathBuf> for PathBuf` impl, but may aid in type
+    /// This is equivalent to the `From<FsPathBuf> for PathBuf` impl, but may aid in type
     /// inference.
     ///
     /// # Examples
     ///
     /// ```
-    /// use camino::Utf8PathBuf;
-    /// use std::path::PathBuf;
+    /// use fsync::path::PathBuf;
     ///
-    /// let utf8_path_buf = Utf8PathBuf::from("foo.txt");
-    /// let std_path_buf = utf8_path_buf.into_std_path_buf();
+    /// let path_buf = PathBuf::from("foo.txt");
+    /// let std_path_buf = fs_path_buf.into_std_path_buf();
     /// assert_eq!(std_path_buf.to_str(), Some("foo.txt"));
     ///
-    /// // Convert back to a Utf8PathBuf.
-    /// let new_utf8_path_buf = Utf8PathBuf::from_path_buf(std_path_buf).unwrap();
-    /// assert_eq!(new_utf8_path_buf, "foo.txt");
+    /// // Convert back to a FsPathBuf.
+    /// let new_path_buf = PathBuf::from_std_path_buf(std_path_buf).unwrap();
+    /// assert_eq!(new_fs_path_buf, "foo.txt");
     /// ```
     #[must_use = "`self` will be dropped if the result is not used"]
     pub fn into_std_path_buf(self) -> PathBuf {
@@ -750,8 +750,8 @@ impl PathBuf {
         self.inner
     }
 
-    pub fn into_utf8_path_buf(self) -> Utf8PathBuf {
-        Utf8PathBuf::from(self.inner)
+    pub fn into_fs_path_buf(self) -> FsPathBuf {
+        FsPathBuf::from(self.inner)
     }
 
     /// Extends `self` with `path`.
@@ -881,15 +881,15 @@ impl AsRef<Path> for PathBuf {
 //     }
 // }
 
-// impl AsRef<Utf8Path> for Path {
-//     fn as_ref(&self) -> &Utf8Path {
-//         Utf8Path::new(self.as_str())
+// impl AsRef<FsPath> for Path {
+//     fn as_ref(&self) -> &FsPath {
+//         FsPath::new(self.as_str())
 //     }
 // }
 
-// impl AsRef<Utf8Path> for PathBuf {
-//     fn as_ref(&self) -> &Utf8Path {
-//         Utf8Path::new(self.as_str())
+// impl AsRef<FsPath> for PathBuf {
+//     fn as_ref(&self) -> &FsPath {
+//         FsPath::new(self.as_str())
 //     }
 // }
 
@@ -969,8 +969,8 @@ impl From<String> for PathBuf {
     }
 }
 
-impl From<Utf8PathBuf> for PathBuf {
-    fn from(value: Utf8PathBuf) -> Self {
+impl From<FsPathBuf> for PathBuf {
+    fn from(value: FsPathBuf) -> Self {
         PathBuf {
             inner: value.into_string(),
         }

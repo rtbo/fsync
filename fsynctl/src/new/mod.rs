@@ -1,4 +1,4 @@
-use camino::{Utf8PathBuf, Utf8Path};
+use fsync::path::{FsPathBuf, FsPath};
 use fsync::loc::{inst, user};
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Select, Text};
@@ -13,7 +13,7 @@ pub struct Args {
 
     /// The directory to synchronize on the local file system
     #[clap(long, short = 'p')]
-    local_dir: Option<Utf8PathBuf>,
+    local_dir: Option<FsPathBuf>,
 }
 
 pub async fn main(args: Args) -> anyhow::Result<()> {
@@ -44,7 +44,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
             .with_default(def.as_str())
             .with_validator(validate_path)
             .prompt()
-            .map(Utf8PathBuf::from)?
+            .map(FsPathBuf::from)?
     };
 
     let providers = vec![fsync::Provider::GoogleDrive];
@@ -107,7 +107,7 @@ async fn prompt_provider_opts(provider: fsync::Provider) -> anyhow::Result<Provi
 
 async fn create_config(
     instance_name: &str,
-    local_dir: &Utf8Path,
+    local_dir: &FsPath,
     opts: &ProviderOpts,
 ) -> anyhow::Result<()> {
     let config_dir = inst::config_dir(instance_name)?;
