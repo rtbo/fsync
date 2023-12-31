@@ -8,6 +8,7 @@ edition.workspace = true
 fsync = { path = "../fsync" }
 
 anyhow = { workspace = true }
+camino = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }

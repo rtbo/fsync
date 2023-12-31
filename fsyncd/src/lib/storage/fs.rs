@@ -1,6 +1,7 @@
 use std::fmt;
 
 use async_stream::try_stream;
+use camino::{Utf8Path, Utf8PathBuf};
 use fsync::path::{self, Path, PathBuf};
 use futures::Stream;
 use tokio::{
@@ -50,9 +51,8 @@ where
         .chain(target.components())
     {
         match comp {
-            path::Component::Prefix(pref) => panic!("unexpected prefix component: {pref:?}"),
             path::Component::RootDir => {
-                panic!("unexpected root component in {link:?} -> {target:?}")
+                unreachable!("unexpected root component in {link:?} -> {target:?}")
             }
             path::Component::CurDir => (),
             path::Component::ParentDir if num_comps <= 0 => {
@@ -80,7 +80,7 @@ fn test_check_symlink() {
 
 #[derive(Debug, Clone)]
 pub struct Storage {
-    root: PathBuf,
+    root: Utf8PathBuf,
 }
 
 impl Storage {
@@ -88,7 +88,7 @@ impl Storage {
     /// Panics if [root] is not an absolute path.
     pub fn new<P>(root: P) -> Self
     where
-        P: AsRef<Path>,
+        P: AsRef<Utf8Path>,
     {
         let root = root.as_ref();
 
@@ -99,7 +99,7 @@ impl Storage {
         }
     }
 
-    pub fn root(&self) -> &Path {
+    pub fn root(&self) -> &Utf8Path {
         &self.root
     }
 }
@@ -110,7 +110,7 @@ impl super::DirEntries for Storage {
         parent_path: Option<PathBuf>,
     ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
         let fs_base = match parent_path.as_ref() {
-            Some(dir) => self.root.join(dir),
+            Some(dir) => self.root.join(dir.as_utf8_path()),
             None => self.root.clone(),
         };
         try_stream! {
@@ -130,7 +130,7 @@ impl super::DirEntries for Storage {
 impl super::ReadFile for Storage {
     async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
         debug_assert!(path.is_relative());
-        let path = self.root.join(path);
+        let path = self.root.join(path.as_utf8_path());
         Ok(tokio::fs::File::open(&path).await?)
     }
 }
@@ -142,7 +142,7 @@ impl super::CreateFile for Storage {
         data: impl io::AsyncRead + Send,
     ) -> anyhow::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_relative());
-        let fs_path = self.root.join(metadata.path());
+        let fs_path = self.root.join(metadata.path().as_utf8_path());
         if fs_path.is_dir() {
             anyhow::bail!("{} exists and is a directory", metadata.path());
         }
@@ -171,9 +171,8 @@ async fn map_direntry(
     parent_path: Option<&Path>,
     direntry: &DirEntry,
 ) -> anyhow::Result<fsync::Metadata> {
-    let fs_path = PathBuf::try_from(direntry.path())?;
-    let file_name = String::from_utf8(direntry.file_name().into_encoded_bytes())
-        .map_err(|err| err.utf8_error())?;
+    let fs_path = Utf8PathBuf::try_from(direntry.path())?;
+    let file_name = String::from_utf8(direntry.file_name().into_encoded_bytes())?;
     let path = parent_path
         .map(|p| p.join(&file_name))
         .unwrap_or_else(|| PathBuf::from(&file_name));
@@ -184,7 +183,7 @@ async fn map_direntry(
 async fn map_metadata(
     path: PathBuf,
     metadata: &std::fs::Metadata,
-    fs_path: &Path,
+    fs_path: &Utf8Path,
 ) -> anyhow::Result<fsync::Metadata> {
     let metadata = if metadata.is_symlink() {
         let target = tokio::fs::read_link(fs_path).await?;

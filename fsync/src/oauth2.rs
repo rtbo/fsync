@@ -1,28 +1,28 @@
 use std::pin::Pin;
 use std::str;
 
+use camino::Utf8Path;
 use futures::Future;
 use yup_oauth2::authenticator::HyperClientBuilder;
 use yup_oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
 
 use crate::http;
-use crate::path::Path;
 
 pub type Authenticator = yup_oauth2::authenticator::Authenticator<http::Connector>;
 pub use yup_oauth2::{parse_application_secret, AccessToken, ApplicationSecret};
 
 pub struct Params<'a> {
     pub app_secret: ApplicationSecret,
-    pub token_cache_path: &'a Path,
+    pub token_cache_path: &'a Utf8Path,
 }
 
-pub async fn save_secret(path: &Path, app_secret: &ApplicationSecret) -> anyhow::Result<()> {
+pub async fn save_secret(path: &Utf8Path, app_secret: &ApplicationSecret) -> anyhow::Result<()> {
     let json = serde_json::to_string_pretty(app_secret)?;
     tokio::fs::write(path, &json).await?;
     Ok(())
 }
 
-pub async fn load_secret(path: &Path) -> anyhow::Result<ApplicationSecret> {
+pub async fn load_secret(path: &Utf8Path) -> anyhow::Result<ApplicationSecret> {
     let json = tokio::fs::read(path).await?;
     let json = str::from_utf8(&json)?;
     Ok(serde_json::from_str(json)?)

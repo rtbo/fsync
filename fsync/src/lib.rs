@@ -15,11 +15,7 @@ mod fsync;
 pub use crate::config::Config;
 pub use crate::fsync::*;
 
-pub mod path {
-    pub use camino::Utf8Path as Path;
-    pub use camino::Utf8PathBuf as PathBuf;
-    pub use camino::Utf8Component as Component;
-}
+pub mod path;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Provider {

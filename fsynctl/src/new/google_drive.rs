@@ -1,6 +1,7 @@
 use std::str;
 
-use fsync::{cipher, loc::inst, oauth2, path::PathBuf};
+use camino::Utf8PathBuf;
+use fsync::{cipher, loc::inst, oauth2};
 use inquire::{Editor, Select, Text};
 
 pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
@@ -44,7 +45,7 @@ pub enum AppSecretOpts {
     /// Use built-in google-drive app
     Fsync,
     /// Use custom google-drive app (path to client_secret.json)
-    JsonPath(PathBuf),
+    JsonPath(Utf8PathBuf),
     /// Use custom google-drive app (content of client_secret.json)
     JsonContent(String),
     /// Use custom google-drive app (client credentials)
