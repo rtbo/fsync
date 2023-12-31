@@ -849,6 +849,14 @@ impl AsRef<str> for PathBuf {
     }
 }
 
+
+impl AsRef<Path> for PathBuf {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        self
+    }
+}
+
 // impl AsRef<std::path::Path> for Path {
 //     fn as_ref(&self) -> &std::path::Path {
 //         std::path::Path::new(self.as_str())
@@ -884,6 +892,35 @@ impl AsRef<str> for PathBuf {
 //         Utf8Path::new(self.as_str())
 //     }
 // }
+
+impl AsRef<Path> for Path {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        self
+    }
+}
+
+impl AsRef<Path> for str {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        Path::new(self)
+    }
+}
+
+impl AsRef<Path> for String {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        Path::new(self)
+    }
+}
+
+impl AsRef<Path> for borrow::Cow<'_, str> {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        Path::new(self)
+    }
+}
+
 
 impl TryFrom<std::path::PathBuf> for PathBuf {
     type Error = std::string::FromUtf8Error;
@@ -1179,42 +1216,6 @@ impl Ord for Path {
         compare_components(self.components(), other.components())
     }
 }
-
-impl AsRef<Path> for Path {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self
-    }
-}
-
-impl AsRef<Path> for str {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        Path::new(self)
-    }
-}
-
-impl AsRef<Path> for String {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        Path::new(self)
-    }
-}
-
-impl AsRef<Path> for borrow::Cow<'_, str> {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        Path::new(self)
-    }
-}
-
-impl AsRef<Path> for PathBuf {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self
-    }
-}
-
 impl<'a> IntoIterator for &'a PathBuf {
     type Item = &'a str;
     type IntoIter = Iter<'a>;
