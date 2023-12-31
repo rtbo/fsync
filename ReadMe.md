@@ -6,4 +6,4 @@ File synchronization service
 
 - `fsync`: common library
 - `fsyncd`: deamon executable
-- `gdrive`: implementation of Google Drive
+- `fsynctl`: CLI interface
