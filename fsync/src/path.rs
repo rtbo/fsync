@@ -9,10 +9,9 @@ use std::iter::FusedIterator;
 use std::ops;
 use std::str;
 
-use serde::{Deserialize, Serialize};
-
 pub use camino::Utf8Path as FsPath;
 pub use camino::Utf8PathBuf as FsPathBuf;
+use serde::{Deserialize, Serialize};
 
 #[must_use]
 pub fn is_separator(c: char) -> bool {
@@ -849,7 +848,6 @@ impl AsRef<str> for PathBuf {
     }
 }
 
-
 impl AsRef<Path> for PathBuf {
     #[inline]
     fn as_ref(&self) -> &Path {
@@ -920,7 +918,6 @@ impl AsRef<Path> for borrow::Cow<'_, str> {
         Path::new(self)
     }
 }
-
 
 impl TryFrom<std::path::PathBuf> for PathBuf {
     type Error = std::string::FromUtf8Error;

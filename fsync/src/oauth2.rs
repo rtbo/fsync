@@ -1,12 +1,12 @@
 use std::pin::Pin;
 use std::str;
 
-use crate::path::FsPath;
 use futures::Future;
 use yup_oauth2::authenticator::HyperClientBuilder;
 use yup_oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
 
 use crate::http;
+use crate::path::FsPath;
 
 pub type Authenticator = yup_oauth2::authenticator::Authenticator<http::Connector>;
 pub use yup_oauth2::{parse_application_secret, AccessToken, ApplicationSecret};

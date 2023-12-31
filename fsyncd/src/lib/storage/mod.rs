@@ -4,8 +4,8 @@ use tokio::io;
 
 pub mod cache;
 pub mod fs;
-pub mod id;
 pub mod gdrive;
+pub mod id;
 
 pub trait DirEntries {
     fn dir_entries(

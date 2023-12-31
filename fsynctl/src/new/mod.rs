@@ -1,5 +1,5 @@
-use fsync::path::{FsPathBuf, FsPath};
 use fsync::loc::{inst, user};
+use fsync::path::{FsPath, FsPathBuf};
 use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Confirm, CustomUserError, Select, Text};
 

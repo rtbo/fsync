@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use async_stream::try_stream;
 use bincode::Options;
-use fsync::path::FsPath;
 use dashmap::DashMap;
+use fsync::path::FsPath;
 use fsync::path::PathBuf;
 use futures::{future::BoxFuture, Stream};
 use serde::{Deserialize, Serialize};
@@ -193,7 +193,8 @@ where
             set.spawn(async move {
                 let children = match &metadata {
                     fsync::Metadata::Directory { .. } => {
-                        populate_recurse(Some((id.clone(), path.clone())), entries.clone(), storage).await?
+                        populate_recurse(Some((id.clone(), path.clone())), entries.clone(), storage)
+                            .await?
                     }
                     _ => Vec::new(),
                 };

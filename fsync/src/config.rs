@@ -1,9 +1,9 @@
 use anyhow::Context;
-use crate::path::{FsPath, FsPathBuf};
 use glob::{MatchOptions, Pattern, PatternError};
 use serde::{Deserialize, Serialize};
 
 use crate::path::Path;
+use crate::path::{FsPath, FsPathBuf};
 
 #[derive(Default)]
 pub struct PatternList(Vec<Pattern>, MatchOptions);
