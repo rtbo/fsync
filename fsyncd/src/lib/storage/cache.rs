@@ -100,10 +100,9 @@ where
 {
     fn dir_entries(
         &self,
-        parent_path: Option<PathBuf>,
+        parent_path: PathBuf,
     ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
-        let parent_key = parent_path.unwrap_or_default();
-        let parent = self.entries.get(&parent_key);
+        let parent = self.entries.get(&parent_path);
         try_stream! {
             if let Some(parent) = parent {
                 for c in parent.children.iter() {

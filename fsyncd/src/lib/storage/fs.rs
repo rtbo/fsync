@@ -106,19 +106,16 @@ impl Storage {
 impl super::DirEntries for Storage {
     fn dir_entries(
         &self,
-        parent_path: Option<PathBuf>,
+        parent_path: PathBuf,
     ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
-        let fs_base = match parent_path.as_ref() {
-            Some(dir) => self.root.join(dir.as_fs_path()),
-            None => self.root.clone(),
-        };
+        let fs_base = self.root.join(parent_path.without_root().as_str());
         try_stream! {
             let mut read_dir = fs::read_dir(&fs_base).await?;
             loop {
                 match read_dir.next_entry().await? {
                     None => break,
                     Some(direntry) => {
-                        yield map_direntry(parent_path.as_deref(), &direntry).await?;
+                        yield map_direntry(&parent_path, &direntry).await?;
                     }
                 }
             }
@@ -129,7 +126,7 @@ impl super::DirEntries for Storage {
 impl super::ReadFile for Storage {
     async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
         debug_assert!(path.is_relative());
-        let path = self.root.join(path.as_fs_path());
+        let path = self.root.join(path.without_root().as_str());
         Ok(tokio::fs::File::open(&path).await?)
     }
 }
@@ -141,7 +138,7 @@ impl super::CreateFile for Storage {
         data: impl io::AsyncRead + Send,
     ) -> anyhow::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_relative());
-        let fs_path = self.root.join(metadata.path().as_fs_path());
+        let fs_path = self.root.join(metadata.path().without_root().as_str());
         if fs_path.is_dir() {
             anyhow::bail!("{} exists and is a directory", metadata.path());
         }
@@ -166,15 +163,10 @@ impl super::CreateFile for Storage {
 
 impl super::Storage for Storage {}
 
-async fn map_direntry(
-    parent_path: Option<&Path>,
-    direntry: &DirEntry,
-) -> anyhow::Result<fsync::Metadata> {
+async fn map_direntry(parent_path: &Path, direntry: &DirEntry) -> anyhow::Result<fsync::Metadata> {
     let fs_path = FsPathBuf::try_from(direntry.path())?;
     let file_name = String::from_utf8(direntry.file_name().into_encoded_bytes())?;
-    let path = parent_path
-        .map(|p| p.join(&file_name))
-        .unwrap_or_else(|| PathBuf::from(&file_name));
+    let path = parent_path.join(&file_name);
     let metadata = direntry.metadata().await?;
     map_metadata(path, &metadata, &fs_path).await
 }

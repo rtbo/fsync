@@ -10,7 +10,7 @@ pub mod id;
 pub trait DirEntries {
     fn dir_entries(
         &self,
-        parent_path: Option<PathBuf>,
+        parent_path: PathBuf,
     ) -> impl Stream<Item = anyhow::Result<Metadata>> + Send;
 }
 

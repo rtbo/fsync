@@ -2,6 +2,7 @@
 //! A path module to represent paths in a repo.
 //! In fsync, fsync::path is used for repository paths, where as
 //! camino is used for file system.
+//! There is on purpose no automatic conversion provided between this module and camino.
 use std::borrow;
 use std::cmp;
 use std::fmt;
@@ -411,6 +412,10 @@ impl Path {
         unsafe { &*(path.as_ref() as *const str as *const Path) }
     }
 
+    pub fn root() -> &'static Path {
+        Path::new("/")
+    }
+
     /// Yields the underlying [`str`] slice.
     ///
     /// # Examples
@@ -423,21 +428,6 @@ impl Path {
     /// ```
     pub fn as_str(&self) -> &str {
         &self.inner
-    }
-
-    /// Converts this path to a FsPath.
-    /// The conversion is cost-free.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use fsync::path::{FsPath, Path};
-    ///
-    /// let s = Path::new("foo.txt").as_fs_path();
-    /// assert_eq!(s, FsPath::new("foo.txt"));
-    /// ```
-    pub fn as_fs_path(&self) -> &FsPath {
-        FsPath::new(self.as_str())
     }
 
     /// Converts a `Path` to an owned [`PathBuf`].
@@ -508,6 +498,27 @@ impl Path {
     #[inline]
     pub fn is_relative(&self) -> bool {
         !self.is_absolute()
+    }
+
+    /// Returns this `Path` without the root component if it has one.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use fsync::path::Path;
+    /// 
+    /// assert_eq!(Path::new("/foo/bar").without_root(), Path::new("foo/bar"));
+    /// assert_eq!(Path::new("foo/bar").without_root(), Path::new("foo/bar"));
+    /// ```
+    /// 
+    /// [`has_root`]: Path::has_root
+    #[inline]
+    pub fn without_root(&self) -> &Path {
+        let mut comps = self.components();
+        if comps.has_root() {
+            comps.next();
+        }
+        comps.as_path()
     }
 
     /// Returns the `Path` without its final component, if there is one.
@@ -653,7 +664,7 @@ impl Path {
     /// # Examples
     ///
     /// ```
-    /// use std::path::{Path, PathBuf};
+    /// use fsync::path::{Path, PathBuf};
     ///
     /// assert_eq!(Path::new("/etc").join("passwd"), PathBuf::from("/etc/passwd"));
     /// assert_eq!(Path::new("/etc").join("/bin/sh"), PathBuf::from("/bin/sh"));
@@ -686,29 +697,6 @@ impl PathBuf {
         PathBuf {
             inner: String::new(),
         }
-    }
-
-    /// Converts a `PathBuf` to a [`std::path::PathBuf`].
-    ///
-    /// This is equivalent to the `From<FsPathBuf> for PathBuf` impl, but may aid in type
-    /// inference.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use fsync::path::PathBuf;
-    ///
-    /// let path_buf = PathBuf::from("foo.txt");
-    /// let std_path_buf = fs_path_buf.into_std_path_buf();
-    /// assert_eq!(std_path_buf.to_str(), Some("foo.txt"));
-    ///
-    /// // Convert back to a FsPathBuf.
-    /// let new_path_buf = PathBuf::from_std_path_buf(std_path_buf).unwrap();
-    /// assert_eq!(new_fs_path_buf, "foo.txt");
-    /// ```
-    #[must_use = "`self` will be dropped if the result is not used"]
-    pub fn into_std_path_buf(self) -> PathBuf {
-        self
     }
 
     /// Creates a new `PathBuf` with a given capacity used to create the
@@ -748,10 +736,6 @@ impl PathBuf {
 
     pub fn into_string(self) -> String {
         self.inner
-    }
-
-    pub fn into_fs_path_buf(self) -> FsPathBuf {
-        FsPathBuf::from(self.inner)
     }
 
     /// Extends `self` with `path`.
@@ -856,42 +840,6 @@ impl AsRef<Path> for PathBuf {
     }
 }
 
-// impl AsRef<std::path::Path> for Path {
-//     fn as_ref(&self) -> &std::path::Path {
-//         std::path::Path::new(self.as_str())
-//     }
-// }
-
-// impl AsRef<std::path::Path> for PathBuf {
-//     fn as_ref(&self) -> &std::path::Path {
-//         std::path::Path::new(self.as_str())
-//     }
-// }
-
-// impl AsRef<ffi::OsStr> for Path {
-//     fn as_ref(&self) -> &ffi::OsStr {
-//         ffi::OsStr::new(self.as_str())
-//     }
-// }
-
-// impl AsRef<ffi::OsStr> for PathBuf {
-//     fn as_ref(&self) -> &ffi::OsStr {
-//         ffi::OsStr::new(self.as_str())
-//     }
-// }
-
-// impl AsRef<FsPath> for Path {
-//     fn as_ref(&self) -> &FsPath {
-//         FsPath::new(self.as_str())
-//     }
-// }
-
-// impl AsRef<FsPath> for PathBuf {
-//     fn as_ref(&self) -> &FsPath {
-//         FsPath::new(self.as_str())
-//     }
-// }
-
 impl AsRef<Path> for Path {
     #[inline]
     fn as_ref(&self) -> &Path {
@@ -924,6 +872,9 @@ impl TryFrom<std::path::PathBuf> for PathBuf {
     type Error = std::string::FromUtf8Error;
 
     /// Try to convert a `std::path::PathBuf` into a `PathBuf`.
+    /// This is mostly useful for symlink targets, as normally
+    /// very few interactions are needed between `fsync::path`
+    /// and the actual file system.
     fn try_from(path: std::path::PathBuf) -> Result<PathBuf, Self::Error> {
         let bytes = path.into_os_string().into_encoded_bytes();
         let utf8 = String::from_utf8(bytes)?;
@@ -934,6 +885,10 @@ impl TryFrom<std::path::PathBuf> for PathBuf {
 impl<'a> TryFrom<&'a std::path::Path> for &'a Path {
     type Error = std::str::Utf8Error;
 
+    /// Try to convert a `&std::path::Path` into a `&Path`.
+    /// This is mostly useful for symlink targets, as normally
+    /// very few interactions are needed between `fsync::path`
+    /// and the actual file system.
     fn try_from(path: &'a std::path::Path) -> Result<&'a Path, Self::Error> {
         let bytes = path.as_os_str().as_encoded_bytes();
         let utf8 = std::str::from_utf8(bytes)?;
@@ -964,14 +919,6 @@ impl Default for &Path {
 impl From<String> for PathBuf {
     fn from(value: String) -> Self {
         PathBuf { inner: value }
-    }
-}
-
-impl From<FsPathBuf> for PathBuf {
-    fn from(value: FsPathBuf) -> Self {
-        PathBuf {
-            inner: value.into_string(),
-        }
     }
 }
 

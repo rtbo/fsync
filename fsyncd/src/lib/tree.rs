@@ -130,7 +130,9 @@ impl DiffTree {
             remote,
             nodes: nodes.clone(),
         };
-        build.both(None).await?;
+        build
+            .both(fsync::Metadata::root(), fsync::Metadata::root())
+            .await?;
 
         Ok(Self { nodes })
     }
@@ -212,15 +214,12 @@ where
 {
     fn both(
         &self,
-        both: Option<(fsync::Metadata, fsync::Metadata)>,
+        local: fsync::Metadata,
+        remote: fsync::Metadata,
     ) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async move {
-            let loc_entry = both.as_ref().map(|b| &b.0);
-            let loc_children = entry_children_sorted(&*self.local, loc_entry);
-
-            let rem_entry = both.as_ref().map(|b| &b.1);
-            let rem_children = entry_children_sorted(&*self.remote, rem_entry);
-
+            let loc_children = entry_children_sorted(&*self.local, &local);
+            let rem_children = entry_children_sorted(&*self.remote, &remote);
             let (loc_children, rem_children) = tokio::join!(loc_children, rem_children);
 
             let loc_children = loc_children?;
@@ -241,7 +240,7 @@ where
                         Ordering::Equal => {
                             match (loc.is_dir(), rem.is_dir()) {
                                 (true, true) | (false, false) => {
-                                    joinvec.push(self.both(Some((loc.clone(), rem.clone()))));
+                                    joinvec.push(self.both(loc.clone(), rem.clone()));
                                 }
                                 (true, false) => {
                                     joinvec.push(self.local(loc.clone()));
@@ -280,19 +279,9 @@ where
 
             future::try_join_all(joinvec).await?;
 
-            let (path, entry) = if let Some((local, remote)) = both {
-                assert_eq!(local.path(), remote.path());
-                let path = local.path().to_owned();
-                (path, Entry::Both { local, remote })
-            } else {
-                (
-                    PathBuf::default(),
-                    Entry::Both {
-                        local: fsync::Metadata::default(),
-                        remote: fsync::Metadata::default(),
-                    },
-                )
-            };
+            assert_eq!(local.path(), remote.path());
+            let path = local.path().to_owned();
+            let entry = Entry::Both { local, remote };
 
             let node = Node::new(entry, children);
             self.nodes.insert(path, node);
@@ -307,7 +296,7 @@ where
 
             if entry.is_dir() {
                 let mut joinvec = Vec::new();
-                let children = self.local.dir_entries(Some(entry.path().to_owned()));
+                let children = self.local.dir_entries(entry.path().to_owned());
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -332,7 +321,7 @@ where
 
             if entry.is_dir() {
                 let mut joinvec = Vec::new();
-                let children = self.remote.dir_entries(Some(entry.path().to_owned()));
+                let children = self.remote.dir_entries(entry.path().to_owned());
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -354,17 +343,15 @@ where
 
 async fn entry_children_sorted<S>(
     storage: &S,
-    entry: Option<&fsync::Metadata>,
+    entry: &fsync::Metadata,
 ) -> anyhow::Result<Vec<fsync::Metadata>>
 where
     S: storage::Storage,
 {
-    if let Some(entry) = entry {
-        if !entry.is_dir() {
-            return Ok(vec![]);
-        }
+    if !entry.is_dir() {
+        return Ok(vec![]);
     }
-    let path = entry.map(|e| e.path().to_owned());
+    let path = entry.path().to_owned();
     let children = storage.dir_entries(path);
     let mut children = children.try_collect::<Vec<_>>().await?;
 
