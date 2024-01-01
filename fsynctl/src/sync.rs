@@ -57,12 +57,10 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 
     let client = Arc::new(FsyncClient::new(client::Config::default(), transport.await?).spawn());
 
-    let node = client.entry(context::current(), args.path.clone()).await?;
+    let path = args.path.clone().unwrap_or_else(PathBuf::root);
+    let node = client.entry(context::current(), path.clone()).await?;
     if node.is_none() {
-        anyhow::bail!(
-            "No such entry: {}",
-            args.path.as_ref().map(|p| p.as_str()).unwrap_or("(root)")
-        );
+        anyhow::bail!("No such entry: {path}",);
     }
     let node = node.unwrap();
     let cmd = SyncCommand {
@@ -341,7 +339,7 @@ impl SyncCommand {
                 let path = node.path();
                 for c in node.children() {
                     let path = path.join(c);
-                    let node = self.client.entry(context::current(), Some(path)).await?;
+                    let node = self.client.entry(context::current(), path).await?;
                     self.node(node.as_ref().unwrap()).await?;
                 }
             }
@@ -480,7 +478,7 @@ impl SyncCommand {
                             "{} is a directory. Nothing to do.\n",
                             "Specify the --recurse flag to recurse down the tree."
                         ),
-                        local.path_or_root(),
+                        local.path(),
                     );
                 }
                 Ok(())

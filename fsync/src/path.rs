@@ -521,6 +521,26 @@ impl Path {
         comps.as_path()
     }
 
+    /// Returns `true` if the `Path` is the root (aka "/").
+    ///
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fsync::path::Path;
+    ///
+    /// assert!(Path::new("/").is_root());
+    /// assert!(!Path::new("/foo").is_root());
+    /// assert!(!Path::new("foo").is_root());
+    /// ```
+    #[inline]
+    pub fn is_root(&self) -> bool {
+        let mut comps = self.components();
+        let c1 = comps.next();
+        let c2 = comps.next();
+        (c1, c2) == (Some(Component::RootDir), None)
+    }
+
     /// Returns the `Path` without its final component, if there is one.
     ///
     /// This means it returns `Some("")` for relative paths with one component.
@@ -696,6 +716,12 @@ impl PathBuf {
     pub fn new() -> PathBuf {
         PathBuf {
             inner: String::new(),
+        }
+    }
+
+    pub fn root() -> PathBuf {
+        PathBuf {
+            inner: String::from("/")
         }
     }
 

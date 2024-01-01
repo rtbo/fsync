@@ -35,13 +35,14 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     transport.config_mut().max_frame_length(usize::MAX);
 
     let client = FsyncClient::new(client::Config::default(), transport.await?).spawn();
+    let path = args.path.unwrap_or_else(PathBuf::root);
     let entry = client
-        .entry(context::current(), args.path.clone())
+        .entry(context::current(), path.clone())
         .await
         .unwrap();
 
     if entry.is_none() {
-        println!("No such entry: {}", args.path.unwrap_or("(root)".into()));
+        println!("No such entry: {path}");
         return Ok(());
     }
     let entry = entry.unwrap();

@@ -20,7 +20,7 @@ pub struct CacheStorage<S> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CacheNode {
-    id: IdBuf,
+    id: Option<IdBuf>,
     metadata: fsync::Metadata,
     children: Vec<String>,
 }
@@ -80,11 +80,11 @@ where
 {
     pub async fn populate_from_entries(&mut self) -> anyhow::Result<()> {
         let entries = Arc::new(DashMap::new());
-        let children = populate_recurse(None, entries.clone(), self.storage.clone()).await?;
+        let children = populate_recurse(None, PathBuf::root(), entries.clone(), self.storage.clone()).await?;
         entries.insert(
-            Default::default(),
+            PathBuf::root(),
             CacheNode {
-                id: Default::default(),
+                id: None,
                 metadata: fsync::Metadata::root(),
                 children,
             },
@@ -122,8 +122,11 @@ where
     async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
         let node = self.entries.get(&path);
         if let Some(node) = node {
+            if !node.metadata.is_file() {
+                anyhow::bail!("{path} is not a file.");
+            }
             let id = node.id.clone();
-            let res = self.storage.read_file(id).await?;
+            let res = self.storage.read_file(id.expect("File without Id")).await?;
             Ok(res)
         } else {
             anyhow::bail!("No such entry in the cache: {path}");
@@ -142,7 +145,7 @@ where
     ) -> anyhow::Result<fsync::Metadata> {
         let (id, metadata) = self.storage.create_file(metadata, data).await?;
         let node = CacheNode {
-            id,
+            id: Some(id),
             metadata: metadata.clone(),
             children: Vec::new(),
         };
@@ -160,7 +163,8 @@ fn bincode_options() -> impl bincode::Options {
 }
 
 fn populate_recurse<'a, S>(
-    dir_path_id: Option<(IdBuf, PathBuf)>,
+    dir_id: Option<IdBuf>,
+    dir_path: PathBuf,
     entries: Arc<DashMap<PathBuf, CacheNode>>,
     storage: Arc<S>,
 ) -> BoxFuture<'a, anyhow::Result<Vec<String>>>
@@ -168,7 +172,7 @@ where
     S: super::id::DirEntries + Send + Sync + 'static,
 {
     Box::pin(async move {
-        let dirent = storage.dir_entries(dir_path_id.clone());
+        let dirent = storage.dir_entries(dir_id.clone(), dir_path.clone());
         tokio::pin!(dirent);
 
         let mut children: Vec<String> = Vec::new();
@@ -192,7 +196,7 @@ where
             set.spawn(async move {
                 let children = match &metadata {
                     fsync::Metadata::Directory { .. } => {
-                        populate_recurse(Some((id.clone(), path.clone())), entries.clone(), storage)
+                        populate_recurse(Some(id.clone()), path.clone(), entries.clone(), storage)
                             .await?
                     }
                     _ => Vec::new(),
@@ -200,7 +204,7 @@ where
                 entries.insert(
                     path,
                     CacheNode {
-                        id,
+                        id: Some(id),
                         metadata,
                         children,
                     },

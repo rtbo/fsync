@@ -137,7 +137,7 @@ impl super::CreateFile for Storage {
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
     ) -> anyhow::Result<fsync::Metadata> {
-        debug_assert!(metadata.path().is_relative());
+        debug_assert!(metadata.path().is_absolute());
         let fs_path = self.root.join(metadata.path().without_root().as_str());
         if fs_path.is_dir() {
             anyhow::bail!("{} exists and is a directory", metadata.path());

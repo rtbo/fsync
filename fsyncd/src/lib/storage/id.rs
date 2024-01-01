@@ -71,6 +71,23 @@ impl IdBuf {
     }
 }
 
+impl From<String> for IdBuf {
+    fn from(value: String) -> Self {
+        IdBuf { inner: value }
+    }
+}
+
+impl<T: ?Sized + AsRef<str>> From<&T> for IdBuf {
+    /// Converts a borrowed [`str`] to a [`IdBuf`].
+    ///
+    /// Allocates a [`IdBuf`] and copies the data into it.
+    #[inline]
+    fn from(s: &T) -> IdBuf {
+        IdBuf::from(s.as_ref().to_string())
+    }
+}
+
+
 impl fmt::Debug for IdBuf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("IdBuf(")?;
@@ -110,7 +127,8 @@ impl ToOwned for Id {
 pub trait DirEntries {
     fn dir_entries(
         &self,
-        parent_path_id: Option<(IdBuf, PathBuf)>,
+        parent_id: Option<IdBuf>,
+        parent_path: PathBuf,
     ) -> impl Stream<Item = anyhow::Result<(IdBuf, Metadata)>> + Send;
 }
 

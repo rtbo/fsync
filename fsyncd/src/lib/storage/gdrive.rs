@@ -6,6 +6,7 @@ use futures::Stream;
 use tokio::io;
 
 use super::id::IdBuf;
+use crate::storage::id::Id;
 
 #[derive(Clone)]
 pub struct GoogleDrive {
@@ -39,13 +40,16 @@ impl GoogleDrive {
 impl super::id::DirEntries for GoogleDrive {
     fn dir_entries(
         &self,
-        parent_path_id: Option<(IdBuf, PathBuf)>,
+        parent_id: Option<IdBuf>,
+        parent_path: PathBuf,
     ) -> impl Stream<Item = anyhow::Result<(IdBuf, fsync::Metadata)>> + Send {
-        let q = parent_path_id
-            .as_ref()
-            .map(|pid| format!("'{}' in parents", pid.0))
-            .unwrap_or_else(|| "'root' in parents".to_string());
-        let mut next_page_token: Option<String> = None;
+        debug_assert!(
+            parent_id.is_some() || parent_path.is_root(),
+            "none Id is for root only"
+        );
+        let search_id = parent_id.as_deref().unwrap_or_else(|| Id::new("root"));
+        let q = format!("'{search_id}' in parents");
+        let mut next_page_token = None;
 
         try_stream! {
             loop {
@@ -53,7 +57,7 @@ impl super::id::DirEntries for GoogleDrive {
                 next_page_token = file_list.next_page_token;
                 if let Some(files) = file_list.files {
                     for f in files {
-                        yield map_file(parent_path_id.clone(), f)?;
+                        yield map_file(parent_path.clone(), f)?;
                     }
                 }
                 if next_page_token.is_none() {
@@ -107,14 +111,11 @@ impl super::id::Storage for GoogleDrive {}
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
 fn map_file(
-    parent_path_id: Option<(IdBuf, PathBuf)>,
+    parent_path: PathBuf,
     f: api::File,
 ) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
     let id = f.id.unwrap_or_default();
-    let path = match parent_path_id {
-        Some(di) => di.1.join(f.name.as_deref().unwrap()),
-        None => PathBuf::from(f.name.as_deref().unwrap()),
-    };
+    let path = parent_path.join(f.name.as_deref().unwrap());
     let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
         fsync::Metadata::Directory { path }
     } else {

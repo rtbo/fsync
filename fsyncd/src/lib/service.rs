@@ -87,12 +87,12 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    async fn entry(self, _: Context, path: Option<PathBuf>) -> Option<fsync::tree::Node> {
-        self.tree.entry(path.as_deref()).map(Into::into)
+    async fn entry(self, _: Context, path: PathBuf) -> Option<fsync::tree::Node> {
+        self.tree.entry(&path).map(Into::into)
     }
 
     async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> Result<(), String> {
-        let entry = self.tree.entry(Some(&path));
+        let entry = self.tree.entry(&path);
         if entry.is_none() {
             return Err(format!("no such entry in remote drive: {path}"));
         }

@@ -39,19 +39,16 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     transport.config_mut().max_frame_length(usize::MAX);
 
     let client = Arc::new(FsyncClient::new(client::Config::default(), transport.await?).spawn());
-    let node = client.entry(context::current(), args.path.clone()).await?;
-
-    let is_root = args.path.is_none();
+    let path = args.path.unwrap_or_else(PathBuf::root);
+    let node = client.entry(context::current(), path.clone()).await?;
 
     if node.is_none() {
-        println!("No such entry: {}", args.path.unwrap_or("(root)".into()));
+        println!("No such entry: {path}");
         return Ok(());
     }
 
     let node = node.unwrap();
-    if !is_root {
-        print_entry_status(true, !node.children().is_empty(), "", node.entry());
-    }
+    print_entry_status(true, !node.children().is_empty(), "", node.entry());
 
     walk(client, "".into(), node).await
 }
@@ -68,7 +65,7 @@ fn walk(
         let joinvec: Vec<_> = node
             .children()
             .iter()
-            .map(|c| client.entry(context::current(), Some(dir.join(c))))
+            .map(|c| client.entry(context::current(), dir.join(c)))
             .collect();
         let children = future::try_join_all(joinvec).await?;
         let mut len = children.len();
@@ -103,12 +100,14 @@ fn print_entry_status(first: bool, has_follower: bool, prefix_head: &str, entry:
         (false, false) => "└─ ",
     };
 
+    let name = entry.path().file_name().unwrap_or(entry.path().as_str());
+
     match entry {
-        tree::Entry::Local(entry) => {
-            println!("L {prefix_head}{prefix_tail}{}", entry.path());
+        tree::Entry::Local(..) => {
+            println!("L {prefix_head}{prefix_tail}{name}");
         }
-        tree::Entry::Remote(entry) => {
-            println!("R {prefix_head}{prefix_tail}{}", entry.path());
+        tree::Entry::Remote(..) => {
+            println!("R {prefix_head}{prefix_tail}{name}");
         }
         tree::Entry::Both { local, remote } => {
             assert_eq!(local.path(), remote.path());
@@ -129,7 +128,7 @@ fn print_entry_status(first: bool, has_follower: bool, prefix_head: &str, entry:
 
             let status = if conflict.is_none() { "S" } else { "C" };
 
-            println!("{status} {prefix_head}{prefix_tail}{}", local.path());
+            println!("{status} {prefix_head}{prefix_tail}{name}");
 
             if let Some(conflict) = conflict {
                 let prefix_tail = match (first, has_follower) {

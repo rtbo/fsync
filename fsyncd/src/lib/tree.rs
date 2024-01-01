@@ -137,9 +137,8 @@ impl DiffTree {
         Ok(Self { nodes })
     }
 
-    pub fn entry(&self, path: Option<&Path>) -> Option<Node> {
-        let key = path.unwrap_or(Path::new(""));
-        self.nodes.get(key).map(|node| node.clone())
+    pub fn entry(&self, path: &Path) -> Option<Node> {
+        self.nodes.get(path).map(|node| node.clone())
     }
 
     pub fn add_local(
@@ -247,17 +246,7 @@ where
                     (None, None) => break,
                     (Some(loc), Some(rem)) => match loc.name().cmp(rem.name()) {
                         Ordering::Equal => {
-                            match (loc.is_dir(), rem.is_dir()) {
-                                (true, true) | (false, false) => {
-                                    joinvec.push(self.both(loc.clone(), rem.clone()));
-                                }
-                                (true, false) => {
-                                    joinvec.push(self.local(loc.clone()));
-                                }
-                                (false, true) => {
-                                    joinvec.push(self.remote(rem.clone()));
-                                }
-                            }
+                            joinvec.push(self.both(loc.clone(), rem.clone()));
                             children.push(loc.name().to_string());
                             loc_child = loc_children.next();
                             rem_child = rem_children.next();

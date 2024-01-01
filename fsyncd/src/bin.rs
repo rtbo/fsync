@@ -53,7 +53,7 @@ where
     if remote.load_from_disk(&remote_cache_path).await.is_err() {
         remote.populate_from_entries().await?;
     }
-
+    
     let service = service::Service::new(local, remote.clone()).await?;
 
     let abort_reg = {

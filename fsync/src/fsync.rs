@@ -27,7 +27,7 @@ pub enum Metadata {
 impl Metadata {
     pub fn root() -> Self {
         Self::Directory {
-            path: Default::default(),
+            path: PathBuf::root(),
         }
     }
 
@@ -37,14 +37,6 @@ impl Metadata {
             Self::Regular { path, .. } => path,
             Self::Symlink { path, .. } => path,
             Self::Special { path, .. } => path,
-        }
-    }
-
-    pub fn path_or_root(&self) -> &str {
-        if self.path().as_str().is_empty() {
-            "(root)"
-        } else {
-            self.path().as_str()
         }
     }
 
@@ -113,6 +105,31 @@ pub mod tree {
         },
     }
 
+    impl Entry {
+        pub fn path(&self) -> &Path {
+            match self {
+                Entry::Both { local, remote } => {
+                    debug_assert_eq!(local.path(), remote.path());
+                    local.path()
+                }
+                Entry::Local(entry) => entry.path(),
+                Entry::Remote(entry) => entry.path(),
+            }
+        }
+
+        pub fn is_local_only(&self) -> bool {
+            matches!(self, Entry::Local(..))
+        }
+
+        pub fn is_remote_only(&self) -> bool {
+            matches!(self, Entry::Remote(..))
+        }
+
+        pub fn is_both(&self) -> bool {
+            matches!(self, Entry::Both { .. })
+        }
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Node {
         entry: Entry,
@@ -133,32 +150,25 @@ pub mod tree {
         }
 
         pub fn path(&self) -> &Path {
-            match &self.entry {
-                Entry::Both { local, remote } => {
-                    debug_assert_eq!(local.path(), remote.path());
-                    local.path()
-                }
-                Entry::Local(entry) => entry.path(),
-                Entry::Remote(entry) => entry.path(),
-            }
+            self.entry.path()
         }
 
         pub fn is_local_only(&self) -> bool {
-            matches!(self.entry, Entry::Local(..))
+            self.entry.is_local_only()
         }
 
         pub fn is_remote_only(&self) -> bool {
-            matches!(self.entry, Entry::Remote(..))
+            self.entry.is_remote_only()
         }
 
         pub fn is_both(&self) -> bool {
-            matches!(self.entry, Entry::Both { .. })
+            self.entry.is_both()
         }
     }
 }
 
 #[tarpc::service]
 pub trait Fsync {
-    async fn entry(path: Option<PathBuf>) -> Option<tree::Node>;
+    async fn entry(path: PathBuf) -> Option<tree::Node>;
     async fn copy_remote_to_local(path: PathBuf) -> Result<(), String>;
 }
