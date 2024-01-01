@@ -142,6 +142,7 @@ pub trait ReadFile {
 pub trait CreateFile {
     fn create_file(
         &self,
+        parent_id: Option<&Id>,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
     ) -> impl Future<Output = anyhow::Result<(IdBuf, Metadata)>> + Send;

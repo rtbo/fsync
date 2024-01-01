@@ -80,7 +80,8 @@ where
 {
     pub async fn populate_from_entries(&mut self) -> anyhow::Result<()> {
         let entries = Arc::new(DashMap::new());
-        let children = populate_recurse(None, PathBuf::root(), entries.clone(), self.storage.clone()).await?;
+        let children =
+            populate_recurse(None, PathBuf::root(), entries.clone(), self.storage.clone()).await?;
         entries.insert(
             PathBuf::root(),
             CacheNode {
@@ -143,7 +144,17 @@ where
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
     ) -> anyhow::Result<fsync::Metadata> {
-        let (id, metadata) = self.storage.create_file(metadata, data).await?;
+        use anyhow::Context;
+
+        debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
+        let parent = metadata.path().parent().unwrap();
+        let parent = self.entries.get(parent).with_context(|| {
+            format!(
+                "Attempt to create file {} in non-existing parent!",
+                metadata.path()
+            )
+        })?;
+        let (id, metadata) = self.storage.create_file(parent.id.as_deref(), metadata, data).await?;
         let node = CacheNode {
             id: Some(id),
             metadata: metadata.clone(),

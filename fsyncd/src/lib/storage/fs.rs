@@ -108,6 +108,7 @@ impl super::DirEntries for Storage {
         &self,
         parent_path: PathBuf,
     ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
+        debug_assert!(parent_path.is_absolute());
         let fs_base = self.root.join(parent_path.without_root().as_str());
         try_stream! {
             let mut read_dir = fs::read_dir(&fs_base).await?;
@@ -125,7 +126,7 @@ impl super::DirEntries for Storage {
 
 impl super::ReadFile for Storage {
     async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
-        debug_assert!(path.is_relative());
+        debug_assert!(path.is_absolute());
         let path = self.root.join(path.without_root().as_str());
         Ok(tokio::fs::File::open(&path).await?)
     }
@@ -140,10 +141,10 @@ impl super::CreateFile for Storage {
         debug_assert!(metadata.path().is_absolute());
         let fs_path = self.root.join(metadata.path().without_root().as_str());
         if fs_path.is_dir() {
-            anyhow::bail!("{} exists and is a directory", metadata.path());
+            anyhow::bail!("{} exists and is a direceory: {fs_path}", metadata.path());
         }
         if fs_path.exists() {
-            anyhow::bail!("{} already exists", metadata.path());
+            anyhow::bail!("{} already exists here: {fs_path}", metadata.path());
         }
         {
             tokio::pin!(data);

@@ -80,29 +80,16 @@ impl super::id::ReadFile for GoogleDrive {
 impl super::id::CreateFile for GoogleDrive {
     async fn create_file(
         &self,
-        _metadata: &fsync::Metadata,
-        _data: impl io::AsyncRead,
+        parent_id: Option<&Id>,
+        metadata: &fsync::Metadata,
+        data: impl io::AsyncRead,
     ) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
-        unimplemented!()
-        // debug_assert!(metadata.path().is_relative());
-        // let path = self.root.join(metadata.path());
-        // if path.is_dir() {
-        //     return Err(crate::Error::Custom(format!(
-        //         "{} is a directory",
-        //         metadata.path()
-        //     )));
-        // }
-
-        // tokio::pin!(data);
-
-        // let mut f = tokio::fs::File::create(&path).await?;
-        // tokio::io::copy(&mut data, &mut f).await?;
-
-        // if let Some(mtime) = metadata.mtime() {
-        //     let f = f.into_std().await;
-        //     f.set_modified(mtime.into())?;
-        // }
-        // Ok(())
+        debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
+        let file = map_metadata(parent_id, None, metadata);
+        let file = self
+            .files_create(&file, metadata.size().unwrap(), data)
+            .await?;
+        map_file(metadata.path().parent().unwrap().to_owned(), file)
     }
 }
 
@@ -110,10 +97,7 @@ impl super::id::Storage for GoogleDrive {}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
-fn map_file(
-    parent_path: PathBuf,
-    f: api::File,
-) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
+fn map_file(parent_path: PathBuf, f: api::File) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
     let id = f.id.unwrap_or_default();
     let path = parent_path.join(f.name.as_deref().unwrap());
     let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
@@ -129,6 +113,22 @@ fn map_file(
         fsync::Metadata::Regular { path, size, mtime }
     };
     Ok((id, metadata))
+}
+
+fn map_metadata(parent_id: Option<&Id>, id: Option<&Id>, metadata: &fsync::Metadata) -> api::File {
+    let mime_type = match metadata {
+        fsync::Metadata::Directory { .. } => Some(FOLDER_MIMETYPE.to_string()),
+        _ => None,
+    };
+    let parents = parent_id.map(|id| vec![id.to_owned()]);
+    api::File {
+        id: id.map(ToOwned::to_owned),
+        name: Some(metadata.name().to_owned()),
+        size: None,
+        modified_time: metadata.mtime(),
+        mime_type,
+        parents,
+    }
 }
 
 mod api {
@@ -154,6 +154,7 @@ mod api {
         )]
         pub size: Option<u64>,
         pub mime_type: Option<String>,
+        pub parents: Option<Vec<IdBuf>>,
     }
 
     fn size_to_str<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
@@ -207,8 +208,8 @@ mod api {
         Resumable,
     }
 
-    impl AsRef<str> for UploadType {
-        fn as_ref(&self) -> &str {
+    impl UploadType {
+        pub fn as_str(&self) -> &str {
             match self {
                 UploadType::Simple => "simple",
                 UploadType::Multipart => "multipart",
@@ -217,13 +218,30 @@ mod api {
         }
     }
 
-    #[derive(Debug, Clone)]
-    pub struct UploadParams {
-        pub typ: UploadType,
-        pub size: Option<u64>,
-        pub mime_type: Option<String>,
+    impl AsRef<str> for UploadType {
+        fn as_ref(&self) -> &str {
+            self.as_str()
+        }
     }
 
+    #[derive(Debug, Clone)]
+    pub struct UploadParams<'a> {
+        pub typ: UploadType,
+        pub size: Option<u64>,
+        pub mime_type: Option<&'a str>,
+        pub fields: &'a str,
+    }
+
+    impl<'a> UploadParams<'a> {
+        pub fn query_params(&'a self) -> Vec<(&'static str, &'a str)> {
+            vec![
+                ("uploadType", self.typ.as_str()),
+                ("fields", self.fields),
+            ]
+        }
+    }
+
+    const UPLOAD_CHUNK_SZ: u64 = 2 * 256 * 1024;
     const METADATA_FIELDS: &str = "id,name,size,modifiedTime,mimeType";
 
     impl super::GoogleDrive {
@@ -242,7 +260,7 @@ mod api {
             }
 
             let mut res = self
-                .get_request_query(&[Scope::MetadataReadOnly], "/files", query_params, false)
+                .get_query(&[Scope::MetadataReadOnly], "/files", query_params, false)
                 .await?;
 
             let body = utils::get_body_as_string(res.body_mut()).await;
@@ -258,7 +276,7 @@ mod api {
             let path = format!("/files/{file_id}");
             let query_params = &[("fields", METADATA_FIELDS), ("alt", "media")];
             let res = self
-                .get_request_query(&[Scope::Full], &path, query_params, true)
+                .get_query(&[Scope::Full], &path, query_params, true)
                 .await?;
 
             if res.status() == StatusCode::NOT_FOUND {
@@ -280,19 +298,53 @@ mod api {
             }
         }
 
-        pub async fn files_create<D>(&self, metadata: &File, _data: D) -> anyhow::Result<()>
+        pub async fn files_create<D>(
+            &self,
+            file: &File,
+            data_len: u64,
+            data: D,
+        ) -> anyhow::Result<File>
         where
             D: io::AsyncRead,
         {
+            use io::AsyncReadExt;
+
+            let scopes = &[Scope::Full];
             let upload_params = UploadParams {
                 typ: UploadType::Resumable,
-                size: metadata.size,
-                mime_type: metadata.mime_type.clone(),
+                size: file.size,
+                mime_type: file.mime_type.as_deref(),
+                fields: METADATA_FIELDS,
             };
-            let _upload_url = self
-                .post_upload_request(&[Scope::Full], "/files", &upload_params, Some(metadata))
+            let upload_url = self
+                .post_upload_request(scopes, "/files", &upload_params, Some(file))
                 .await?;
-            unimplemented!("files_create")
+
+            tokio::pin!(data);
+
+            let mut sent = 0u64;
+            let file = loop {
+                let mut buf: Vec<u8> = Vec::with_capacity(UPLOAD_CHUNK_SZ as _);
+                let sz = data
+                    .as_mut()
+                    .take(UPLOAD_CHUNK_SZ)
+                    .read_to_end(&mut buf)
+                    .await?;
+                println!("uploading {sz} bytes");
+                let (status, mut body) = self
+                    .put_upload_range(scopes, &upload_url, buf, sent, data_len)
+                    .await?;
+                sent += sz as u64;
+                if status.is_success() && sent == data_len {
+                    let body = utils::get_body_as_string(&mut body).await;
+                    break serde_json::from_str(&body)?;
+                } else if status.is_server_error() {
+                    anyhow::bail!("Upload failed ({status}). No support yet to resume upload");
+                } else if status.is_client_error() {
+                    panic!("bad request ({status}): {}", utils::get_body_as_string(&mut body).await);
+                }
+            };
+            Ok(file)
         }
     }
 }
@@ -319,7 +371,7 @@ mod utils {
             Ok(token)
         }
 
-        pub async fn get_request_query<Q, K, V>(
+        pub async fn get_query<Q, K, V>(
             &self,
             scopes: &[api::Scope],
             path: &str,
@@ -354,20 +406,19 @@ mod utils {
             }
         }
 
-        pub async fn post_upload_request<B>(
+        pub async fn post_upload_request<'a, B>(
             &self,
             scopes: &[api::Scope],
             path: &str,
-            params: &api::UploadParams,
+            params: &api::UploadParams<'_>,
             body: Option<&B>,
-        ) -> anyhow::Result<String>
+        ) -> anyhow::Result<Url>
         where
             B: Serialize,
         {
             let token = self.fetch_token(scopes).await?;
 
-            let query_params = &[("uploadType", params.typ)];
-            let url = url_with_query(&self.upload_base_url, path, query_params);
+            let url = url_with_query(&self.upload_base_url, path, params.query_params());
             let mut req = Request::builder()
                 .method("POST")
                 .uri(url.as_str())
@@ -376,7 +427,7 @@ mod utils {
                     header::AUTHORIZATION,
                     format!("Bearer {}", token.token().unwrap()),
                 );
-            if let Some(mt) = &params.mime_type {
+            if let Some(mt) = params.mime_type {
                 req = req.header("X-Upload-Content-Type", mt);
             }
             if let Some(sz) = params.size {
@@ -392,13 +443,46 @@ mod utils {
             let body = body.unwrap_or_default();
             let req = req.body(hyper::body::Body::from(body)).unwrap();
 
-            let mut res = self.client.request(req).await?;
+            let res = self.client.request(req).await?;
             if res.status() != StatusCode::OK {
                 anyhow::bail!("POST {url} returned {}", res.status());
             }
-            println!("{}", get_body_as_string(res.body_mut()).await);
             let location = &res.headers()[header::LOCATION];
-            Ok(location.to_str().unwrap().to_string())
+            Ok(Url::parse(location.to_str().unwrap())?)
+        }
+
+        pub async fn put_upload_range(
+            &self,
+            scopes: &[api::Scope],
+            url: &Url,
+            data: Vec<u8>,
+            range_start: u64,
+            range_len: u64,
+        ) -> anyhow::Result<(StatusCode, Body)> {
+            let data_len = data.len() as u64;
+            debug_assert!(range_len >= range_start + data_len);
+            let token = self.fetch_token(scopes).await?;
+
+            let stream = tokio_stream::once(Ok::<_, std::io::Error>(data));
+            let body = hyper::body::Body::wrap_stream(stream);
+            let mut req = Request::builder()
+                .method("PUT")
+                .uri(url.as_str())
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {}", token.token().unwrap()),
+                )
+                .header(header::CONTENT_LENGTH, data_len);
+            if range_start > 0 || data_len < range_len {
+                req = req.header(
+                    header::CONTENT_RANGE,
+                    format!("bytes {range_start}-{}/{range_len}", range_start + data_len - 1),
+                );
+            }
+            let req = req.body(body)?;
+            let res = self.client.request(req).await?;
+
+            Ok((res.status(), res.into_body()))
         }
     }
 

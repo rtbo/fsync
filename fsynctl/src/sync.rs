@@ -708,7 +708,11 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
-            todo!("copy local to remote");
+            self.client
+                .copy_local_to_remote(context::current(), entry.path().to_owned())
+                .await?
+                // TODO: clean errors from Fsync
+                .map_err(|msg| anyhow::anyhow!("Deamon error: {msg}"))?;
         }
         Ok(())
     }

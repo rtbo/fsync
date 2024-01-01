@@ -99,6 +99,7 @@ where
         let node = entry.unwrap();
 
         match node.entry() {
+            tree::Entry::Local(..) => Err(format!("{path} is on the local drive only")),
             tree::Entry::Remote(remote) => {
                 let read = self
                     .remote
@@ -115,5 +116,34 @@ where
             }
             _ => Err(format!("{path} is not only on remote")),
         }
+    }
+
+    async fn copy_local_to_remote(self, _: Context, path: PathBuf) -> Result<(), String> {
+        let entry = self.tree.entry(&path);
+        if entry.is_none() {
+            return Err(format!("no such entry in local drive: {path}"));
+        }
+        let node = entry.unwrap();
+
+        match node.entry() {
+            tree::Entry::Local(local) => {
+                let read = self
+                    .local
+                    .read_file(local.path().to_owned())
+                    .await
+                    .map_err(|err| err.to_string())?;
+
+                let remote = self
+                    .remote
+                    .create_file(local, read)
+                    .await.unwrap();
+
+                self.tree.add_remote(&path, remote).unwrap();
+                Ok(())
+            }
+            tree::Entry::Remote(..) => Err(format!("{path} is on the remote drive only")),
+            _ => Err(format!("{path} is not only on remote")),
+        }
+
     }
 }
