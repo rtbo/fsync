@@ -170,17 +170,24 @@ impl DiffTree {
         Ok(())
     }
 
-    pub fn print_out(&self) {
-        let root = self.nodes.get(Path::new(""));
+    pub fn print_out<W>(&self, w: &mut W)
+    where
+        W: std::io::Write,
+    {
+        let rootp = Path::root();
+        let root = self.nodes.get(rootp);
         if let Some(root) = root {
             for child_name in root.children() {
-                let path = Path::new(child_name);
-                self._print_out(path, 0);
+                let path = rootp.join(child_name);
+                self._print_out(w, &path, 0);
             }
         }
     }
 
-    fn _print_out(&self, path: &Path, indent: usize) {
+    fn _print_out<W>(&self, w: &mut W, path: &Path, indent: usize)
+    where
+        W: std::io::Write,
+    {
         let node = self.nodes.get(path).unwrap();
         let marker = match node.entry() {
             Entry::Both { .. } => "B",
@@ -188,15 +195,17 @@ impl DiffTree {
             Entry::Remote { .. } => "R",
         };
 
-        println!(
+        writeln!(
+            w,
             "{marker} {}{}",
             "  ".repeat(indent),
             path.file_name().unwrap()
-        );
+        )
+        .unwrap();
 
         for child_name in node.children() {
             let path = path.join(child_name);
-            self._print_out(&path, indent + 1);
+            self._print_out(w, &path, indent + 1);
         }
     }
 }
