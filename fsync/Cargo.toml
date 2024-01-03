@@ -35,3 +35,4 @@ rand = "0.8"
 tokio-util = { version = "0.7.10", features = ["compat"] }
 url = "2.5.0"
 webbrowser = "0.8.12"
+urlencoding = "2.1.3"
