@@ -3,12 +3,12 @@ use hyper_rustls::HttpsConnector;
 
 pub type Connector = HttpsConnector<HttpConnector>;
 
-mod server {
+pub(super) mod server {
     use std::str::{self};
 
     use anyhow::Context;
     use chrono::Utc;
-    use tokio::io::{self, AsyncReadExt};
+    use tokio::io;
 
     use super::util::read_until_pattern;
 
@@ -24,6 +24,8 @@ mod server {
         Patch,
         Delete,
     }
+
+    #[derive(Debug)]
     pub struct Request {
         method: Method,
         uri: String,
@@ -37,6 +39,8 @@ mod server {
         where
             R: io::AsyncBufRead,
         {
+            use io::AsyncReadExt;
+
             tokio::pin!(reader);
 
             const DELIM: &[u8; 2] = b"\r\n";
@@ -50,16 +54,32 @@ mod server {
             let (uri, query) = parse_uri_query(&uri)?;
 
             let mut headers = Vec::new();
+            let mut content_length: Option<usize> = None;
             loop {
                 buf.clear();
                 read_until_pattern(&mut reader, DELIM, &mut buf).await?;
                 if buf.len() <= 2 {
                     break;
                 }
+                let header = parse_header(&buf)?;
+                if str::eq_ignore_ascii_case(&header.0, "transfer-encoding") {
+                    anyhow::bail!("Unsupported header: Transfer-Encoding")
+                }
+                if str::eq_ignore_ascii_case(&header.0, "content-length") {
+                    content_length = Some(header.1.parse()?);
+                }
                 headers.push(parse_header(&buf)?);
             }
             buf.clear();
-            reader.read_to_end(&mut buf).await?;
+            if let Some(len) = content_length {
+                if len > buf.capacity() {
+                    buf.reserve(len - buf.capacity());
+                }
+                unsafe {
+                    buf.set_len(len);
+                }
+                reader.read_exact(&mut buf).await?;
+            }
             Ok(Request {
                 method,
                 uri,
@@ -77,7 +97,7 @@ mod server {
             &self.uri
         }
 
-        pub fn query(&self, name: &str) -> impl Iterator<Item = &(String, String)> {
+        pub fn query(&self) -> impl Iterator<Item = &(String, String)> {
             self.query.iter()
         }
 
@@ -101,6 +121,14 @@ mod server {
 
         pub fn headers(&self) -> impl Iterator<Item = &(String, String)> {
             self.headers.iter()
+        }
+
+        pub fn body(&self) -> &[u8] {
+            &self.body
+        }
+
+        pub fn into_body(self) -> Vec<u8> {
+            self.body
         }
     }
 
@@ -213,37 +241,22 @@ mod server {
         }
     }
 
-    struct Response;
-
-    impl Response {
-        pub fn builder() -> ResponseBuilder {
-            Default::default()
+    impl From<u32> for Status {
+        fn from(value: u32) -> Self {
+            Status(value)
         }
     }
 
-    #[derive(Debug, Default)]
-    pub struct ResponseBuilder {
+    #[derive(Debug)]
+    pub struct Response<'a> {
         status: Option<Status>,
         headers: Vec<(String, String)>,
-        body: Vec<u8>,
+        body: &'a [u8],
     }
 
-    impl ResponseBuilder {
-        pub fn status(self, status_code: Status) -> Self {
-            Self {
-                status: Some(status_code),
-                ..self
-            }
-        }
-
-        pub fn header(self, name: String, value: String) -> Self {
-            let mut headers = self.headers;
-            headers.push((name, value));
-            Self { headers, ..self }
-        }
-
-        pub fn body(self, body: Vec<u8>) -> Self {
-            Self { body, ..self }
+    impl Response<'_> {
+        pub fn builder() -> ResponseBuilder {
+            Default::default()
         }
 
         pub async fn write<W>(self, writer: W) -> anyhow::Result<()>
@@ -264,7 +277,7 @@ mod server {
             let mut has_date = false;
             let mut has_server = false;
             let mut has_content_length = false;
-            for (name, value) in headers.iter() {
+            for (name, _) in headers.iter() {
                 if name.eq_ignore_ascii_case("date") {
                     has_date = true;
                 }
@@ -301,6 +314,38 @@ mod server {
             writer.write(b"\r\n").await?;
             writer.write(&body).await?;
             Ok(())
+        }
+    }
+
+    #[derive(Debug, Default)]
+    pub struct ResponseBuilder {
+        status: Option<Status>,
+        headers: Vec<(String, String)>,
+    }
+
+    impl ResponseBuilder {
+        pub fn status<S>(self, status: S) -> Self
+        where
+            S: Into<Status>,
+        {
+            Self {
+                status: Some(status.into()),
+                ..self
+            }
+        }
+
+        pub fn header(self, name: String, value: String) -> Self {
+            let mut headers = self.headers;
+            headers.push((name, value));
+            Self { headers, ..self }
+        }
+
+        pub fn body(self, body: &[u8]) -> Response {
+            Response {
+                status: self.status,
+                headers: self.headers,
+                body,
+            }
         }
     }
 }
