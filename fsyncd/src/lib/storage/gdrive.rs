@@ -97,7 +97,7 @@ impl super::id::CreateFile for GoogleDrive {
 
 impl super::id::Storage for GoogleDrive {
     async fn shutdown(&self) {
-        let _ = self.auth.flush_cache().await; 
+        let _ = self.auth.flush_cache().await;
     }
 }
 
@@ -143,7 +143,7 @@ mod api {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use tokio::io;
 
-    use crate::storage::id::IdBuf;
+    use crate::storage::{id::IdBuf, gdrive::utils::check_response};
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -259,6 +259,8 @@ mod api {
             q: String,
             page_token: Option<String>,
         ) -> anyhow::Result<FileList> {
+            let path = "/files";
+
             let mut query_params = vec![
                 ("q", q),
                 ("fields", format!("files({METADATA_FIELDS})")),
@@ -269,8 +271,9 @@ mod api {
             }
 
             let res = self
-                .get_query(&[Scope::MetadataReadOnly], "/files", query_params, false)
+                .get_query(&[Scope::MetadataReadOnly], path, query_params)
                 .await?;
+            let res = check_response("GET", &path, res).await?;
 
             let file_list: FileList = res.json().await?;
 
@@ -281,28 +284,25 @@ mod api {
             &self,
             file_id: &str,
         ) -> anyhow::Result<Option<impl io::AsyncRead>> {
+            use futures::stream::{StreamExt, TryStreamExt};
+
             let path = format!("/files/{file_id}");
             let query_params = &[("fields", METADATA_FIELDS), ("alt", "media")];
-            let res = self
-                .get_query(&[Scope::Full], &path, query_params, true)
-                .await?;
 
+            let res = self.get_query(&[Scope::Full], &path, query_params).await?;
             if res.status() == StatusCode::NOT_FOUND {
-                Ok(None)
-            } else {
-                use futures::stream::{StreamExt, TryStreamExt};
+                return Ok(None);
+            } 
+            let res = check_response("GET", &path, res).await?;
 
-                let bytes = res.bytes_stream().map(|res| {
-                    res.map_err(|err| {
-                        std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
-                    })
-                });
-                let read = bytes.into_async_read();
+            let bytes = res.bytes_stream().map(|res| {
+                res.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))
+            });
+            let read = bytes.into_async_read();
 
-                Ok(Some(tokio_util::compat::FuturesAsyncReadCompatExt::compat(
-                    read,
-                )))
-            }
+            Ok(Some(tokio_util::compat::FuturesAsyncReadCompatExt::compat(
+                read,
+            )))
         }
 
         pub async fn files_create<D>(
@@ -368,6 +368,21 @@ mod utils {
 
     use super::api;
 
+    pub async fn check_response(
+        method: &str,
+        path: &str,
+        res: Response,
+    ) -> anyhow::Result<Response> {
+        if !res.status().is_success() {
+            anyhow::bail!(
+                "{method} {path} returned {}\n{}",
+                res.status(),
+                res.text().await?
+            );
+        }
+        Ok(res)
+    }
+
     impl super::GoogleDrive {
         pub async fn fetch_token(&self, scopes: &[api::Scope]) -> anyhow::Result<AccessToken> {
             let scopes = scopes.iter().map(|&s| s.into()).collect();
@@ -379,7 +394,6 @@ mod utils {
             scopes: &[api::Scope],
             path: &str,
             query_params: Q,
-            allow_404: bool,
         ) -> anyhow::Result<Response>
         where
             Q: IntoIterator,
@@ -398,11 +412,7 @@ mod utils {
                 .send()
                 .await?;
 
-            if res.status().is_success() || (allow_404 && res.status() == StatusCode::NOT_FOUND) {
-                Ok(res)
-            } else {
-                Err(anyhow::anyhow!("GET {url} returned {}", res.status()))
-            }
+            Ok(res)
         }
 
         pub async fn post_upload_request<'a, B>(
