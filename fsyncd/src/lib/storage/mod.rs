@@ -1,5 +1,5 @@
 use fsync::{path::PathBuf, Metadata};
-use futures::{Future, Stream};
+use futures::{future, Future, Stream};
 use tokio::io;
 
 pub mod cache;
@@ -29,4 +29,8 @@ pub trait CreateFile {
     ) -> impl Future<Output = anyhow::Result<Metadata>> + Send;
 }
 
-pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {}
+pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {
+    fn shutdown(&self) -> impl Future<Output = ()> + Send {
+        future::ready(())
+    }
+}

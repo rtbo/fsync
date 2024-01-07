@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_stream::try_stream;
 use bincode::Options;
 use dashmap::DashMap;
-use fsync::path::FsPath;
+use fsync::path::FsPathBuf;
 use fsync::path::PathBuf;
 use futures::{future::BoxFuture, Stream};
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,7 @@ use super::id::IdBuf;
 pub struct CacheStorage<S> {
     entries: Arc<DashMap<PathBuf, CacheNode>>,
     storage: Arc<S>,
+    path: FsPathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,18 +30,19 @@ impl<S> CacheStorage<S>
 where
     S: super::id::Storage,
 {
-    pub fn new(storage: S) -> Self {
+    pub fn new(storage: S, path: FsPathBuf) -> Self {
         Self {
             entries: Arc::new(DashMap::new()),
             storage: Arc::new(storage),
+            path,
         }
     }
 
-    pub async fn load_from_disk(&mut self, path: &FsPath) -> anyhow::Result<()> {
+    pub async fn load_from_disk(&mut self) -> anyhow::Result<()> {
         use std::fs;
         use std::io::BufReader;
 
-        let path = path.to_owned();
+        let path = self.path.clone();
 
         let handle = tokio::task::spawn_blocking(move || {
             let reader = fs::File::open(path)?;
@@ -55,11 +57,11 @@ where
         Ok(())
     }
 
-    pub async fn save_to_disc(&self, path: &FsPath) -> anyhow::Result<()> {
+    pub async fn save_to_disc(&self) -> anyhow::Result<()> {
         use std::fs;
         use std::io::BufWriter;
 
-        let path = path.to_owned();
+        let path = self.path.clone();
         let entries = self.entries.clone();
 
         let handle = tokio::task::spawn_blocking(move || {
@@ -154,7 +156,10 @@ where
                 metadata.path()
             )
         })?;
-        let (id, metadata) = self.storage.create_file(parent.id.as_deref(), metadata, data).await?;
+        let (id, metadata) = self
+            .storage
+            .create_file(parent.id.as_deref(), metadata, data)
+            .await?;
         let node = CacheNode {
             id: Some(id),
             metadata: metadata.clone(),
@@ -165,7 +170,14 @@ where
     }
 }
 
-impl<S> super::Storage for CacheStorage<S> where S: super::id::Storage {}
+impl<S> super::Storage for CacheStorage<S>
+where
+    S: super::id::Storage,
+{
+    async fn shutdown(&self) {
+        let _ = self.save_to_disc().await;
+    }
+}
 
 fn bincode_options() -> impl bincode::Options {
     bincode::DefaultOptions::new()

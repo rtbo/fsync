@@ -91,6 +91,17 @@ impl TokenStore {
         Ok(())
     }
 
+    async fn flush(&self) -> anyhow::Result<()> {
+        if let Some(path) = self.cache.try_path() {
+            self.write_to_disk(path).await?;
+        }
+        Ok(())
+    }
+
+    /// Pushes a response in the cache for later retrieval.
+    ///
+    /// `push` will not attempt to write to disk.
+    /// Loading/saving to disk is only done at start-up and shutdown.
     async fn push(&mut self, tok: &BasicTokenResponse) {
         if !self.cache.has_mem() {
             return;
@@ -120,9 +131,6 @@ impl TokenStore {
             expiration,
         };
         self.emplace_token(token);
-        if let Some(path) = self.cache.try_path() {
-            let _ = self.write_to_disk(path).await;
-        }
     }
 
     fn emplace_token(&mut self, token: CachedToken) {
@@ -190,6 +198,11 @@ impl Client {
             http_client,
             client,
         })
+    }
+
+    pub async fn flush_cache(&self) -> anyhow::Result<()> {
+        self.token_store.read().await.flush().await?;
+        Ok(())
     }
 
     pub async fn get_token(&self, scopes: Vec<Scope>) -> anyhow::Result<AccessToken> {

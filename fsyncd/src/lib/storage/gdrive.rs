@@ -95,7 +95,11 @@ impl super::id::CreateFile for GoogleDrive {
     }
 }
 
-impl super::id::Storage for GoogleDrive {}
+impl super::id::Storage for GoogleDrive {
+    async fn shutdown(&self) {
+        let _ = self.auth.flush_cache().await; 
+    }
+}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
