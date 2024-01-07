@@ -585,18 +585,19 @@ impl SyncCommand {
         let rem_mtime = remote.mtime().unwrap();
         let rem_size = remote.size().unwrap();
 
-        if loc_mtime == rem_mtime && loc_size == rem_size {
+        let mtime_cmp = fsync::compare_mtime(loc_mtime, rem_mtime);
+
+        if mtime_cmp == Ordering::Equal && loc_size == rem_size {
             // storing remote because has specific id, but local would also be OK
             println!("Up-to-date: {}", local.path());
             self.good_to_go(remote).await;
             return Ok(());
         }
 
-        if loc_mtime == rem_mtime && loc_size != rem_size {
+        if mtime_cmp == Ordering::Equal && loc_size != rem_size {
             anyhow::bail!(
                 r#"{} has same modification time but different size.
-Something went wrong somewhere.
-Aborting"#,
+Unsupported situation. Aborting"#,
                 local.path()
             );
         }
@@ -611,11 +612,12 @@ Aborting"#,
         }
 
         let head = format!("Conflict: {}", local.path());
-        let (loc_adj, rem_adj) = if loc_mtime < rem_mtime {
-            ("oldest", "most recent")
-        } else {
-            ("most recent", "oldest")
+        let (loc_adj, rem_adj) = match mtime_cmp {
+            Ordering::Less => ("oldest", "most recent"),
+            Ordering::Greater => ("oldest", "most recent"),
+            Ordering::Equal => unreachable!(),
         };
+        
         let mtime = format!("Local is {loc_adj} ({loc_mtime}), remote is {rem_adj} ({rem_mtime})");
         let size: String = {
             let loc_bytes = utils::adjusted_byte(loc_size);
