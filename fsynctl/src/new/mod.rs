@@ -17,9 +17,6 @@ pub struct Args {
 }
 
 pub async fn main(args: Args) -> anyhow::Result<()> {
-    for (key, value) in std::env::vars() {
-        println!("{key}  =  {value}");
-    }
     let name = if let Some(name) = args.name {
         map_validation_result(validate_name(name.as_str()))?;
         name
