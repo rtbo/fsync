@@ -471,6 +471,7 @@ pub(super) mod server {
         if has_body {
             writer.write(body.as_ref()).await?;
         }
+        writer.flush().await?;
         Ok(())
     }
 }
