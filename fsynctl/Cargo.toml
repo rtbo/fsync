@@ -8,13 +8,12 @@ edition.workspace = true
 fsync = { path = "../fsync" }
 
 anyhow = { workspace = true }
+byte-unit = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
+inquire = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tarpc = { workspace = true }
 tokio = { workspace = true }
 yup-oauth2 = { workspace = true }
-
-byte-unit = "5.1.2"
-inquire = { version = "0.6.2", features = ["editor"] }
