@@ -3,158 +3,105 @@ use hyper_rustls::HttpsConnector;
 
 pub type Connector = HttpsConnector<HttpConnector>;
 
+#[derive(Debug)]
+pub struct QueryMap<'a>(Vec<(&'a str, &'a str)>);
+
+impl<'a> QueryMap<'a> {
+    pub fn parse(query: Option<&'a str>) -> anyhow::Result<QueryMap<'a>> {
+        let mut vec = Vec::new();
+        if let Some(query) = query {
+            let parts = query.split("&");
+            for part in parts {
+                let (name, value) = part.split_once('=').unwrap_or((part, ""));
+                vec.push((name, value));
+            }
+        }
+        Ok(QueryMap(vec))
+    }
+
+    pub fn get(&'a self, key: &str) -> Option<&'a str> {
+        for (k, v) in self.0.iter() {
+            if *k == key {
+                return Some(*v);
+            }
+        }
+        None
+    }
+}
+
 pub(super) mod server {
     use std::str::{self};
 
     use anyhow::Context;
     use chrono::Utc;
+    use http::{HeaderValue, Method, Request, Uri};
     use tokio::io;
 
     use super::util::read_until_pattern;
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub enum Method {
-        Get,
-        Head,
-        Post,
-        Options,
-        Connect,
-        Trace,
-        Put,
-        Patch,
-        Delete,
-    }
+    pub async fn parse_request<R>(reader: R) -> anyhow::Result<Request<Vec<u8>>>
+    where
+        R: io::AsyncBufRead,
+    {
+        use io::AsyncReadExt;
 
-    #[derive(Debug)]
-    pub struct Request {
-        method: Method,
-        uri: String,
-        query: Vec<(String, String)>,
-        headers: Vec<(String, String)>,
-        body: Vec<u8>,
-    }
+        tokio::pin!(reader);
 
-    impl Request {
-        pub async fn parse<R>(reader: R) -> anyhow::Result<Request>
-        where
-            R: io::AsyncBufRead,
-        {
-            use io::AsyncReadExt;
+        const DELIM: &[u8; 2] = b"\r\n";
 
-            tokio::pin!(reader);
+        let mut buf = Vec::new();
+        read_until_pattern(&mut reader, DELIM, &mut buf).await?;
+        if buf.is_empty() {
+            anyhow::bail!("Empty HTTP request");
+        }
+        let (method, uri) = parse_command(&buf)?;
 
-            const DELIM: &[u8; 2] = b"\r\n";
+        let mut req = Request::builder().method(method).uri(uri);
 
-            let mut buf = Vec::new();
-            read_until_pattern(&mut reader, DELIM, &mut buf).await?;
-            if buf.is_empty() {
-                anyhow::bail!("Empty HTTP request");
-            }
-            let (method, uri) = parse_command(&buf)?;
-            let (uri, query) = parse_uri_query(&uri)?;
-
-            let mut headers = Vec::new();
-            let mut content_length: Option<usize> = None;
-            loop {
-                buf.clear();
-                read_until_pattern(&mut reader, DELIM, &mut buf).await?;
-                if buf.len() <= 2 {
-                    break;
-                }
-                let header = parse_header(&buf)?;
-                if str::eq_ignore_ascii_case(&header.0, "transfer-encoding") {
-                    anyhow::bail!("Unsupported header: Transfer-Encoding")
-                }
-                if str::eq_ignore_ascii_case(&header.0, "content-length") {
-                    content_length = Some(header.1.parse()?);
-                }
-                headers.push(parse_header(&buf)?);
-            }
+        let mut content_length: Option<usize> = None;
+        loop {
             buf.clear();
-            if let Some(len) = content_length {
-                if len > buf.capacity() {
-                    buf.reserve(len - buf.capacity());
-                }
-                unsafe {
-                    buf.set_len(len);
-                }
-                reader.read_exact(&mut buf).await?;
+            read_until_pattern(&mut reader, DELIM, &mut buf).await?;
+            if buf.len() <= 2 {
+                break;
             }
-            Ok(Request {
-                method,
-                uri,
-                query,
-                headers,
-                body: buf,
-            })
-        }
-
-        pub fn method(&self) -> Method {
-            self.method
-        }
-
-        pub fn path(&self) -> &str {
-            &self.uri
-        }
-
-        pub fn query(&self) -> impl Iterator<Item = &(String, String)> {
-            self.query.iter()
-        }
-
-        pub fn query_param(&self, name: &str) -> Option<&str> {
-            for (nam, value) in self.query.iter() {
-                if name == nam {
-                    return Some(value);
-                }
+            let header = parse_header(&buf)?;
+            if str::eq_ignore_ascii_case(&header.0, "transfer-encoding") {
+                anyhow::bail!("Unsupported header: Transfer-Encoding")
             }
-            None
-        }
-
-        pub fn header(&self, name: &str) -> Option<&str> {
-            for (nam, value) in self.headers.iter() {
-                if name.eq_ignore_ascii_case(nam) {
-                    return Some(value);
-                }
+            if str::eq_ignore_ascii_case(&header.0, "content-length") {
+                content_length = Some(header.1.parse()?);
             }
-            None
+            let (name, value) = parse_header(&buf)?;
+            req = req.header(name, value.parse::<HeaderValue>()?);
         }
-
-        pub fn headers(&self) -> impl Iterator<Item = &(String, String)> {
-            self.headers.iter()
+        buf.clear();
+        if let Some(len) = content_length {
+            if len > buf.capacity() {
+                buf.reserve(len - buf.capacity());
+            }
+            unsafe {
+                buf.set_len(len);
+            }
+            reader.read_exact(&mut buf).await?;
         }
-
-        pub fn body(&self) -> &[u8] {
-            &self.body
-        }
-
-        pub fn into_body(self) -> Vec<u8> {
-            self.body
-        }
+        Ok(req.body(buf)?)
     }
 
-    pub(super) fn parse_command(line: &[u8]) -> anyhow::Result<(Method, String)> {
+    pub(super) fn parse_command(line: &[u8]) -> anyhow::Result<(Method, Uri)> {
         let mut parts = line.split(|b| *b == b' ');
         let line = str::from_utf8(line)?;
+
         let method = parts
             .next()
             .with_context(|| format!("no method in header {line}"))?;
-
-        let method = match method {
-            b"GET" => Method::Get,
-            b"POST" => Method::Post,
-            b"PUT" => Method::Put,
-            b"PATCH" => Method::Patch,
-            b"DELETE" => Method::Delete,
-            b"HEAD" => Method::Head,
-            b"OPTIONS" => Method::Options,
-            b"CONNECT" => Method::Connect,
-            b"TRACE" => Method::Trace,
-            _ => anyhow::bail!("Unrecognized method: {}", str::from_utf8(method)?),
-        };
+        let method = Method::from_bytes(method)
+            .with_context(|| format!("Unrecognized method: {}", String::from_utf8_lossy(method)))?;
 
         let uri = parts
             .next()
             .with_context(|| format!("no path in HTTP header {line}"))?;
+        let uri = uri.try_into()?;
 
         let protocol = parts
             .next()
@@ -162,29 +109,17 @@ pub(super) mod server {
         if protocol != b"HTTP/1.1\r\n" {
             anyhow::bail!("unsupported HTTP protocol in header {line}");
         }
-        Ok((method, str::from_utf8(uri)?.to_owned()))
+        Ok((method, uri))
     }
 
-    pub(super) fn parse_uri_query(uri: &str) -> anyhow::Result<(String, Vec<(String, String)>)> {
-        let uri = urlencoding::decode(uri)?;
-        let (uri, query_str) = uri.split_once(|b| b == '?').unwrap_or((&uri, ""));
-        let mut query = Vec::new();
-        let parts = query_str.split("&");
-        for part in parts {
-            let (name, value) = part.split_once('=').unwrap_or((part, ""));
-            query.push((name.to_string(), value.to_string()));
-        }
-        Ok((uri.to_string(), query))
-    }
-
-    pub(super) fn parse_header(line: &[u8]) -> anyhow::Result<(String, String)> {
+    pub(super) fn parse_header(line: &[u8]) -> anyhow::Result<(&str, &str)> {
         let line = str::from_utf8(line)?;
         let (name, value) = line
             .split_once(|b| b == ':')
             .with_context(|| format!("Invalid header: {line}"))?;
         let name = name.trim();
         let value = value.trim();
-        Ok((name.to_string(), value.to_string()))
+        Ok((name, value))
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -394,6 +329,8 @@ mod util {
 
 #[cfg(test)]
 mod tests {
+    use http::Method;
+
     use super::{server::*, util::*};
 
     const TEST_REQ: &str = concat!(
@@ -409,7 +346,7 @@ mod tests {
         let expected: &[&[u8]] = &[
             b"GET /some/path HTTP/1.1\r\n",
             b"User-Agent: fsyncd/13.0\r\n",
-            b"Content-Length: 123456789\r\n",
+            b"Content-Length: 12\r\n",
             b"\r\n",
             b"Request Body",
         ];
@@ -430,44 +367,27 @@ mod tests {
     #[test]
     fn test_parse_command() -> anyhow::Result<()> {
         let (method, path) = parse_command(b"GET /some/path HTTP/1.1\r\n")?;
-        assert_eq!(method, Method::Get);
+        assert_eq!(method, Method::GET);
         assert_eq!(path, "/some/path");
         Ok(())
     }
 
     #[test]
     fn test_parse_header() -> anyhow::Result<()> {
-        let (name, value) = parse_header(b"Content-Length: 123456789\r\n")?;
+        let (name, value) = parse_header(b"Content-Length: 12\r\n")?;
         assert_eq!(name, "Content-Length");
         assert_eq!(value, "123456789");
-        assert!(parse_header(b"Content-Length; 123456789\r\n").is_err());
+        assert!(parse_header(b"Content-Length; 12\r\n").is_err());
         Ok(())
     }
 
     #[tokio::test]
     async fn test_parse_request() -> anyhow::Result<()> {
-        let req = Request::parse(TEST_REQ.as_bytes()).await?;
-        assert_eq!(req.method(), Method::Get);
-        assert_eq!(req.path(), "/some/path");
-        let mut headers = req.headers();
-        assert_eq!(
-            headers.next(),
-            Some(&("User-Agent".to_string(), "fsyncd/13.0".to_string()))
-        );
-        assert_eq!(
-            headers.next(),
-            Some(&("Content-Length".to_string(), "123456789".to_string()))
-        );
-        assert!(headers.next().is_none());
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_find_header() -> anyhow::Result<()> {
-        let req = Request::parse(TEST_REQ.as_bytes()).await?;
-        assert_eq!(req.header("User-Agent"), Some("fsyncd/13.0"));
-        assert_eq!(req.header("Content-Length"), Some("123456789"));
-        assert_eq!(req.header("content-length"), Some("123456789"));
+        let req = parse_request(TEST_REQ.as_bytes()).await?;
+        assert_eq!(req.method(), Method::GET);
+        assert_eq!(req.uri(), "/some/path");
+        assert_eq!(req.headers().get("User-Agent").unwrap(), &"fsyncd/13.0");
+        assert_eq!(req.headers().get("Content-Length").unwrap(), &"12");
         Ok(())
     }
 }

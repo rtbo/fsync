@@ -667,6 +667,7 @@ dependencies = [
  "dirs",
  "futures",
  "glob",
+ "http",
  "hyper",
  "hyper-rustls",
  "oauth2",

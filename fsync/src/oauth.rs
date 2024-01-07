@@ -262,16 +262,17 @@ impl Client {
         let (reader, writer) = io::split(socket);
         let reader = io::BufReader::new(reader);
         let writer = io::BufWriter::new(writer);
-        let req = server::Request::parse(reader).await?;
+        let req = server::parse_request(reader).await?;
         println!("got request {req:#?}");
+        let query = crate::http::QueryMap::parse(req.uri().query())?;
 
-        let code = req
-            .query_param("code")
+        let code = query
+            .get("code")
             .map(str::to_string)
             .map(AuthorizationCode::new)
             .context("Getting OAuth2 code")?;
-        let state = req
-            .query_param("state")
+        let state = query
+            .get("state")
             .map(str::to_string)
             .map(CsrfToken::new)
             .context("Getting OAuth2 state")?;
