@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 use tokio::{io, net};
 
 use crate::{
-    http::server,
+    http::{server, QueryMap},
     path::{FsPath, FsPathBuf},
 };
 
@@ -264,7 +264,7 @@ impl Client {
         let writer = io::BufWriter::new(writer);
         let req = server::parse_request(reader).await?;
         println!("got request {req:#?}");
-        let query = crate::http::QueryMap::parse(req.uri().query())?;
+        let query = QueryMap::parse(req.uri().query())?;
 
         let code = query
             .get("code")
@@ -281,10 +281,13 @@ impl Client {
         println!("got state {}", state.secret());
 
         if state.secret() != csrf_state.secret() {
-            let res = server::Response::builder()
+            let resp = http::Response::builder()
                 .status(401)
-                .body("Could not verify the CSRF token :-(".as_bytes());
-            res.write(writer).await?;
+                .header("Date", Utc::now().to_rfc2822())
+                .header("Server", "fsyncd")
+                .header("Connection", "close")
+                .body("Could not verify the CSRF token :-(")?;
+            server::write_response(resp, writer).await?;
             anyhow::bail!("Could not verify the CSRF token");
         }
 
@@ -297,10 +300,13 @@ impl Client {
             .request_async(|req| async { self.http_client(req).await })
             .await?;
 
-        let res = server::Response::builder()
+        let resp = http::Response::builder()
             .status(200)
-            .body("All good, you can close this window ;-)".as_bytes());
-        res.write(writer).await?;
+            .header("Date", Utc::now().to_rfc2822())
+            .header("Server", "fsyncd")
+            .header("Connection", "close")
+            .body("All good, you can close this window ;-)")?;
+        server::write_response(resp, writer).await?;
 
         let access = token_response.access_token().to_owned();
 

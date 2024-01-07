@@ -122,166 +122,50 @@ pub(super) mod server {
         Ok((name, value))
     }
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct Status(pub u32);
+    pub async fn write_response<W, B>(resp: http::Response<B>, writer: W) -> anyhow::Result<()>
+    where
+        W: io::AsyncWrite,
+        B: AsRef<[u8]>,
+    {
+        use io::AsyncWriteExt;
 
-    impl Status {
-        pub fn code(&self) -> u32 {
-            self.0
-        }
-        pub fn reason_phrase(self) -> Option<&'static str> {
-            match self.0 {
-                100 => Some("Continue"),
-                101 => Some("Switching Protocols"),
-                200 => Some("OK"),
-                201 => Some("Created"),
-                202 => Some("Accepted"),
-                203 => Some("Non-Authoritative Information"),
-                204 => Some("No Content"),
-                205 => Some("Reset Content"),
-                206 => Some("Partial Content"),
-                300 => Some("Multiple Choices"),
-                301 => Some("Moved Permanently"),
-                302 => Some("Found"),
-                303 => Some("See Other"),
-                304 => Some("Not Modified"),
-                305 => Some("Use Proxy"),
-                307 => Some("Temporary Redirect"),
-                400 => Some("Bad Request"),
-                401 => Some("Unauthorized"),
-                402 => Some("Payment Required"),
-                403 => Some("Forbidden"),
-                404 => Some("Not Found"),
-                405 => Some("Method Not Allowed"),
-                406 => Some("Not Acceptable"),
-                407 => Some("Proxy Authentication Required"),
-                408 => Some("Request Time-out"),
-                409 => Some("Conflict"),
-                410 => Some("Gone"),
-                411 => Some("Length Required"),
-                412 => Some("Precondition Failed"),
-                413 => Some("Request Entity Too Large"),
-                414 => Some("Request-URI Too Large"),
-                415 => Some("Unsupported Media Type"),
-                416 => Some("Requested range not satisfiable"),
-                417 => Some("Expectation Failed"),
-                500 => Some("Internal Server Error"),
-                501 => Some("Not Implemented"),
-                502 => Some("Bad Gateway"),
-                503 => Some("Service Unavailable"),
-                504 => Some("Gateway Time-out"),
-                505 => Some("HTTP Version not supported"),
-                _ => None,
-            }
-        }
-    }
+        let (parts, body) = resp.into_parts();
+        
+        let has_body = !body.as_ref().is_empty();
 
-    impl From<u32> for Status {
-        fn from(value: u32) -> Self {
-            Status(value)
-        }
-    }
+        let has_date = parts.headers.contains_key("date");
+        let has_server = parts.headers.contains_key("server");
+        let has_content_length = parts.headers.contains_key("content-length");
 
-    #[derive(Debug)]
-    pub struct Response<'a> {
-        status: Option<Status>,
-        headers: Vec<(String, String)>,
-        body: &'a [u8],
-    }
-
-    impl Response<'_> {
-        pub fn builder() -> ResponseBuilder {
-            Default::default()
-        }
-
-        pub async fn write<W>(self, writer: W) -> anyhow::Result<()>
-        where
-            W: io::AsyncWrite,
-        {
-            use io::AsyncWriteExt;
-
-            let Self {
-                status,
-                headers,
-                body,
-            } = self;
-
-            let status = status.context("Status code is missing")?;
-            let reason_phrase = status.reason_phrase().unwrap_or("??");
-
-            let mut has_date = false;
-            let mut has_server = false;
-            let mut has_content_length = false;
-            for (name, _) in headers.iter() {
-                if name.eq_ignore_ascii_case("date") {
-                    has_date = true;
-                }
-                if name.eq_ignore_ascii_case("server") {
-                    has_server = true;
-                }
-                if name.eq_ignore_ascii_case("content-length") {
-                    has_content_length = true;
-                }
-            }
-
-            tokio::pin!(writer);
+        tokio::pin!(writer);
+        writer
+            .write(format!("{:?} {}\r\n", parts.version,  parts.status).as_bytes())
+            .await?;
+        if !has_date {
             writer
-                .write(format!("HTTP/1.1 {} {reason_phrase}\r\n", status.code()).as_bytes())
+                .write(format!("Date: {}\r\n", Utc::now().to_rfc2822()).as_bytes())
                 .await?;
-            if !has_date {
-                writer
-                    .write(format!("Date: {}\r\n", Utc::now().to_rfc2822()).as_bytes())
-                    .await?;
-            }
-            if !has_server {
-                writer.write(b"Server: fsync::http::server\r\n").await?;
-            }
-            if !has_content_length {
-                writer
-                    .write(format!("Content-Length: {}\r\n", body.len()).as_bytes())
-                    .await?;
-            }
-            for (name, value) in headers.iter() {
-                writer
-                    .write(format!("{name}: {value}\r\n").as_bytes())
-                    .await?;
-            }
+        }
+        if !has_server {
+            writer.write(b"Server: fsync::http::server\r\n").await?;
+        }
+        if has_body && !has_content_length {
+            writer
+                .write(format!("Content-Length: {}\r\n", body.as_ref().len()).as_bytes())
+                .await?;
+        }
+        for (name, value) in parts.headers.iter() {
+            writer
+                .write(format!("{name}: ").as_bytes())
+                .await?;
+            writer.write(value.as_bytes()).await?;
             writer.write(b"\r\n").await?;
-            writer.write(&body).await?;
-            Ok(())
         }
-    }
-
-    #[derive(Debug, Default)]
-    pub struct ResponseBuilder {
-        status: Option<Status>,
-        headers: Vec<(String, String)>,
-    }
-
-    impl ResponseBuilder {
-        pub fn status<S>(self, status: S) -> Self
-        where
-            S: Into<Status>,
-        {
-            Self {
-                status: Some(status.into()),
-                ..self
-            }
+        writer.write(b"\r\n").await?;
+        if has_body {
+            writer.write(body.as_ref()).await?;
         }
-
-        pub fn header(self, name: String, value: String) -> Self {
-            let mut headers = self.headers;
-            headers.push((name, value));
-            Self { headers, ..self }
-        }
-
-        pub fn body(self, body: &[u8]) -> Response {
-            Response {
-                status: self.status,
-                headers: self.headers,
-                body,
-            }
-        }
+        Ok(())
     }
 }
 
