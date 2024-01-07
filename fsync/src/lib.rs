@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub mod cipher;
 pub mod config;
 pub mod loc;
-pub mod oauth2;
+pub mod oauth;
 
 mod fsync;
 
@@ -28,11 +28,4 @@ impl fmt::Display for Provider {
             Provider::GoogleDrive => f.write_str("Google Drive"),
         }
     }
-}
-
-pub mod http {
-    use hyper::client::HttpConnector;
-    use hyper_rustls::HttpsConnector;
-
-    pub type Connector = HttpsConnector<HttpConnector>;
 }

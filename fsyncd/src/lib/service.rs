@@ -78,7 +78,10 @@ where
         Ok(())
     }
 
-    pub fn shutdown(&self) {}
+    pub async fn shutdown(&self) {
+        self.local.shutdown().await;
+        self.remote.shutdown().await;
+    }
 }
 
 #[tarpc::server]

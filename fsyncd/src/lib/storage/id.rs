@@ -3,7 +3,7 @@ use std::fmt;
 use std::ops::Deref;
 
 use fsync::{path::PathBuf, Metadata};
-use futures::{Future, Stream};
+use futures::{future, Future, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::io;
 
@@ -87,7 +87,6 @@ impl<T: ?Sized + AsRef<str>> From<&T> for IdBuf {
     }
 }
 
-
 impl fmt::Debug for IdBuf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("IdBuf(")?;
@@ -148,4 +147,8 @@ pub trait CreateFile {
     ) -> impl Future<Output = anyhow::Result<(IdBuf, Metadata)>> + Send;
 }
 
-pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {}
+pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {
+    fn shutdown(&self) -> impl Future<Output = ()> + Send {
+        future::ready(())
+    }
+}
