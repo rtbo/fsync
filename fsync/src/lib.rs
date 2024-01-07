@@ -7,10 +7,8 @@ use serde::{Deserialize, Serialize};
 
 pub mod cipher;
 pub mod config;
-pub mod http;
 pub mod loc;
 pub mod oauth;
-pub mod oauth2;
 
 mod fsync;
 

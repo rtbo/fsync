@@ -1,34 +1,36 @@
-use std::str;
+use std::{str, sync::Arc};
 
 use async_stream::try_stream;
-use fsync::{http, oauth2, path::PathBuf};
+use fsync::path::PathBuf;
 use futures::Stream;
 use tokio::io;
 
 use super::id::IdBuf;
+use crate::oauth;
 use crate::storage::id::Id;
 
 #[derive(Clone)]
 pub struct GoogleDrive {
-    auth: oauth2::Authenticator,
-    client: hyper::Client<http::Connector>,
+    client: reqwest::Client,
+    auth: Arc<oauth::Client>,
     base_url: &'static str,
     upload_base_url: &'static str,
     user_agent: String,
 }
 
 impl GoogleDrive {
-    pub async fn new(oauth2_params: oauth2::Params<'_>) -> anyhow::Result<Self> {
-        let connector = hyper_rustls::HttpsConnectorBuilder::new()
-            .with_native_roots()
-            .https_only()
-            .enable_all_versions()
-            .build();
-        let client = hyper::Client::builder().build(connector);
-        let auth = oauth2::installed_flow(oauth2_params, client.clone()).await?;
+    pub async fn new(oauth_params: fsync::oauth::Params<'_>) -> anyhow::Result<Self> {
+        let client = reqwest::Client::builder().build()?;
+        let auth = oauth::Client::new(
+            oauth_params.secret,
+            oauth::TokenCache::MemoryAndDisk(oauth_params.token_cache_path.into()),
+            None,
+        )
+        .await?;
+
         let user_agent = format!("fsyncd/{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
-            auth,
+            auth: Arc::new(auth),
             client,
             base_url: "https://www.googleapis.com/drive/v3",
             upload_base_url: "https://www.googleapis.com/upload/drive/v3",
@@ -137,7 +139,6 @@ mod api {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use tokio::io;
 
-    use super::utils;
     use crate::storage::id::IdBuf;
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
@@ -185,6 +186,7 @@ mod api {
         pub next_page_token: Option<String>,
     }
 
+    #[derive(Debug, Clone, Copy)]
     pub enum Scope {
         Full,
         MetadataReadOnly,
@@ -198,6 +200,12 @@ mod api {
                     "https://www.googleapis.com/auth/drive.metadata.readonly"
                 }
             }
+        }
+    }
+
+    impl From<Scope> for oauth2::Scope {
+        fn from(value: Scope) -> Self {
+            oauth2::Scope::new(value.as_ref().to_string())
         }
     }
 
@@ -234,10 +242,7 @@ mod api {
 
     impl<'a> UploadParams<'a> {
         pub fn query_params(&'a self) -> Vec<(&'static str, &'a str)> {
-            vec![
-                ("uploadType", self.typ.as_str()),
-                ("fields", self.fields),
-            ]
+            vec![("uploadType", self.typ.as_str()), ("fields", self.fields)]
         }
     }
 
@@ -259,12 +264,11 @@ mod api {
                 query_params.push(("pageToken", page_token));
             }
 
-            let mut res = self
+            let res = self
                 .get_query(&[Scope::MetadataReadOnly], "/files", query_params, false)
                 .await?;
 
-            let body = utils::get_body_as_string(res.body_mut()).await;
-            let file_list: FileList = serde_json::from_str(&body)?;
+            let file_list: FileList = res.json().await?;
 
             Ok(file_list)
         }
@@ -284,13 +288,12 @@ mod api {
             } else {
                 use futures::stream::{StreamExt, TryStreamExt};
 
-                let body = res.into_body();
-                let body = body.map(|res| {
+                let bytes = res.bytes_stream().map(|res| {
                     res.map_err(|err| {
                         std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
                     })
                 });
-                let read = body.into_async_read();
+                let read = bytes.into_async_read();
 
                 Ok(Some(tokio_util::compat::FuturesAsyncReadCompatExt::compat(
                     read,
@@ -323,7 +326,7 @@ mod api {
             tokio::pin!(data);
 
             let mut sent = 0u64;
-            let file = loop {
+            let file: File = loop {
                 let mut buf: Vec<u8> = Vec::with_capacity(UPLOAD_CHUNK_SZ as _);
                 let sz = data
                     .as_mut()
@@ -331,17 +334,20 @@ mod api {
                     .read_to_end(&mut buf)
                     .await?;
                 println!("uploading {sz} bytes");
-                let (status, mut body) = self
-                    .put_upload_range(scopes, &upload_url, buf, sent, data_len)
+                let res = self
+                    .put_upload_range(scopes, upload_url.clone(), buf, sent, data_len)
                     .await?;
                 sent += sz as u64;
+                let status = res.status();
                 if status.is_success() && sent == data_len {
-                    let body = utils::get_body_as_string(&mut body).await;
-                    break serde_json::from_str(&body)?;
+                    break res.json().await?;
                 } else if status.is_server_error() {
                     anyhow::bail!("Upload failed ({status}). No support yet to resume upload");
-                } else if status.is_client_error() {
-                    panic!("bad request ({status}): {}", utils::get_body_as_string(&mut body).await);
+                } else if res.status().is_client_error() {
+                    panic!(
+                        "bad request ({status}): {}",
+                        String::from_utf8_lossy(&res.bytes().await?)
+                    );
                 }
             };
             Ok(file)
@@ -352,23 +358,16 @@ mod api {
 mod utils {
     use std::borrow::Borrow;
 
-    use fsync::oauth2::AccessToken;
-    use http::{header, Request, Response, StatusCode};
-    use hyper::Body;
+    use oauth2::AccessToken;
+    use reqwest::{header, Response, StatusCode, Url};
     use serde::Serialize;
-    use url::Url;
 
     use super::api;
 
     impl super::GoogleDrive {
         pub async fn fetch_token(&self, scopes: &[api::Scope]) -> anyhow::Result<AccessToken> {
-            let token = self.auth.token(scopes).await?;
-
-            if token.is_expired() {
-                panic!("expired token");
-            }
-
-            Ok(token)
+            let scopes = scopes.iter().map(|&s| s.into()).collect();
+            Ok(self.auth.get_token(scopes).await?)
         }
 
         pub async fn get_query<Q, K, V>(
@@ -377,7 +376,7 @@ mod utils {
             path: &str,
             query_params: Q,
             allow_404: bool,
-        ) -> anyhow::Result<Response<Body>>
+        ) -> anyhow::Result<Response>
         where
             Q: IntoIterator,
             Q::Item: Borrow<(K, V)>,
@@ -387,17 +386,13 @@ mod utils {
             let token = self.fetch_token(scopes).await?;
             let url = url_with_query(self.base_url, path, query_params);
 
-            let req = Request::builder()
-                .uri(url.as_str())
+            let res = self
+                .client
+                .get(url.clone())
                 .header(header::USER_AGENT, &self.user_agent)
-                .header(
-                    header::AUTHORIZATION,
-                    format!("Bearer {}", token.token().unwrap()),
-                )
-                .body(hyper::body::Body::empty())
-                .expect("invalid request");
-
-            let res = self.client.request(req).await?;
+                .bearer_auth(token.secret())
+                .send()
+                .await?;
 
             if res.status().is_success() || (allow_404 && res.status() == StatusCode::NOT_FOUND) {
                 Ok(res)
@@ -419,31 +414,25 @@ mod utils {
             let token = self.fetch_token(scopes).await?;
 
             let url = url_with_query(&self.upload_base_url, path, params.query_params());
-            let mut req = Request::builder()
-                .method("POST")
-                .uri(url.as_str())
-                .header(header::USER_AGENT, &self.user_agent)
-                .header(
-                    header::AUTHORIZATION,
-                    format!("Bearer {}", token.token().unwrap()),
-                );
+            let mut req = self
+                .client
+                .post(url.clone())
+                .bearer_auth(token.secret())
+                .header(header::USER_AGENT, &self.user_agent);
             if let Some(mt) = params.mime_type {
                 req = req.header("X-Upload-Content-Type", mt);
             }
             if let Some(sz) = params.size {
                 req = req.header("X-Upload-Content-Length", sz);
             }
-
-            let body = body.map(serde_json::to_string).transpose()?;
-            if let Some(body) = body.as_deref() {
+            if let Some(body) = body {
                 req = req
                     .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
-                    .header(header::CONTENT_LENGTH, body.len());
+                    //.header(header::CONTENT_LENGTH, body.len())
+                    .json(body);
             }
-            let body = body.unwrap_or_default();
-            let req = req.body(hyper::body::Body::from(body)).unwrap();
+            let res = req.send().await?;
 
-            let res = self.client.request(req).await?;
             if res.status() != StatusCode::OK {
                 anyhow::bail!("POST {url} returned {}", res.status());
             }
@@ -454,35 +443,32 @@ mod utils {
         pub async fn put_upload_range(
             &self,
             scopes: &[api::Scope],
-            url: &Url,
+            url: Url,
             data: Vec<u8>,
             range_start: u64,
             range_len: u64,
-        ) -> anyhow::Result<(StatusCode, Body)> {
-            let data_len = data.len() as u64;
-            debug_assert!(range_len >= range_start + data_len);
+        ) -> anyhow::Result<Response> {
             let token = self.fetch_token(scopes).await?;
 
-            let stream = tokio_stream::once(Ok::<_, std::io::Error>(data));
-            let body = hyper::body::Body::wrap_stream(stream);
-            let mut req = Request::builder()
-                .method("PUT")
-                .uri(url.as_str())
-                .header(
-                    header::AUTHORIZATION,
-                    format!("Bearer {}", token.token().unwrap()),
-                )
+            let data_len = data.len() as u64;
+            debug_assert!(range_len >= range_start + data_len);
+
+            let mut req = self
+                .client
+                .put(url)
+                .bearer_auth(token.secret())
+                .header(header::USER_AGENT, &self.user_agent)
                 .header(header::CONTENT_LENGTH, data_len);
             if range_start > 0 || data_len < range_len {
                 req = req.header(
                     header::CONTENT_RANGE,
-                    format!("bytes {range_start}-{}/{range_len}", range_start + data_len - 1),
+                    format!(
+                        "bytes {range_start}-{}/{range_len}",
+                        range_start + data_len - 1
+                    ),
                 );
             }
-            let req = req.body(body)?;
-            let res = self.client.request(req).await?;
-
-            Ok((res.status(), res.into_body()))
+            Ok(req.body(data).send().await?)
         }
     }
 
@@ -497,11 +483,5 @@ mod utils {
     {
         let base = format!("{}{}", base_url.as_ref(), path.as_ref());
         Url::parse_with_params(&base, query_params).unwrap()
-    }
-
-    pub async fn get_body_as_string(body: &mut Body) -> String {
-        let buf = hyper::body::to_bytes(body).await.unwrap();
-        let body_str = String::from_utf8_lossy(&buf);
-        body_str.to_string()
     }
 }

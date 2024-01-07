@@ -1,6 +1,5 @@
 use clap::Parser;
-use fsync::loc::inst;
-use fsync::oauth2;
+use fsync::{loc::inst, oauth};
 use fsyncd_lib::{service, storage};
 use futures::stream::AbortHandle;
 use futures::Future;
@@ -28,10 +27,14 @@ async fn main() -> anyhow::Result<()> {
 
     let local = storage::fs::Storage::new(&config.local_dir);
 
-    let app_secret = oauth2::load_secret(&inst::oauth_secret_file(&cli.instance)?).await?;
+    let secret = {
+        let path = inst::oauth_secret_file(&cli.instance)?;
+        let json = tokio::fs::read(&path).await?;
+        serde_json::from_slice(&json)?
+    };
     let token_cache_path = &inst::token_cache_file(&cli.instance)?;
-    let oauth2_params = oauth2::Params {
-        app_secret,
+    let oauth2_params = oauth::Params {
+        secret,
         token_cache_path,
     };
 
@@ -53,7 +56,7 @@ where
     if remote.load_from_disk(&remote_cache_path).await.is_err() {
         remote.populate_from_entries().await?;
     }
-    
+
     let service = service::Service::new(local, remote.clone()).await?;
 
     let abort_reg = {

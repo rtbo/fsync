@@ -12,8 +12,8 @@ byte-unit = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
 inquire = { workspace = true }
+oauth2 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tarpc = { workspace = true }
 tokio = { workspace = true }
-yup-oauth2 = { workspace = true }

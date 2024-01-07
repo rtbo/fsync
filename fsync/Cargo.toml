@@ -19,8 +19,6 @@ dirs = { workspace = true }
 futures = { workspace = true }
 glob = { workspace = true }
 http = { workspace = true }
-hyper = { workspace = true }
-hyper-rustls = { workspace = true }
 oauth2 = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true }
@@ -30,4 +28,3 @@ tarpc = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 webbrowser = { workspace = true }
-yup-oauth2 = { workspace = true }

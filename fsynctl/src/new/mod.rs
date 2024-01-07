@@ -80,7 +80,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 }
 
 enum ProviderOpts {
-    GoogleDrive(google_drive::AppSecretOpts),
+    GoogleDrive(google_drive::SecretOpts),
 }
 
 impl ProviderOpts {

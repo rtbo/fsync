@@ -1,8 +1,9 @@
 use std::str;
 
 use fsync::path::FsPathBuf;
-use fsync::{cipher, loc::inst, oauth2};
+use fsync::{cipher, loc::inst, oauth};
 use inquire::{Editor, Select, Text};
+use tokio::fs;
 
 pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
     let options = &[
@@ -18,19 +19,17 @@ pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
     .prompt()?;
     let ind = options.iter().position(|e| *e == ans).unwrap();
     let opts = match ind {
-        0 => AppSecretOpts::Fsync,
-        1 => AppSecretOpts::JsonPath(
+        0 => SecretOpts::Fsync,
+        1 => SecretOpts::JsonPath(
             Text::new("Enter path to client_scret.json")
                 .prompt()?
                 .into(),
         ),
-        2 => {
-            AppSecretOpts::JsonContent(Editor::new("Enter content of client_secret.json").prompt()?)
-        }
+        2 => SecretOpts::JsonContent(Editor::new("Enter content of client_secret.json").prompt()?),
         3 => {
             let client_id = Text::new("Client Id").prompt()?;
             let client_secret = Text::new("Client Secret").prompt()?;
-            AppSecretOpts::Credentials {
+            SecretOpts::Credentials {
                 client_id,
                 client_secret,
             }
@@ -41,7 +40,7 @@ pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
 }
 
 #[derive(Debug, Clone)]
-pub enum AppSecretOpts {
+pub enum SecretOpts {
     /// Use built-in google-drive app
     Fsync,
     /// Use custom google-drive app (path to client_secret.json)
@@ -57,66 +56,76 @@ pub enum AppSecretOpts {
 
 #[test]
 fn test_get_appsecret() -> anyhow::Result<()> {
-    let appsecret = AppSecretOpts::Fsync.get()?;
-    assert_eq!(appsecret.token_uri, "https://oauth2.googleapis.com/token");
+    let secret = SecretOpts::Fsync.get()?;
     assert_eq!(
-        appsecret.auth_uri,
-        "https://accounts.google.com/o/oauth2/auth"
+        secret.token_url.as_str(),
+        "https://oauth2.googleapis.com/token"
     );
-    assert_eq!(appsecret.redirect_uris, ["http://localhost"]);
     assert_eq!(
-        appsecret.auth_provider_x509_cert_url,
-        Some("https://www.googleapis.com/oauth2/v1/certs".into())
+        secret.auth_url.as_str(),
+        "https://accounts.google.com/o/oauth2/auth"
     );
     Ok(())
 }
 
-impl AppSecretOpts {
-    pub fn get(&self) -> anyhow::Result<oauth2::ApplicationSecret> {
+impl SecretOpts {
+    pub fn get(&self) -> anyhow::Result<oauth::Secret> {
         match self {
-            AppSecretOpts::Fsync => {
+            SecretOpts::Fsync => {
                 const CIPHERED_SECRET: &str = concat!(
-                    "nRkHq/y6fB6MxEP+XUpoYuYY3oF3WAYcYEF62twEnls4INPhV/WWVuA5tCw4B8fpHk8nXkMhrQU6g",
-                    "WAv9k7MeMa94t2CA1eB3ADhtD1QwteGffKJ/pFxolASh0s8Gs0JdP4RpzgjAAOpRPtrBHgTM6W1It",
-                    "UIsQ5mHFSahZyS0obuh9FeXESsetUz0CDQr5l1IG2m4E1c/I790TtLBHut8YDBQs1pNptuaBwDCV7",
-                    "DbdXcicbdftiVH9jYd2lt/IvxBi4C7+F8LXS65WGZSYiBrQDb2qkdeasM9tbiGl0/+Yze3ETUA/SN",
-                    "urji8/o1fGwcygL8mTsp7DkkOxkjHn18N/a5b8MjhZouxfNvBPKC80AgcdLwmdCXVJ0t7OFobpWxz",
-                    "3j57A5URFHyhzj1RqUiui9xldG+AhF69op+QEQSPQ7bWrun6gOYaB1vUvwNt0MzzqM/SUaWVEeT54",
-                    "UEVHKqTHva+NBsIzFS/dIsiAYNV8OVcuojl8jPVKlqJJGoS1NO8hog6Gk35GXHZKyIJj/vlzsSOoC",
-                    "/5i/Qajyl1/nFfJKUsy+qDZbFkdyevN2UVDFW/wCqLoRJj7P09cHyE8QrHDC9JA"
+                    "gRtV+sbymbR9o9QD06bNtV8a+WpfCh223NAjZTTfuMJ+zUBUdzkF1Sr1DCgeAJfYXgd7lt+hww0sK",
+                    "bSfB9V26yzgFT4cD/iE+zEbBoPihf/c4A4LKiOxhi/cTubfPdKJFTfFyUzB79vgkcSQqjh79CzEQ/",
+                    "KuGgvzpcrOvom93Vn26oOk/XtPNY9AztajbpoOxrt1oHf1mT94Pj/1VOZyoAYIgCgKAuIo3U+YOsm",
+                    "HxLepoT6rwdp/9ID+skMnFIotfP5ju8aB/eiU65Z0yKbCaW5Ivnj9nH7klhVW0pbeqKxJgI9RudLR",
+                    "N0Y6pFRAFKWXc1/EYQfTrRsa6WRSYMHsj7vJVvedAVE"
                 );
                 let secret_json = cipher::decipher_text(CIPHERED_SECRET);
                 Ok(serde_json::from_str(&secret_json)?)
             }
-            AppSecretOpts::JsonPath(path) => {
+            SecretOpts::JsonPath(path) => {
                 let secret_json = std::fs::read(path)?;
-                let secret_json = str::from_utf8(&secret_json)?;
-                Ok(oauth2::parse_application_secret(secret_json)?)
+                Ok(serde_json::from_slice(&secret_json)?)
             }
-            AppSecretOpts::JsonContent(secret_json) => {
-                Ok(oauth2::parse_application_secret(secret_json)?)
-            }
-            AppSecretOpts::Credentials {
+            SecretOpts::JsonContent(secret_json) => Ok(serde_json::from_str(secret_json)?),
+            SecretOpts::Credentials {
                 client_id,
                 client_secret,
-            } => Ok(oauth2::ApplicationSecret {
-                client_id: client_id.clone(),
-                client_secret: client_secret.clone(),
-                token_uri: "https://oauth2.googleapis.com/token".into(),
-                auth_uri: "https://accounts.google.com/o/oauth2/auth".into(),
-                redirect_uris: vec!["http://localhost".into()],
-                project_id: None,
-                client_email: None,
-                auth_provider_x509_cert_url: Some(
-                    "https://www.googleapis.com/oauth2/v1/certs".into(),
-                ),
-                client_x509_cert_url: None,
+            } => Ok(oauth::Secret {
+                client_id: oauth2::ClientId::new(client_id.clone()),
+                client_secret: oauth2::ClientSecret::new(client_secret.clone()),
+                auth_url: oauth2::AuthUrl::new(
+                    "https://accounts.google.com/o/oauth2/auth".to_string(),
+                )?,
+                token_url: oauth2::TokenUrl::new(
+                    "https://oauth2.googleapis.com/token".to_string(),
+                )?,
             }),
         }
     }
 
     pub async fn create_config(&self, instance_name: &str) -> anyhow::Result<()> {
-        let app_secret = self.get()?;
-        oauth2::save_secret(&inst::oauth_secret_file(instance_name)?, &app_secret).await
+        let secret = self.get()?;
+        let path = inst::oauth_secret_file(instance_name)?;
+        let json = serde_json::to_string_pretty(&secret)?;
+        fs::write(path, json).await?;
+        Ok(())
     }
+}
+
+#[tokio::test]
+async fn cipher_app_secret() -> anyhow::Result<()> {
+    use fsync::path::FsPath;
+
+    let path = FsPath::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("google_secret.json");
+    if path.exists() {
+        let output = path.with_file_name("google_secret.cipher.b64");
+        let secret = fsync::oauth::load_google_secret(&path).await?;
+        let secret = serde_json::to_string(&secret)?;
+        let encoded = fsync::cipher::cipher_text(&secret);
+        tokio::fs::write(&output, &encoded).await?;
+    }
+    Ok(())
 }
