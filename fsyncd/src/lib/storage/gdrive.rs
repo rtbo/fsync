@@ -20,6 +20,8 @@ pub struct GoogleDrive {
 
 impl GoogleDrive {
     pub async fn new(oauth_params: fsync::oauth::Params<'_>) -> anyhow::Result<Self> {
+        log::info!("Initializing Google Drive storage with client-id {}", oauth_params.secret.client_id.as_str());
+
         let client = reqwest::Client::builder().build()?;
         let auth = oauth::Client::new(
             oauth_params.secret,
@@ -147,6 +149,13 @@ mod api {
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
+    pub struct Quota {
+        limit: Option<i64>,
+
+    }
+
+    #[derive(Default, Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct File {
         pub id: Option<IdBuf>,
         pub name: Option<String>,
@@ -154,15 +163,15 @@ mod api {
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
-            serialize_with = "size_to_str",
-            deserialize_with = "size_from_str"
+            serialize_with = "num_to_str",
+            deserialize_with = "num_from_str"
         )]
         pub size: Option<u64>,
         pub mime_type: Option<String>,
         pub parents: Option<Vec<IdBuf>>,
     }
 
-    fn size_to_str<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
+    fn num_to_str<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -171,7 +180,7 @@ mod api {
         serializer.serialize_str(&value)
     }
 
-    fn size_from_str<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+    fn num_from_str<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
     where
         D: Deserializer<'de>,
     {

@@ -1,8 +1,11 @@
+use std::process;
+
 use clap::Parser;
 use fsync::{loc::inst, oauth};
 use fsyncd_lib::{service, storage};
 use futures::stream::AbortHandle;
 use futures::Future;
+use systemd_journal_logger::{connected_to_journal, JournalLog};
 
 #[derive(Parser)]
 #[command(name = "fsyncd")]
@@ -11,8 +14,33 @@ struct Cli {
     instance: String,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> process::ExitCode {
+    if connected_to_journal() {
+        JournalLog::new()
+            .unwrap()
+            .add_extra_field("VERSION", env!("CARGO_PKG_VERSION"))
+            .install()
+            .unwrap();
+
+        log::set_max_level(log::LevelFilter::Info);
+    } else {
+        env_logger::init();
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    match rt.block_on(run()) {
+        Ok(()) => process::ExitCode::SUCCESS,
+        Err(err) => {
+            log::error!("{err}");
+            process::ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let config_file = inst::config_file(&cli.instance)?;
@@ -20,18 +48,21 @@ async fn main() -> anyhow::Result<()> {
     if !&config_file.exists() {
         anyhow::bail!("No such config file: {config_file}");
     }
-    println!("Found config file: {config_file}");
+
+    log::info!("Found config file: {config_file}");
 
     let config = fsync::Config::load_from_file(&config_file).await?;
-    println!("Loaded config: {config:?}");
+    log::trace!("Loaded config: {config:?}");
 
-    let local = storage::fs::Storage::new(&config.local_dir);
+    let local = storage::fs::Storage::new(&config.local_dir)?;
 
+    let secret_path = inst::oauth_secret_file(&cli.instance)?;
     let secret = {
-        let path = inst::oauth_secret_file(&cli.instance)?;
-        let json = tokio::fs::read(&path).await?;
+        let json = tokio::fs::read(&secret_path).await?;
         serde_json::from_slice(&json)?
     };
+    log::trace!("Loaded OAuth2 secrets from {secret_path}");
+
     let token_cache_path = &inst::token_cache_file(&cli.instance)?;
     let oauth2_params = oauth::Params {
         secret,
@@ -52,7 +83,9 @@ where
     R: storage::id::Storage,
 {
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
-    tokio::fs::create_dir_all(remote_cache_path.parent().unwrap())
+    let remote_cache_dir = remote_cache_path.parent().unwrap();
+    log::trace!("mkdir -p {remote_cache_dir}");
+    tokio::fs::create_dir_all(remote_cache_dir)
         .await
         .unwrap();
 
@@ -88,8 +121,12 @@ where
 
     tokio::spawn(async move {
         tokio::select! {
-            _ = sigterm.recv() => {},
-            _ = sigint.recv() => {},
+            _ = sigterm.recv() => {
+                log::warn!("received SIGTERM!")
+            },
+            _ = sigint.recv() => {
+                log::warn!("received SIGINT!")
+            },
         };
         shutdown().await;
     });

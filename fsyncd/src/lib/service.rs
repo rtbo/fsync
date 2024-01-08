@@ -1,7 +1,12 @@
 use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Arc;
 
-use fsync::{self, loc::inst, path::PathBuf, Fsync};
+use fsync::{
+    self,
+    loc::inst,
+    path::{Path, PathBuf},
+    Fsync,
+};
 use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortRegistration, Abortable};
@@ -47,13 +52,13 @@ where
         let mut listener =
             tarpc::serde_transport::tcp::listen(&server_addr, Bincode::default).await?;
 
-        println!("Listening on port {}", listener.local_addr().port());
+        log::info!("Listening on port {}", listener.local_addr().port());
 
         let port_path = inst::runtime_port_file(instance_name)?;
         tokio::fs::create_dir_all(port_path.parent().unwrap()).await?;
 
         let port_str = serde_json::to_string(&listener.local_addr().port())?;
-        println!("Creating file {port_path}");
+        log::trace!("Creating file {port_path}");
         tokio::fs::write(&port_path, port_str.as_bytes()).await?;
 
         listener.config_mut().max_frame_length(usize::MAX);
@@ -72,29 +77,28 @@ where
 
         let _ = Abortable::new(fut, abort_reg).await;
 
-        println!("Removing file {port_path}");
+        log::trace!("Removing file {port_path}");
         tokio::fs::remove_file(&port_path).await?;
-        println!("Exiting server");
         Ok(())
     }
 
     pub async fn shutdown(&self) {
+        log::info!("Shutting service down");
         self.local.shutdown().await;
         self.remote.shutdown().await;
     }
 }
 
-#[tarpc::server]
-impl<L, R> Fsync for Service<L, R>
+impl<L, R> Service<L, R>
 where
     L: storage::Storage,
     R: storage::Storage,
 {
-    async fn entry(self, _: Context, path: PathBuf) -> Option<fsync::tree::Node> {
+    async fn impl_entry(self, path: &Path) -> Option<fsync::tree::Node> {
         self.tree.entry(&path).map(Into::into)
     }
 
-    async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> Result<(), String> {
+    async fn impl_copy_remote_to_local(self, path: &Path) -> Result<(), String> {
         let entry = self.tree.entry(&path);
         if entry.is_none() {
             return Err(format!("no such entry in remote drive: {path}"));
@@ -121,7 +125,7 @@ where
         }
     }
 
-    async fn copy_local_to_remote(self, _: Context, path: PathBuf) -> Result<(), String> {
+    async fn impl_copy_local_to_remote(self, path: &Path) -> Result<(), String> {
         let entry = self.tree.entry(&path);
         if entry.is_none() {
             return Err(format!("no such entry in local drive: {path}"));
@@ -136,10 +140,7 @@ where
                     .await
                     .map_err(|err| err.to_string())?;
 
-                let remote = self
-                    .remote
-                    .create_file(local, read)
-                    .await.unwrap();
+                let remote = self.remote.create_file(local, read).await.unwrap();
 
                 self.tree.add_remote(&path, remote).unwrap();
                 Ok(())
@@ -147,6 +148,30 @@ where
             tree::Entry::Remote(..) => Err(format!("{path} is on the remote drive only")),
             _ => Err(format!("{path} is not only on remote")),
         }
+    }
+}
 
+#[tarpc::server]
+impl<L, R> Fsync for Service<L, R>
+where
+    L: storage::Storage,
+    R: storage::Storage,
+{
+    async fn entry(self, _: Context, path: PathBuf) -> Option<fsync::tree::Node> {
+        let res = self.impl_entry(&path).await;
+        log::trace!(target: "RPC", "Fsync::entry(path: {path:?}) -> {res:#?}");
+        res
+    }
+
+    async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> Result<(), String> {
+        let res = self.impl_copy_remote_to_local(&path).await;
+        log::trace!(target: "RPC", "Fsync::copy_remote_to_local(path: {path:?}) -> {res:#?}");
+        res
+    }
+
+    async fn copy_local_to_remote(self, _: Context, path: PathBuf) -> Result<(), String> {
+        let res = self.impl_copy_local_to_remote(&path).await;
+        log::trace!(target: "RPC", "Fsync::copy_local_to_remote(path: {path:?}) -> {res:#?}");
+        res
     }
 }
