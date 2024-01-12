@@ -85,17 +85,18 @@ pub struct Storage {
 impl Storage {
     /// Build a new filesystem storage.
     /// Panics if [root] is not an absolute path.
-    pub fn new<P>(root: P) -> Self
+    pub fn new<P>(root: P) -> anyhow::Result<Self>
     where
         P: AsRef<FsPath>,
     {
         let root = root.as_ref();
-
         assert!(root.is_absolute());
+        let root = root.canonicalize_utf8()?;
+        log::info!("Initializing FS storage in {root}");
 
-        Storage {
-            root: root.canonicalize_utf8().unwrap(),
-        }
+        Ok(Storage {
+            root
+        })
     }
 
     pub fn root(&self) -> &FsPath {
@@ -110,6 +111,7 @@ impl super::DirEntries for Storage {
     ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
         debug_assert!(parent_path.is_absolute());
         let fs_base = self.root.join(parent_path.without_root().as_str());
+        log::trace!("listing entries of {fs_base}");
         try_stream! {
             let mut read_dir = fs::read_dir(&fs_base).await?;
             loop {
@@ -127,8 +129,9 @@ impl super::DirEntries for Storage {
 impl super::ReadFile for Storage {
     async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
         debug_assert!(path.is_absolute());
-        let path = self.root.join(path.without_root().as_str());
-        Ok(tokio::fs::File::open(&path).await?)
+        let fs_path = self.root.join(path.without_root().as_str());
+        log::trace!("reading {fs_path}");
+        Ok(tokio::fs::File::open(&fs_path).await?)
     }
 }
 
@@ -140,6 +143,7 @@ impl super::CreateFile for Storage {
     ) -> anyhow::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_absolute());
         let fs_path = self.root.join(metadata.path().without_root().as_str());
+        log::info!("creating {fs_path}");
         if fs_path.is_dir() {
             anyhow::bail!("{} exists and is a direceory: {fs_path}", metadata.path());
         }

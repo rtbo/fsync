@@ -62,18 +62,21 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
     if !&config_file.exists() {
         anyhow::bail!("No such config file: {config_file}");
     }
-    println!("Found config file: {config_file}");
+
+    log::info!("Found config file: {config_file}");
 
     let config = fsync::Config::load_from_file(&config_file).await?;
-    println!("Loaded config: {config:?}");
+    log::trace!("Loaded config: {config:?}");
 
-    let local = storage::fs::Storage::new(&config.local_dir);
+    let local = storage::fs::Storage::new(&config.local_dir)?;
 
+    let secret_path = inst::oauth_secret_file(&cli.instance)?;
     let secret = {
-        let path = inst::oauth_secret_file(&cli.instance)?;
-        let json = tokio::fs::read(&path).await?;
+        let json = tokio::fs::read(&secret_path).await?;
         serde_json::from_slice(&json)?
     };
+    log::trace!("Loaded OAuth2 secrets from {secret_path}");
+
     let token_cache_path = &inst::token_cache_file(&cli.instance)?;
     let oauth2_params = oauth::Params {
         secret,
@@ -99,7 +102,9 @@ where
     R: storage::id::Storage,
 {
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
-    tokio::fs::create_dir_all(remote_cache_path.parent().unwrap())
+    let remote_cache_dir = remote_cache_path.parent().unwrap();
+    log::trace!("mkdir -p {remote_cache_dir}");
+    tokio::fs::create_dir_all(remote_cache_dir)
         .await
         .unwrap();
 

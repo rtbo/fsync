@@ -43,6 +43,7 @@ where
         use std::io::BufReader;
 
         let path = self.path.clone();
+        log::info!("loading cached entries from {path}");
 
         let handle = tokio::task::spawn_blocking(move || {
             let reader = fs::File::open(path)?;
@@ -53,6 +54,7 @@ where
         });
 
         let entries = handle.await.unwrap()?;
+        log::trace!("loaded {} entries", entries.len());
         self.entries = Arc::new(entries);
         Ok(())
     }
@@ -62,7 +64,10 @@ where
         use std::io::BufWriter;
 
         let path = self.path.clone();
+        log::info!("saving cached entries to {path}");
+
         let entries = self.entries.clone();
+        log::trace!("saving {} entries", entries.len());
 
         let handle = tokio::task::spawn_blocking(move || {
             let writer = fs::File::create(&path)?;
@@ -105,6 +110,7 @@ where
         &self,
         parent_path: PathBuf,
     ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
+        log::trace!("listing entries for {parent_path}");
         let parent = self.entries.get(&parent_path);
         try_stream! {
             if let Some(parent) = parent {
@@ -123,6 +129,7 @@ where
     S: super::id::ReadFile + Sync + Send,
 {
     async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
+        log::info!("read file {path}");
         let node = self.entries.get(&path);
         if let Some(node) = node {
             if !node.metadata.is_file() {
@@ -147,6 +154,7 @@ where
         data: impl io::AsyncRead + Send,
     ) -> anyhow::Result<fsync::Metadata> {
         use anyhow::Context;
+        log::info!("creating file {}", metadata.path());
 
         debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
         let parent = metadata.path().parent().unwrap();

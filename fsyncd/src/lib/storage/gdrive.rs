@@ -20,6 +20,8 @@ pub struct GoogleDrive {
 
 impl GoogleDrive {
     pub async fn new(oauth_params: fsync::oauth::Params<'_>) -> anyhow::Result<Self> {
+        log::info!("Initializing Google Drive storage with client-id {}", oauth_params.secret.client_id.as_str());
+
         let client = reqwest::Client::builder().build()?;
         let auth = oauth::Client::new(
             oauth_params.secret,
@@ -49,6 +51,7 @@ impl super::id::DirEntries for GoogleDrive {
             parent_id.is_some() || parent_path.is_root(),
             "none Id is for root only"
         );
+        log::trace!("listing entries of {parent_path}");
         let search_id = parent_id.as_deref().unwrap_or_else(|| Id::new("root"));
         let q = format!("'{search_id}' in parents");
         let mut next_page_token = None;
@@ -72,6 +75,7 @@ impl super::id::DirEntries for GoogleDrive {
 
 impl super::id::ReadFile for GoogleDrive {
     async fn read_file(&self, id: IdBuf) -> anyhow::Result<impl io::AsyncRead> {
+        log::trace!("reading file {id}");
         Ok(self
             .files_get_media(id.as_str())
             .await?
@@ -87,6 +91,7 @@ impl super::id::CreateFile for GoogleDrive {
         data: impl io::AsyncRead,
     ) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
         debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
+        log::info!("creating file {} ({} bytes)", metadata.path(), metadata.size().unwrap());
         let file = map_metadata(parent_id, None, metadata);
         let file = self
             .files_create(&file, metadata.size().unwrap(), data)

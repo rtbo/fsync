@@ -76,6 +76,7 @@ impl TokenStore {
     /// Returns `Ok(None)` if the path doesn't exist.
     /// Returns `Err` if the deserialization failed.
     async fn read_from_disk(path: &FsPath) -> anyhow::Result<Option<Vec<CachedToken>>> {
+        log::info!("reading cached tokens from {path}");
         let json = tokio::fs::read_to_string(path).await;
         if json.is_err() {
             return Ok(None);
@@ -86,6 +87,7 @@ impl TokenStore {
     }
 
     async fn write_to_disk(&self, path: &FsPath) -> anyhow::Result<()> {
+        log::info!("caching tokens to {path}");
         let json = serde_json::to_string_pretty(&self.mem)?;
         tokio::fs::write(path, json).await?;
         Ok(())
@@ -116,6 +118,8 @@ impl TokenStore {
             scopes
         };
 
+        log::trace!(target:"oauth::TokenStore", "pushing token for scopes {scopes:#?}");
+
         let scopes_hash = {
             use std::hash::{Hash, Hasher};
             let mut state = std::collections::hash_map::DefaultHasher::new();
@@ -143,7 +147,7 @@ impl TokenStore {
         self.mem.push(token);
     }
 
-    fn pull(&self, scopes: &[Scope]) -> CacheResult {
+    fn dopull(&self, scopes: &[Scope]) -> CacheResult {
         if !self.cache.has_mem() {
             return CacheResult::None;
         }
@@ -168,6 +172,17 @@ impl TokenStore {
             return CacheResult::Ok(ct.access_token.clone());
         }
         CacheResult::None
+    }
+
+    fn pull(&self, scopes: &[Scope]) -> CacheResult {
+        log::trace!(target: "oauth::TokenStore", "pulling token for scopes {scopes:#?}");
+        let res = self.dopull(scopes);
+        match &res {
+            CacheResult::Ok(..) => log::trace!(target: "oauth::TokenStore", "Ok"),
+            CacheResult::Expired(..) => log::trace!(target: "oauth::TokenStore", "Expired"),
+            CacheResult::None => log::trace!(target: "oauth::TokenStore", "None"),
+        }
+        res
     }
 }
 

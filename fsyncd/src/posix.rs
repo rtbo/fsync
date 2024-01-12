@@ -38,8 +38,12 @@ fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {
 
     tokio::spawn(async move {
         tokio::select! {
-            _ = sig_term.recv() => (),
-            _ = sig_int.recv() => (),
+            _ = sig_term.recv() => {
+                log::warn!("received SIGTERM");
+            }
+            _ = sig_int.recv() => {
+                log::warn!("received SIGINT");
+            }
         };
         shutdown_ref.shutdown().await;
     })

@@ -89,11 +89,21 @@ fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {
 
     tokio::spawn(async move {
         tokio::select! {
-            _ = sig_c.recv() => (),
-            _ = sig_break.recv() => (),
-            _ = sig_close.recv() => (),
-            _ = sig_logoff.recv() => (),
-            _ = sig_shutdown.recv() => (),
+            _ = sig_c.recv() => {
+                log::warn!("received CTRL-C");
+            },
+            _ = sig_break.recv() => {
+                log::warn!("received CTRL-BREAK");
+            },
+            _ = sig_close.recv() => {
+                log::warn!("received CLOSE");
+            },
+            _ = sig_logoff.recv() => {
+                log::warn!("received LOGOFF");
+            },
+            _ = sig_shutdown.recv() => {
+                log::warn!("received SHUTDOWN");
+            },
         };
         shutdown_ref.shutdown().await;
     })
