@@ -8,7 +8,6 @@ mod google_drive;
 #[derive(clap::Args)]
 pub struct Args {
     /// Name of the share
-    #[clap(long, short = 'n')]
     name: Option<String>,
 
     /// The directory to synchronize on the local file system

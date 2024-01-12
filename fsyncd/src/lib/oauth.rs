@@ -117,8 +117,8 @@ impl TokenStore {
         };
 
         let scopes_hash = {
-            use std::hash::{self, Hash, Hasher};
-            let mut state = hash::DefaultHasher::new();
+            use std::hash::{Hash, Hasher};
+            let mut state = std::collections::hash_map::DefaultHasher::new();
             scopes.hash(&mut state);
             state.finish()
         };

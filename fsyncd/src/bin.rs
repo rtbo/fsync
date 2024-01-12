@@ -1,8 +1,53 @@
+use std::ffi::OsString;
+use std::sync::Arc;
+
 use clap::Parser;
 use fsync::{loc::inst, oauth};
-use fsyncd_lib::{service, storage};
+use fsyncd_lib::{service, storage, Shutdown};
 use futures::stream::AbortHandle;
-use futures::Future;
+use tokio::sync::RwLock;
+
+#[cfg(not(target_os = "windows"))]
+mod posix;
+
+#[cfg(target_os = "windows")]
+//#[cfg(feature = "windows_service")]
+mod windows;
+
+fn main() {
+    #[cfg(not(target_os = "windows"))]
+    posix::main();
+
+    #[cfg(target_os = "windows")]
+    // #[cfg(feature = "windows_service")]
+    windows::main().unwrap();
+}
+
+#[derive(Clone)]
+struct ShutdownRef {
+    inner: Arc<RwLock<Option<Arc<dyn Shutdown>>>>,
+}
+
+impl ShutdownRef {
+    fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    async fn set(&self, inner: Arc<dyn Shutdown>) {
+        let mut write = self.inner.write().await;
+        *write = Some(inner);
+    }
+
+    async fn shutdown(&self) {
+        let read = self.inner.read().await;
+        match &*read {
+            Some(shutdown) => shutdown.shutdown().await,
+            None => (),
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "fsyncd")]
@@ -11,9 +56,8 @@ struct Cli {
     instance: String,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<()> {
+    let cli = Cli::parse_from(args);
 
     let config_file = inst::config_file(&cli.instance)?;
 
@@ -41,12 +85,17 @@ async fn main() -> anyhow::Result<()> {
     match &config.provider {
         fsync::Provider::GoogleDrive => {
             let remote = storage::gdrive::GoogleDrive::new(oauth2_params).await?;
-            start_service(cli, local, remote).await
+            start_service(cli, local, remote, shutdown_ref).await
         }
     }
 }
 
-async fn start_service<L, R>(cli: Cli, local: L, remote: R) -> anyhow::Result<()>
+async fn start_service<L, R>(
+    cli: Cli,
+    local: L,
+    remote: R,
+    shutdown_ref: ShutdownRef,
+) -> anyhow::Result<()>
 where
     L: storage::Storage,
     R: storage::id::Storage,
@@ -61,38 +110,12 @@ where
         remote.populate_from_entries().await?;
     }
 
-    let service = service::Service::new(local, remote.clone()).await?;
+    let (abort_handle, abort_reg) = AbortHandle::new_pair();
 
-    let abort_reg = {
-        let (abort_handle, abort_reg) = AbortHandle::new_pair();
-        let service = service.clone();
-        handle_shutdown_signals(|| async move {
-            service.shutdown().await;
-            abort_handle.abort();
-        })?;
-        abort_reg
-    };
+    let service = service::Service::new(local, remote.clone(), abort_handle).await?;
+    let service = Arc::new(service);
+
+    shutdown_ref.set(service.clone()).await;
 
     service.start(&cli.instance, abort_reg).await
-}
-
-fn handle_shutdown_signals<F, Fut>(shutdown: F) -> anyhow::Result<()>
-where
-    F: FnOnce() -> Fut + Send + 'static,
-    Fut: Future<Output = ()> + Send,
-{
-    use tokio::signal::unix::{signal, SignalKind};
-
-    let mut sigterm = signal(SignalKind::terminate())?;
-    let mut sigint = signal(SignalKind::interrupt())?;
-
-    tokio::spawn(async move {
-        tokio::select! {
-            _ = sigterm.recv() => {},
-            _ = sigint.recv() => {},
-        };
-        shutdown().await;
-    });
-
-    Ok(())
 }
