@@ -11,7 +11,6 @@ use tokio::sync::RwLock;
 mod posix;
 
 #[cfg(target_os = "windows")]
-//#[cfg(feature = "windows_service")]
 mod windows;
 
 fn main() {
@@ -19,7 +18,6 @@ fn main() {
     posix::main();
 
     #[cfg(target_os = "windows")]
-    // #[cfg(feature = "windows_service")]
     windows::main().unwrap();
 }
 
