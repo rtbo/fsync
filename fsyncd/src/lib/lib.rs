@@ -1,4 +1,6 @@
 pub mod oauth;
+use futures::future::BoxFuture;
+
 pub mod service;
 pub mod storage;
 pub mod tree;
@@ -29,4 +31,8 @@ pub mod uri {
             None
         }
     }
+}
+
+pub trait Shutdown: Sync + Send + 'static {
+    fn shutdown(&self) -> BoxFuture<'_, ()>;
 }

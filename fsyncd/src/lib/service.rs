@@ -2,9 +2,9 @@ use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Arc;
 
 use fsync::{self, loc::inst, path::PathBuf, Fsync};
-use futures::future;
+use futures::future::{self, BoxFuture};
 use futures::prelude::*;
-use futures::stream::{AbortRegistration, Abortable};
+use futures::stream::{AbortRegistration, Abortable, AbortHandle};
 use tarpc::{
     context::Context,
     server::{self, incoming::Incoming, Channel},
@@ -12,6 +12,7 @@ use tarpc::{
 };
 
 use crate::storage;
+use crate::Shutdown;
 use crate::tree::{self, DiffTree};
 
 #[derive(Debug, Clone)]
@@ -19,6 +20,7 @@ pub struct Service<L, R> {
     local: Arc<L>,
     remote: Arc<R>,
     tree: Arc<DiffTree>,
+    abort_handle: AbortHandle,
 }
 
 impl<L, R> Service<L, R>
@@ -26,7 +28,7 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    pub async fn new(local: L, remote: R) -> anyhow::Result<Self> {
+    pub async fn new(local: L, remote: R, abort_handle: AbortHandle) -> anyhow::Result<Self> {
         let local = Arc::new(local);
         let remote = Arc::new(remote);
         let tree = DiffTree::from_cache(local.clone(), remote.clone()).await?;
@@ -34,6 +36,7 @@ where
             local,
             remote,
             tree: Arc::new(tree),
+            abort_handle,
         })
     }
 
@@ -76,11 +79,6 @@ where
         tokio::fs::remove_file(&port_path).await?;
         println!("Exiting server");
         Ok(())
-    }
-
-    pub async fn shutdown(&self) {
-        self.local.shutdown().await;
-        self.remote.shutdown().await;
     }
 }
 
@@ -136,10 +134,7 @@ where
                     .await
                     .map_err(|err| err.to_string())?;
 
-                let remote = self
-                    .remote
-                    .create_file(local, read)
-                    .await.unwrap();
+                let remote = self.remote.create_file(local, read).await.unwrap();
 
                 self.tree.add_remote(&path, remote).unwrap();
                 Ok(())
@@ -147,6 +142,19 @@ where
             tree::Entry::Remote(..) => Err(format!("{path} is on the remote drive only")),
             _ => Err(format!("{path} is not only on remote")),
         }
+    }
+}
 
+impl<L, R> Shutdown for Service<L, R>
+where
+    L: storage::Storage,
+    R: storage::Storage,
+{
+    fn shutdown(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async {
+            self.local.shutdown().await;
+            self.remote.shutdown().await;
+            self.abort_handle.abort();
+        })
     }
 }
