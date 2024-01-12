@@ -617,7 +617,7 @@ Unsupported situation. Aborting"#,
             Ordering::Greater => ("oldest", "most recent"),
             Ordering::Equal => unreachable!(),
         };
-        
+
         let mtime = format!("Local is {loc_adj} ({loc_mtime}), remote is {rem_adj} ({rem_mtime})");
         let size: String = {
             let loc_bytes = utils::adjusted_byte(loc_size);

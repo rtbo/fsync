@@ -4,7 +4,7 @@ use std::sync::Arc;
 use fsync::{self, loc::inst, path::PathBuf, Fsync};
 use futures::future::{self, BoxFuture};
 use futures::prelude::*;
-use futures::stream::{AbortRegistration, Abortable, AbortHandle};
+use futures::stream::{AbortHandle, AbortRegistration, Abortable};
 use tarpc::{
     context::Context,
     server::{self, incoming::Incoming, Channel},
@@ -12,8 +12,8 @@ use tarpc::{
 };
 
 use crate::storage;
-use crate::Shutdown;
 use crate::tree::{self, DiffTree};
+use crate::Shutdown;
 
 #[derive(Debug, Clone)]
 pub struct Service<L, R> {

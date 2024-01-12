@@ -69,7 +69,9 @@ fn console_main() {
     rt.block_on(async {
         let shutdown_ref = ShutdownRef::new();
         let shutdown = handle_shutdown_signals(shutdown_ref.clone());
-        crate::run(std::env::args_os().collect(), shutdown_ref).await.unwrap();
+        crate::run(std::env::args_os().collect(), shutdown_ref)
+            .await
+            .unwrap();
         shutdown.await.unwrap();
     })
 }

@@ -143,7 +143,7 @@ mod api {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use tokio::io;
 
-    use crate::storage::{id::IdBuf, gdrive::utils::check_response};
+    use crate::storage::{gdrive::utils::check_response, id::IdBuf};
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -292,7 +292,7 @@ mod api {
             let res = self.get_query(&[Scope::Full], &path, query_params).await?;
             if res.status() == StatusCode::NOT_FOUND {
                 return Ok(None);
-            } 
+            }
             let res = check_response("GET", &path, res).await?;
 
             let bytes = res.bytes_stream().map(|res| {
