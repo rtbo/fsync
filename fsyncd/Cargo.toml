@@ -21,8 +21,10 @@ bincode = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 dashmap = { workspace = true }
+env_logger = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
+log = { workspace = true }
 oauth2 = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
@@ -36,3 +38,7 @@ webbrowser = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-service = { workspace = true }
+eventlog = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+systemd-journal-logger = { workspace = true }
