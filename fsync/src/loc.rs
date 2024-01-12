@@ -9,6 +9,12 @@ pub mod user {
         Ok(FsPathBuf::try_from(dir)?)
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn runtime_dir() -> anyhow::Result<FsPathBuf> {
+        cache_dir()
+    }
+
+    #[cfg(not(target_os = "windows"))]
     pub fn runtime_dir() -> anyhow::Result<FsPathBuf> {
         let dir = dirs::runtime_dir()
             .ok_or_else(|| anyhow::anyhow!("Can't get the user runtime directory"))?;
