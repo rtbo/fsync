@@ -31,6 +31,8 @@ fn service_main(args: Vec<OsString>) {
     // The entry point where execution will start on a background thread after a call to
     // `service_dispatcher::start` from `main`.
 
+    eventlog::init("FSyncd", log::Level::Info).unwrap();
+
     let shutdown_ref = ShutdownRef::new();
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -62,6 +64,8 @@ fn service_main(args: Vec<OsString>) {
 }
 
 fn console_main() {
+    env_logger::init();
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
