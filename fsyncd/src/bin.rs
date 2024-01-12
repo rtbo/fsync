@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use fsync::{loc::inst, oauth};
-use fsyncd_lib::{service, storage, Shutdown};
+use fsyncd::{service, storage, Shutdown};
 use futures::stream::AbortHandle;
 use tokio::sync::RwLock;
 
