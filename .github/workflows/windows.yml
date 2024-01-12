@@ -1,12 +1,13 @@
 on: [push]
 
-name: build & test
+name: Check & Test Windows
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
