@@ -1,5 +1,3 @@
-use std::{ffi::OsString, sync::Arc};
-
 use tokio::task::JoinHandle;
 
 use crate::ShutdownRef;
@@ -22,8 +20,8 @@ pub fn main() {
 fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {
     use tokio::signal::unix::{signal, SignalKind};
 
-    let mut sig_term = signal(SignalKind::terminate())?;
-    let mut sig_int = signal(SignalKind::interrupt())?;
+    let mut sig_term = signal(SignalKind::terminate()).unwrap();
+    let mut sig_int = signal(SignalKind::interrupt()).unwrap();
 
     tokio::spawn(async move {
         tokio::select! {
