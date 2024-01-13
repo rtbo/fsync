@@ -698,6 +698,35 @@ impl Path {
         buf.push(path);
         buf
     }
+
+    /// Normalizes a path. That is, it removes '.' and '..' components, as well as separator duplicates.
+    /// Returns Err if the path can't be normalized (because of '..' going before the root)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fsync::path::{Path, PathBuf};
+    ///
+    /// assert_eq!(Path::new("/some//path").normalize().unwrap(), Path::new("/some/path"));
+    /// assert_eq!(Path::new("/some/./path/.").normalize().unwrap(), Path::new("/some/path"));
+    /// assert_eq!(Path::new("/some//other/../path").normalize().unwrap(), Path::new("/some/path"));
+    /// assert!(Path::new("/../path").normalize().is_err());
+    /// ```
+    pub fn normalize(&self) -> anyhow::Result<PathBuf> {
+        let mut res = PathBuf::new();
+        for c in self.components() {
+            match c {
+                Component::RootDir | Component::Normal(_) => res.push(c.as_str()),
+                Component::CurDir => (),
+                Component::ParentDir => {
+                    if !res.pop() {
+                        anyhow::bail!("{self} can't be normalized");
+                    }
+                }
+            }
+        }
+        Ok(res)
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
