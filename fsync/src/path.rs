@@ -501,16 +501,16 @@ impl Path {
     }
 
     /// Returns this `Path` without the root component if it has one.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use fsync::path::Path;
-    /// 
+    ///
     /// assert_eq!(Path::new("/foo/bar").without_root(), Path::new("foo/bar"));
     /// assert_eq!(Path::new("foo/bar").without_root(), Path::new("foo/bar"));
     /// ```
-    /// 
+    ///
     /// [`has_root`]: Path::has_root
     #[inline]
     pub fn without_root(&self) -> &Path {
@@ -721,7 +721,7 @@ impl PathBuf {
 
     pub fn root() -> PathBuf {
         PathBuf {
-            inner: String::from("/")
+            inner: String::from("/"),
         }
     }
 

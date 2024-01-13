@@ -31,6 +31,8 @@ fn service_main(args: Vec<OsString>) {
     // The entry point where execution will start on a background thread after a call to
     // `service_dispatcher::start` from `main`.
 
+    eventlog::init("FSyncd", log::Level::Info).unwrap();
+
     let shutdown_ref = ShutdownRef::new();
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -62,6 +64,8 @@ fn service_main(args: Vec<OsString>) {
 }
 
 fn console_main() {
+    env_logger::init();
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -69,7 +73,9 @@ fn console_main() {
     rt.block_on(async {
         let shutdown_ref = ShutdownRef::new();
         let shutdown = handle_shutdown_signals(shutdown_ref.clone());
-        crate::run(std::env::args_os().collect(), shutdown_ref).await.unwrap();
+        crate::run(std::env::args_os().collect(), shutdown_ref)
+            .await
+            .unwrap();
         shutdown.await.unwrap();
     })
 }
@@ -83,11 +89,21 @@ fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {
 
     tokio::spawn(async move {
         tokio::select! {
-            _ = sig_c.recv() => (),
-            _ = sig_break.recv() => (),
-            _ = sig_close.recv() => (),
-            _ = sig_logoff.recv() => (),
-            _ = sig_shutdown.recv() => (),
+            _ = sig_c.recv() => {
+                log::warn!("received CTRL-C");
+            },
+            _ = sig_break.recv() => {
+                log::warn!("received CTRL-BREAK");
+            },
+            _ = sig_close.recv() => {
+                log::warn!("received CLOSE");
+            },
+            _ = sig_logoff.recv() => {
+                log::warn!("received LOGOFF");
+            },
+            _ = sig_shutdown.recv() => {
+                log::warn!("received SHUTDOWN");
+            },
         };
         shutdown_ref.shutdown().await;
     })

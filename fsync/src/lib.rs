@@ -1,7 +1,7 @@
 #![allow(async_fn_in_trait)]
 #![feature(async_closure)]
 
-use std::{fmt, str, time, cmp};
+use std::{cmp, fmt, str, time};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -43,7 +43,10 @@ pub fn compare_mtime(lhs: DateTime<Utc>, rhs: DateTime<Utc>) -> cmp::Ordering {
     }
 }
 
-pub fn compare_mtime_opt(lhs: Option<DateTime<Utc>>, rhs: Option<DateTime<Utc>>) -> Option<cmp::Ordering> {
+pub fn compare_mtime_opt(
+    lhs: Option<DateTime<Utc>>,
+    rhs: Option<DateTime<Utc>>,
+) -> Option<cmp::Ordering> {
     if let (Some(lhs), Some(rhs)) = (lhs, rhs) {
         Some(compare_mtime(lhs, rhs))
     } else {

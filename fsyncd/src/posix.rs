@@ -1,8 +1,21 @@
+use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::task::JoinHandle;
 
 use crate::ShutdownRef;
 
 pub fn main() {
+    if connected_to_journal() {
+        JournalLog::new()
+            .unwrap()
+            .add_extra_field("VERSION", env!("CARGO_PKG_VERSION"))
+            .install()
+            .unwrap();
+
+        log::set_max_level(log::LevelFilter::Info);
+    } else {
+        env_logger::init();
+    }
+
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -25,8 +38,12 @@ fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {
 
     tokio::spawn(async move {
         tokio::select! {
-            _ = sig_term.recv() => (),
-            _ = sig_int.recv() => (),
+            _ = sig_term.recv() => {
+                log::warn!("received SIGTERM");
+            }
+            _ = sig_int.recv() => {
+                log::warn!("received SIGINT");
+            }
         };
         shutdown_ref.shutdown().await;
     })

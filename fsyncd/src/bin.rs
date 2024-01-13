@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use fsync::{loc::inst, oauth};
-use fsyncd_lib::{service, storage, Shutdown};
+use fsyncd::{service, storage, Shutdown};
 use futures::stream::AbortHandle;
 use tokio::sync::RwLock;
 
@@ -11,7 +11,6 @@ use tokio::sync::RwLock;
 mod posix;
 
 #[cfg(target_os = "windows")]
-//#[cfg(feature = "windows_service")]
 mod windows;
 
 fn main() {
@@ -19,7 +18,6 @@ fn main() {
     posix::main();
 
     #[cfg(target_os = "windows")]
-    // #[cfg(feature = "windows_service")]
     windows::main().unwrap();
 }
 
@@ -64,18 +62,21 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
     if !&config_file.exists() {
         anyhow::bail!("No such config file: {config_file}");
     }
-    println!("Found config file: {config_file}");
+
+    log::info!("Found config file: {config_file}");
 
     let config = fsync::Config::load_from_file(&config_file).await?;
-    println!("Loaded config: {config:?}");
+    log::trace!("Loaded config: {config:?}");
 
-    let local = storage::fs::Storage::new(&config.local_dir);
+    let local = storage::fs::Storage::new(&config.local_dir)?;
 
+    let secret_path = inst::oauth_secret_file(&cli.instance)?;
     let secret = {
-        let path = inst::oauth_secret_file(&cli.instance)?;
-        let json = tokio::fs::read(&path).await?;
+        let json = tokio::fs::read(&secret_path).await?;
         serde_json::from_slice(&json)?
     };
+    log::trace!("Loaded OAuth2 secrets from {secret_path}");
+
     let token_cache_path = &inst::token_cache_file(&cli.instance)?;
     let oauth2_params = oauth::Params {
         secret,
@@ -101,9 +102,9 @@ where
     R: storage::id::Storage,
 {
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
-    tokio::fs::create_dir_all(remote_cache_path.parent().unwrap())
-        .await
-        .unwrap();
+    let remote_cache_dir = remote_cache_path.parent().unwrap();
+    log::trace!("mkdir -p {remote_cache_dir}");
+    tokio::fs::create_dir_all(remote_cache_dir).await.unwrap();
 
     let mut remote = storage::cache::CacheStorage::new(remote, remote_cache_path);
     if remote.load_from_disk().await.is_err() {

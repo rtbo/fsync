@@ -1,10 +1,15 @@
 on: [push]
 
-name: Check & Test Windows
+name: Check & Test 
 
 jobs:
   test:
-    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+
+    runs-on: ${{matrix.os}} 
     steps:
       - uses: actions/checkout@v4
 
