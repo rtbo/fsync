@@ -55,7 +55,8 @@ impl GoogleDrive {
             drive.user.display_name,
             drive
                 .user
-                .email_address.as_ref()
+                .email_address
+                .as_ref()
                 .map(|em| format!(" <{em}>"))
                 .unwrap_or_default(),
         );

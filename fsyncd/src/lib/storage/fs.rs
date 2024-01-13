@@ -94,9 +94,7 @@ impl Storage {
         let root = root.canonicalize_utf8()?;
         log::info!("Initializing FS storage in {root}");
 
-        Ok(Storage {
-            root
-        })
+        Ok(Storage { root })
     }
 
     pub fn root(&self) -> &FsPath {

@@ -104,9 +104,7 @@ where
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
     let remote_cache_dir = remote_cache_path.parent().unwrap();
     log::trace!("mkdir -p {remote_cache_dir}");
-    tokio::fs::create_dir_all(remote_cache_dir)
-        .await
-        .unwrap();
+    tokio::fs::create_dir_all(remote_cache_dir).await.unwrap();
 
     let mut remote = storage::cache::CacheStorage::new(remote, remote_cache_path);
     if remote.load_from_disk().await.is_err() {
