@@ -133,6 +133,20 @@ impl super::ReadFile for Storage {
     }
 }
 
+impl super::MkDir for Storage {
+    async fn mkdir(&self, path: &Path, parents: bool) -> anyhow::Result<()> {
+        debug_assert!(path.is_absolute());
+        let fs_path = self.root.join(path.without_root().as_str());
+        log::info!("mkdir {}{}", if parents { "-p " } else { "" }, fs_path);
+        if parents {
+            tokio::fs::create_dir_all(&fs_path).await?;
+        } else {
+            tokio::fs::create_dir(&fs_path).await?;
+        }
+        Ok(())
+    }
+}
+
 impl super::CreateFile for Storage {
     async fn create_file(
         &self,

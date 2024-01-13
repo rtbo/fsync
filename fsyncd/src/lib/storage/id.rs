@@ -138,6 +138,14 @@ pub trait ReadFile {
     ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead + Send>> + Send;
 }
 
+pub trait MkDir {
+    fn mkdir(
+        &self,
+        parent_id: Option<&Id>,
+        name: &str,
+    ) -> impl Future<Output = anyhow::Result<IdBuf>> + Send;
+}
+
 pub trait CreateFile {
     fn create_file(
         &self,
@@ -147,7 +155,7 @@ pub trait CreateFile {
     ) -> impl Future<Output = anyhow::Result<(IdBuf, Metadata)>> + Send;
 }
 
-pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {
+pub trait Storage: Clone + DirEntries + ReadFile + MkDir + CreateFile + Send + Sync + 'static {
     fn shutdown(&self) -> impl Future<Output = ()> + Send {
         future::ready(())
     }

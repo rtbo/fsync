@@ -43,7 +43,7 @@ pub enum Component<'a> {
 
 impl<'a> Component<'a> {
     #[must_use = "`self` will be dropped if the result is not used"]
-    fn as_str(self) -> &'a str {
+    pub fn as_str(self) -> &'a str {
         match self {
             Component::RootDir => "/",
             Component::CurDir => ".",

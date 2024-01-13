@@ -1,4 +1,7 @@
-use fsync::{path::PathBuf, Metadata};
+use fsync::{
+    path::{Path, PathBuf},
+    Metadata,
+};
 use futures::{future, Future, Stream};
 use tokio::io;
 
@@ -21,6 +24,10 @@ pub trait ReadFile {
     ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead + Send>> + Send;
 }
 
+pub trait MkDir {
+    fn mkdir(&self, path: &Path, parents: bool) -> impl Future<Output = anyhow::Result<()>> + Send;
+}
+
 pub trait CreateFile {
     fn create_file(
         &self,
@@ -29,7 +36,9 @@ pub trait CreateFile {
     ) -> impl Future<Output = anyhow::Result<Metadata>> + Send;
 }
 
-pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {
+pub trait Storage:
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + Send + Sync + 'static
+{
     fn shutdown(&self) -> impl Future<Output = ()> + Send {
         future::ready(())
     }

@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use async_stream::try_stream;
 use bincode::Options;
 use dashmap::DashMap;
-use fsync::path::FsPathBuf;
-use fsync::path::PathBuf;
+use fsync::path::{Component, FsPathBuf};
+use fsync::path::{Path, PathBuf};
 use futures::{future::BoxFuture, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::{io, task::JoinSet};
@@ -144,6 +145,46 @@ where
     }
 }
 
+impl<S> super::MkDir for CacheStorage<S>
+where
+    S: super::id::MkDir + Send + Sync,
+{
+    async fn mkdir(&self, path: &Path, parents: bool) -> anyhow::Result<()> {
+        debug_assert!(path.is_absolute());
+        let path = path.normalize()?;
+        if path.is_root() {
+            return Ok(());
+        }
+        if parents {
+            let mut parent_id = None;
+            let mut cur = PathBuf::new();
+            for c in path.components() {
+                match c {
+                    Component::CurDir | Component::ParentDir => unreachable!(),
+                    Component::RootDir | Component::Normal(_) => cur.push(c.as_str()),
+                }
+                if let Some(entry) = self.entries.get(&cur) {
+                    parent_id = entry.id.clone();
+                } else {
+                    let id = self.storage.mkdir(parent_id.as_deref(), c.as_str()).await?;
+                    parent_id = Some(id)
+                }
+            }
+        } else {
+            let parent = path.parent().unwrap();
+            let entry = self
+                .entries
+                .get(parent)
+                .with_context(|| format!("no such entry: {parent}"))?;
+            let parent_id = entry.id.clone();
+            self.storage
+                .mkdir(parent_id.as_deref(), path.file_name().unwrap())
+                .await?;
+        }
+        Ok(())
+    }
+}
+
 impl<S> super::CreateFile for CacheStorage<S>
 where
     S: super::id::CreateFile + Send + Sync,
@@ -153,7 +194,6 @@ where
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
     ) -> anyhow::Result<fsync::Metadata> {
-        use anyhow::Context;
         log::info!("creating file {}", metadata.path());
 
         debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());

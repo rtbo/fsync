@@ -1,5 +1,6 @@
 use std::{str, sync::Arc};
 
+use anyhow::Context;
 use async_stream::try_stream;
 use fsync::path::PathBuf;
 use futures::Stream;
@@ -117,6 +118,26 @@ impl super::id::ReadFile for GoogleDrive {
     }
 }
 
+impl super::id::MkDir for GoogleDrive {
+    async fn mkdir(&self, parent_id: Option<&Id>, name: &str) -> anyhow::Result<IdBuf> {
+        if let Some(parent_id) = parent_id {
+            log::info!("creating folder {name} in folder {parent_id}");
+        } else {
+            log::info!("creating folder {name} in root folder");
+        }
+        let f = api::File{
+            id: None,
+            name: Some(name.to_string()),
+            modified_time: None,
+            size: None,
+            mime_type: Some(FOLDER_MIMETYPE.to_string()),
+            parents: parent_id.map(|id| vec![id.to_id_buf()]),
+        };
+        let res = self.files_create(&f).await?;
+        Ok(res.id.context("No ID returned")?)
+    }
+}
+
 impl super::id::CreateFile for GoogleDrive {
     async fn create_file(
         &self,
@@ -132,7 +153,7 @@ impl super::id::CreateFile for GoogleDrive {
         );
         let file = map_metadata(parent_id, None, metadata);
         let file = self
-            .files_create(&file, metadata.size().unwrap(), data)
+            .files_create_upload(&file, metadata.size().unwrap(), data)
             .await?;
         map_file(metadata.path().parent().unwrap().to_owned(), file)
     }
@@ -400,7 +421,20 @@ mod api {
             )))
         }
 
-        pub async fn files_create<D>(
+        pub async fn files_create(&self, file: &File) -> anyhow::Result<File> {
+            let scopes = &[Scope::Full];
+            let path = "/files";
+            let query_params = &[
+                ("fields", FILE_FIELDS)
+            ];
+            let res = self.post_json_query(scopes, path, query_params, file).await?;
+            let res = check_response("POST", path, res).await?;
+
+            let file: File = res.json().await?;
+            Ok(file)
+        }
+
+        pub async fn files_create_upload<D>(
             &self,
             file: &File,
             data_len: u64,
@@ -526,6 +560,33 @@ mod utils {
                 .send()
                 .await?;
 
+            Ok(res)
+        }
+
+        pub async fn post_json_query<T, Q, K, V>(
+            &self,
+            scopes: &[api::Scope],
+            path: &str,
+            query_params: Q,
+            body: &T,
+        ) -> anyhow::Result<Response> 
+        where
+            T: Serialize,
+            Q: IntoIterator,
+            Q::Item: Borrow<(K, V)>,
+            K: AsRef<str>,
+            V: AsRef<str>,
+        {
+            let token = self.fetch_token(scopes).await?;
+            let url = url_with_query(self.base_url, path, query_params);
+            let res = self
+                .client
+                .post(url)
+                .bearer_auth(token.secret())
+                .header(header::USER_AGENT, &self.user_agent)
+                .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+                .json(body)
+                .send().await?;
             Ok(res)
         }
 
