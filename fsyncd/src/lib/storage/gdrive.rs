@@ -16,11 +16,17 @@ pub struct GoogleDrive {
     base_url: &'static str,
     upload_base_url: &'static str,
     user_agent: String,
+
+    user: api::User,
+    quota: api::Quota,
 }
 
 impl GoogleDrive {
     pub async fn new(oauth_params: fsync::oauth::Params<'_>) -> anyhow::Result<Self> {
-        log::info!("Initializing Google Drive storage with client-id {}", oauth_params.secret.client_id.as_str());
+        log::info!(
+            "Initializing Google Drive storage with client-id {}",
+            oauth_params.secret.client_id.as_str()
+        );
 
         let client = reqwest::Client::builder().build()?;
         let auth = oauth::Client::new(
@@ -31,13 +37,40 @@ impl GoogleDrive {
         .await?;
 
         let user_agent = format!("fsyncd/{}", env!("CARGO_PKG_VERSION"));
-        Ok(Self {
+        let mut drive = Self {
             auth: Arc::new(auth),
             client,
             base_url: "https://www.googleapis.com/drive/v3",
             upload_base_url: "https://www.googleapis.com/upload/drive/v3",
             user_agent,
-        })
+            user: api::User::default(),
+            quota: api::Quota::default(),
+        };
+        let about = drive.about_get().await?;
+        drive.user = about.user;
+        drive.quota = about.storage_quota;
+
+        log::info!(
+            "Access granted to Drive of {}{}",
+            drive.user.display_name,
+            drive
+                .user
+                .email_address.as_ref()
+                .map(|em| format!(" <{em}>"))
+                .unwrap_or_default(),
+        );
+        if let (&Some(usage), &Some(limit)) = (&drive.quota.usage, &drive.quota.limit) {
+            use byte_unit::{Byte, UnitType};
+            let usage = Byte::from_i64(usage)
+                .expect("positive")
+                .get_appropriate_unit(UnitType::Binary);
+            let limit = Byte::from_i64(limit)
+                .expect("positive")
+                .get_appropriate_unit(UnitType::Binary);
+            log::info!("Usage {usage:#.2} / {limit:#.3}");
+        }
+
+        Ok(drive)
     }
 }
 
@@ -91,7 +124,11 @@ impl super::id::CreateFile for GoogleDrive {
         data: impl io::AsyncRead,
     ) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
         debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
-        log::info!("creating file {} ({} bytes)", metadata.path(), metadata.size().unwrap());
+        log::info!(
+            "creating file {} ({} bytes)",
+            metadata.path(),
+            metadata.size().unwrap()
+        );
         let file = map_metadata(parent_id, None, metadata);
         let file = self
             .files_create(&file, metadata.size().unwrap(), data)
@@ -145,10 +182,67 @@ fn map_metadata(parent_id: Option<&Id>, id: Option<&Id>, metadata: &fsync::Metad
 mod api {
     use chrono::{DateTime, Utc};
     use http::StatusCode;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Serialize};
     use tokio::io;
 
-    use crate::storage::{gdrive::utils::check_response, id::IdBuf};
+    use super::utils::{check_response, num_from_str, num_to_str};
+    use crate::storage::id::IdBuf;
+
+    #[derive(Default, Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct User {
+        kind: String,
+        pub display_name: String,
+        pub me: bool,
+        pub permission_id: String,
+        pub email_address: Option<String>,
+        pub photo_link: Option<String>,
+    }
+
+    #[derive(Default, Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Quota {
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "num_to_str",
+            deserialize_with = "num_from_str"
+        )]
+        pub limit: Option<i64>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "num_to_str",
+            deserialize_with = "num_from_str"
+        )]
+        pub usage_in_drive: Option<i64>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "num_to_str",
+            deserialize_with = "num_from_str"
+        )]
+        pub usage_in_drive_trash: Option<i64>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "num_to_str",
+            deserialize_with = "num_from_str"
+        )]
+        pub usage: Option<i64>,
+    }
+
+    const ABOUT_FIELDS: &str = "kind,storageQuota,user";
+
+    #[derive(Default, Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct About {
+        kind: String,
+        pub storage_quota: Quota,
+        pub user: User,
+    }
+
+    const FILE_FIELDS: &str = "id,name,size,modifiedTime,mimeType";
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -159,31 +253,12 @@ mod api {
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
-            serialize_with = "size_to_str",
-            deserialize_with = "size_from_str"
+            serialize_with = "num_to_str",
+            deserialize_with = "num_from_str"
         )]
-        pub size: Option<u64>,
+        pub size: Option<i64>,
         pub mime_type: Option<String>,
         pub parents: Option<Vec<IdBuf>>,
-    }
-
-    fn size_to_str<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let value = value.expect("size_to_str shouldn't be called for None");
-        let value = value.to_string();
-        serializer.serialize_str(&value)
-    }
-
-    fn size_from_str<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use std::str::FromStr;
-
-        let s = String::deserialize(deserializer)?;
-        Ok(Some(u64::from_str(&s).map_err(serde::de::Error::custom)?))
     }
 
     #[derive(Default, Clone, Debug, Deserialize)]
@@ -256,9 +331,23 @@ mod api {
     }
 
     const UPLOAD_CHUNK_SZ: u64 = 2 * 256 * 1024;
-    const METADATA_FIELDS: &str = "id,name,size,modifiedTime,mimeType";
 
     impl super::GoogleDrive {
+        pub async fn about_get(&self) -> anyhow::Result<About> {
+            let path = "/about";
+            let query_params = vec![("fields", ABOUT_FIELDS)];
+
+            let res = self
+                .get_query(&[Scope::MetadataReadOnly], path, query_params)
+                .await?;
+            let res = check_response("GET", &path, res).await?;
+            let about: About = res.json().await?;
+            if about.kind != "drive#about" {
+                anyhow::bail!("/about returned wrong kind!");
+            }
+            Ok(about)
+        }
+
         pub async fn files_list(
             &self,
             q: String,
@@ -268,7 +357,7 @@ mod api {
 
             let mut query_params = vec![
                 ("q", q),
-                ("fields", format!("files({METADATA_FIELDS})")),
+                ("fields", format!("files({FILE_FIELDS})")),
                 ("alt", "json".into()),
             ];
             if let Some(page_token) = page_token {
@@ -292,7 +381,7 @@ mod api {
             use futures::stream::{StreamExt, TryStreamExt};
 
             let path = format!("/files/{file_id}");
-            let query_params = &[("fields", METADATA_FIELDS), ("alt", "media")];
+            let query_params = &[("fields", FILE_FIELDS), ("alt", "media")];
 
             let res = self.get_query(&[Scope::Full], &path, query_params).await?;
             if res.status() == StatusCode::NOT_FOUND {
@@ -324,9 +413,9 @@ mod api {
             let scopes = &[Scope::Full];
             let upload_params = UploadParams {
                 typ: UploadType::Resumable,
-                size: file.size,
+                size: file.size.map(|sz| sz as _),
                 mime_type: file.mime_type.as_deref(),
-                fields: METADATA_FIELDS,
+                fields: FILE_FIELDS,
             };
             let upload_url = self
                 .post_upload_request(scopes, "/files", &upload_params, Some(file))
@@ -369,9 +458,28 @@ mod utils {
 
     use oauth2::AccessToken;
     use reqwest::{header, Response, StatusCode, Url};
-    use serde::Serialize;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     use super::api;
+
+    pub fn num_to_str<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let value = value.expect("size_to_str shouldn't be called for None");
+        let value = value.to_string();
+        serializer.serialize_str(&value)
+    }
+
+    pub fn num_from_str<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use std::str::FromStr;
+
+        let s = String::deserialize(deserializer)?;
+        Ok(Some(i64::from_str(&s).map_err(serde::de::Error::custom)?))
+    }
 
     pub async fn check_response(
         method: &str,

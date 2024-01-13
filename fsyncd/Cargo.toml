@@ -18,6 +18,7 @@ fsync = { path = "../fsync" }
 anyhow = { workspace = true }
 async-stream = { workspace = true }
 bincode = { workspace = true }
+byte-unit = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 dashmap = { workspace = true }

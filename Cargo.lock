@@ -706,6 +706,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "bincode",
+ "byte-unit",
  "chrono",
  "clap",
  "dashmap",
