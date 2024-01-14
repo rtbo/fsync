@@ -44,6 +44,20 @@ where
         })
     }
 
+    pub async fn new_shared(
+        local: Arc<L>,
+        remote: Arc<R>,
+        abort_handle: AbortHandle,
+    ) -> anyhow::Result<Self> {
+        let tree = DiffTree::build(local.clone(), remote.clone()).await?;
+        Ok(Self {
+            local,
+            remote,
+            tree: Arc::new(tree),
+            abort_handle,
+        })
+    }
+
     pub async fn start(
         &self,
         instance_name: &str,
