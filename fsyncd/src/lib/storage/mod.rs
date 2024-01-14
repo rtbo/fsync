@@ -2,8 +2,10 @@ use fsync::{
     path::{Path, PathBuf},
     Metadata,
 };
-use futures::{future, Future, Stream};
+use futures::{Future, Stream};
 use tokio::io;
+
+use crate::PersistCache;
 
 pub mod cache;
 pub mod fs;
@@ -37,9 +39,6 @@ pub trait CreateFile {
 }
 
 pub trait Storage:
-    Clone + DirEntries + ReadFile + MkDir + CreateFile + Send + Sync + 'static
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + PersistCache + Send + Sync + 'static
 {
-    fn shutdown(&self) -> impl Future<Output = ()> + Send {
-        future::ready(())
-    }
 }

@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use std::{ffi::OsString, process::ExitCode};
 use std::sync::Arc;
 
 use clap::Parser;
@@ -38,11 +38,11 @@ impl ShutdownRef {
         *write = Some(inner);
     }
 
-    async fn shutdown(&self) {
+    async fn shutdown(&self) -> anyhow::Result<()>{
         let read = self.inner.read().await;
         match &*read {
             Some(shutdown) => shutdown.shutdown().await,
-            None => (),
+            None => Ok(()),
         }
     }
 }
@@ -131,4 +131,14 @@ where
     shutdown_ref.set(service.clone()).await;
 
     service.start(&cli.instance, abort_reg).await
+}
+
+pub fn exit_program(shutdown_res: anyhow::Result<()>) -> ExitCode {
+    match shutdown_res {
+        Ok(..) => ExitCode::SUCCESS,
+        Err(err) => {
+            log::error!("Error during fsyncd shutdown: {err:#}");
+            ExitCode::FAILURE
+        }
+    }
 }

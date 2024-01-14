@@ -218,13 +218,22 @@ where
     }
 }
 
+impl<S> super::PersistCache for CacheStorage<S>
+where
+    S: super::id::Storage,
+{
+    async fn persist_cache(&self) -> anyhow::Result<()> {
+        let fut1 = self.save_to_disc();
+        let fut2 = self.storage.persist_cache();
+        tokio::try_join!(fut1, fut2)?;
+        Ok(())
+    }
+}
+
 impl<S> super::Storage for CacheStorage<S>
 where
     S: super::id::Storage,
 {
-    async fn shutdown(&self) {
-        let _ = self.save_to_disc().await;
-    }
 }
 
 fn bincode_options() -> impl bincode::Options {

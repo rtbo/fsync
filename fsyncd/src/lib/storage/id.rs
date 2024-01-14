@@ -3,9 +3,11 @@ use std::fmt;
 use std::ops::Deref;
 
 use fsync::{path::PathBuf, Metadata};
-use futures::{future, Future, Stream};
+use futures::{Future, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::io;
+
+use crate::PersistCache;
 
 #[repr(transparent)]
 pub struct Id {
@@ -155,8 +157,7 @@ pub trait CreateFile {
     ) -> impl Future<Output = anyhow::Result<(IdBuf, Metadata)>> + Send;
 }
 
-pub trait Storage: Clone + DirEntries + ReadFile + MkDir + CreateFile + Send + Sync + 'static {
-    fn shutdown(&self) -> impl Future<Output = ()> + Send {
-        future::ready(())
-    }
+pub trait Storage:
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + PersistCache + Send + Sync + 'static
+{
 }

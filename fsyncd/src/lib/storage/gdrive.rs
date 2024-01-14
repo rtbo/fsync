@@ -6,13 +6,14 @@ use fsync::path::PathBuf;
 use futures::Stream;
 use tokio::io;
 
-use super::id::IdBuf;
-use crate::oauth::{GetToken, PersistCache};
-use crate::storage::id::Id;
+use crate::{
+    oauth::GetToken,
+    storage::id::{Id, IdBuf},
+    PersistCache,
+};
 
 #[derive(Clone)]
-pub struct GoogleDrive<A> 
-{
+pub struct GoogleDrive<A> {
     client: reqwest::Client,
     auth: Arc<A>,
     base_url: &'static str,
@@ -162,14 +163,16 @@ where
     }
 }
 
-impl<A> super::id::Storage for GoogleDrive<A>
+impl<A> PersistCache for GoogleDrive<A>
 where
-    A: GetToken + PersistCache,
+    A: PersistCache + Send + Sync,
 {
-    async fn shutdown(&self) {
-        let _ = self.auth.persist_cache().await;
+    async fn persist_cache(&self) -> anyhow::Result<()> {
+        self.auth.persist_cache().await
     }
 }
+
+impl<A> super::id::Storage for GoogleDrive<A> where A: GetToken + PersistCache {}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 

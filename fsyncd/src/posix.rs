@@ -1,9 +1,11 @@
+use std::process::ExitCode;
+
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::task::JoinHandle;
 
-use crate::ShutdownRef;
+use crate::{exit_program, ShutdownRef};
 
-pub fn main() {
+pub fn main() -> ExitCode {
     if connected_to_journal() {
         JournalLog::new()
             .unwrap()
@@ -16,7 +18,7 @@ pub fn main() {
         env_logger::init();
     }
 
-    tokio::runtime::Builder::new_multi_thread()
+    let shutdown_res = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
@@ -26,11 +28,13 @@ pub fn main() {
             crate::run(std::env::args_os().collect(), shutdown_ref)
                 .await
                 .unwrap();
-            shutdown.await.unwrap();
+            shutdown.await.unwrap()
         });
+
+    exit_program(shutdown_res)
 }
 
-fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {
+fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<anyhow::Result<()>> {
     use tokio::signal::unix::{signal, SignalKind};
 
     let mut sig_term = signal(SignalKind::terminate()).unwrap();
@@ -45,6 +49,6 @@ fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {
                 log::warn!("received SIGINT");
             }
         };
-        shutdown_ref.shutdown().await;
+        shutdown_ref.shutdown().await
     })
 }

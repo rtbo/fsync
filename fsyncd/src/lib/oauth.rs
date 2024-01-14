@@ -13,19 +13,13 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::{io, net};
 
-use crate::uri;
+use crate::{uri, PersistCache};
 
 pub trait GetToken: Clone + Send + Sync + 'static {
     fn get_token(
         &self,
         scopes: Vec<Scope>,
     ) -> impl Future<Output = anyhow::Result<AccessToken>> + Send;
-}
-
-pub trait PersistCache {
-    fn persist_cache(
-        &self,
-    ) -> impl Future<Output = anyhow::Result<()>> + Send;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

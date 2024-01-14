@@ -1,4 +1,4 @@
-use std::{ffi::OsString, sync::Arc};
+use std::{ffi::OsString, process::ExitCode, sync::Arc};
 
 use tokio::task::JoinHandle;
 use windows_service::{
@@ -8,9 +8,9 @@ use windows_service::{
     service_dispatcher,
 };
 
-use crate::ShutdownRef;
+use crate::{exit_program, ShutdownRef};
 
-pub fn main() -> anyhow::Result<()> {
+pub fn main() -> ExitCode {
     use windows_service::Error;
     // Register generated `ffi_fsyncd_main` with the system and start the service, blocking
     // this thread until the service is stopped.
@@ -18,11 +18,10 @@ pub fn main() -> anyhow::Result<()> {
         Err(Error::Winapi(err)) if err.raw_os_error() == Some(1063) => {
             // 1063 is "can't connect to service controller"
             // we are apparently not in a service, start the regular console handler
-            console_main();
+            console_main()
         }
-        res => res?,
+        res => exit_program(res),
     }
-    Ok(())
 }
 
 define_windows_service!(ffi_service_main, service_main);
@@ -47,12 +46,17 @@ fn service_main(args: Vec<OsString>) {
 
         let event_handler = move |control_event| -> ServiceControlHandlerResult {
             match control_event {
-                ServiceControl::Stop => {
-                    rt.block_on(shutdown_ref.shutdown());
-                    ServiceControlHandlerResult::NoError
-                }
                 // All services must accept Interrogate even if it's a no-op.
                 ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+                ServiceControl::Stop => {
+                    let res = rt.block_on(shutdown_ref.shutdown());
+                    if res.is_err() {
+                        let err = res.unwrap_err();
+                        log::error!("Error during service shutdown: {err}");
+                    }
+                    // must return NoError anyway
+                    ServiceControlHandlerResult::NoError
+                }
                 _ => ServiceControlHandlerResult::NotImplemented,
             }
         };
@@ -63,21 +67,23 @@ fn service_main(args: Vec<OsString>) {
         .unwrap();
 }
 
-fn console_main() {
+fn console_main() -> anyhow::Result<()> {
     env_logger::init();
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
-    rt.block_on(async {
+    let shutdown_res = rt.block_on(async {
         let shutdown_ref = ShutdownRef::new();
         let shutdown = handle_shutdown_signals(shutdown_ref.clone());
         crate::run(std::env::args_os().collect(), shutdown_ref)
             .await
             .unwrap();
-        shutdown.await.unwrap();
-    })
+        shutdown.await.unwrap()
+    });
+
+    exit_program(shutdown_res)
 }
 
 fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {

@@ -177,12 +177,14 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    fn shutdown(&self) -> BoxFuture<'_, ()> {
+    fn shutdown(&self) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(async {
             log::info!("Shutting service down");
             self.abort_handle.abort();
-            self.local.shutdown().await;
-            self.remote.shutdown().await;
+            let fut1 = self.local.persist_cache();
+            let fut2 = self.remote.persist_cache();
+            tokio::try_join!(fut1, fut2)?;
+            Ok(())
         })
     }
 }

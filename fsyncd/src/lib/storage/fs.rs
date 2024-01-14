@@ -8,6 +8,8 @@ use tokio::{
     io,
 };
 
+use crate::PersistCache;
+
 #[derive(Debug)]
 pub struct OutOfTreeSymlink {
     path: PathBuf,
@@ -177,6 +179,8 @@ impl super::CreateFile for Storage {
         map_metadata(metadata.path().to_owned(), &fs_metadata, &fs_path).await
     }
 }
+
+impl PersistCache for Storage {}
 
 impl super::Storage for Storage {}
 
