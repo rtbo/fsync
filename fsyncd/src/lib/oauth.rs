@@ -1,8 +1,9 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use fsync::path::{FsPath, FsPathBuf};
+use futures::Future;
 use oauth2::{
     basic::{BasicClient, BasicTokenResponse},
     AccessToken, AuthorizationCode, CsrfToken, HttpRequest, HttpResponse, PkceCodeChallenge,
@@ -13,6 +14,19 @@ use tokio::sync::RwLock;
 use tokio::{io, net};
 
 use crate::uri;
+
+pub trait GetToken: Clone + Send + Sync + 'static {
+    fn get_token(
+        &self,
+        scopes: Vec<Scope>,
+    ) -> impl Future<Output = anyhow::Result<AccessToken>> + Send;
+}
+
+pub trait PersistCache {
+    fn persist_cache(
+        &self,
+    ) -> impl Future<Output = anyhow::Result<()>> + Send;
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TokenCache {
@@ -187,10 +201,15 @@ impl TokenStore {
 }
 
 #[derive(Debug)]
-pub struct Client {
+struct Inner {
     token_store: RwLock<TokenStore>,
     http_client: reqwest::Client,
     client: BasicClient,
+}
+
+#[derive(Clone, Debug)]
+pub struct Client {
+    inner: Arc<Inner>,
 }
 
 impl Client {
@@ -209,26 +228,12 @@ impl Client {
         let http_client = http_client.unwrap_or_else(|| reqwest::Client::new());
 
         Ok(Self {
-            token_store: RwLock::new(token_store),
-            http_client,
-            client,
+            inner: Arc::new(Inner {
+                token_store: RwLock::new(token_store),
+                http_client,
+                client,
+            }),
         })
-    }
-
-    pub async fn flush_cache(&self) -> anyhow::Result<()> {
-        self.token_store.read().await.flush().await?;
-        Ok(())
-    }
-
-    pub async fn get_token(&self, scopes: Vec<Scope>) -> anyhow::Result<AccessToken> {
-        let cache = self.token_store.read().await.pull(&scopes);
-        match cache {
-            CacheResult::Ok(access_token) => Ok(access_token),
-            CacheResult::Expired(refresh_token, scopes) => {
-                self.refresh_token(refresh_token, scopes).await
-            }
-            CacheResult::None => self.fetch_token(scopes).await,
-        }
     }
 
     async fn refresh_token(
@@ -236,7 +241,7 @@ impl Client {
         refresh_token: RefreshToken,
         scopes: Vec<Scope>,
     ) -> anyhow::Result<AccessToken> {
-        let token_response = self
+        let token_response = self.inner
             .client
             .exchange_refresh_token(&refresh_token)
             .add_scopes(scopes.clone())
@@ -245,7 +250,7 @@ impl Client {
 
         let access = token_response.access_token().to_owned();
 
-        let mut store = self.token_store.write().await;
+        let mut store = self.inner.token_store.write().await;
         store.push(&token_response).await;
 
         Ok(access)
@@ -261,7 +266,7 @@ impl Client {
 
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-        let (auth_url, csrf_state) = self
+        let (auth_url, csrf_state) = self.inner
             .client
             .authorize_url(CsrfToken::new_random)
             .set_redirect_uri(redirect_url.clone())
@@ -310,7 +315,7 @@ impl Client {
         }
 
         println!("exchanging code");
-        let token_response = self
+        let token_response = self.inner
             .client
             .exchange_code(code)
             .set_pkce_verifier(pkce_verifier)
@@ -328,7 +333,7 @@ impl Client {
 
         let access = token_response.access_token().to_owned();
 
-        let mut store = self.token_store.write().await;
+        let mut store = self.inner.token_store.write().await;
         store.push(&token_response).await;
 
         Ok(access)
@@ -339,6 +344,7 @@ impl Client {
         let url = req.url.clone();
 
         let resp = self
+            .inner
             .http_client
             .request(req.method, req.url)
             .headers(req.headers)
@@ -365,7 +371,27 @@ impl Client {
     }
 }
 
-pub(super) mod server {
+impl GetToken for Client {
+    async fn get_token(&self, scopes: Vec<Scope>) -> anyhow::Result<AccessToken> {
+        let cache = self.inner.token_store.read().await.pull(&scopes);
+        match cache {
+            CacheResult::Ok(access_token) => Ok(access_token),
+            CacheResult::Expired(refresh_token, scopes) => {
+                self.refresh_token(refresh_token, scopes).await
+            }
+            CacheResult::None => self.fetch_token(scopes).await,
+        }
+    }
+}
+
+impl PersistCache for Client {
+    async fn persist_cache(&self) -> anyhow::Result<()> {
+        self.inner.token_store.read().await.flush().await?;
+        Ok(())
+    }
+}
+
+mod server {
     use std::str::{self};
 
     use anyhow::Context;

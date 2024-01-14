@@ -7,13 +7,14 @@ use futures::Stream;
 use tokio::io;
 
 use super::id::IdBuf;
-use crate::oauth;
+use crate::oauth::{GetToken, PersistCache};
 use crate::storage::id::Id;
 
 #[derive(Clone)]
-pub struct GoogleDrive {
+pub struct GoogleDrive<A> 
+{
     client: reqwest::Client,
-    auth: Arc<oauth::Client>,
+    auth: Arc<A>,
     base_url: &'static str,
     upload_base_url: &'static str,
     user_agent: String,
@@ -22,21 +23,11 @@ pub struct GoogleDrive {
     quota: api::Quota,
 }
 
-impl GoogleDrive {
-    pub async fn new(oauth_params: fsync::oauth::Params<'_>) -> anyhow::Result<Self> {
-        log::info!(
-            "Initializing Google Drive storage with client-id {}",
-            oauth_params.secret.client_id.as_str()
-        );
-
-        let client = reqwest::Client::builder().build()?;
-        let auth = oauth::Client::new(
-            oauth_params.secret,
-            oauth::TokenCache::MemoryAndDisk(oauth_params.token_cache_path.into()),
-            None,
-        )
-        .await?;
-
+impl<A> GoogleDrive<A>
+where
+    A: GetToken,
+{
+    pub async fn new(auth: A, client: reqwest::Client) -> anyhow::Result<Self> {
         let user_agent = format!("fsyncd/{}", env!("CARGO_PKG_VERSION"));
         let mut drive = Self {
             auth: Arc::new(auth),
@@ -76,7 +67,10 @@ impl GoogleDrive {
     }
 }
 
-impl super::id::DirEntries for GoogleDrive {
+impl<A> super::id::DirEntries for GoogleDrive<A>
+where
+    A: GetToken,
+{
     fn dir_entries(
         &self,
         parent_id: Option<IdBuf>,
@@ -108,7 +102,10 @@ impl super::id::DirEntries for GoogleDrive {
     }
 }
 
-impl super::id::ReadFile for GoogleDrive {
+impl<A> super::id::ReadFile for GoogleDrive<A>
+where
+    A: GetToken,
+{
     async fn read_file(&self, id: IdBuf) -> anyhow::Result<impl io::AsyncRead> {
         log::trace!("reading file {id}");
         Ok(self
@@ -118,14 +115,17 @@ impl super::id::ReadFile for GoogleDrive {
     }
 }
 
-impl super::id::MkDir for GoogleDrive {
+impl<A> super::id::MkDir for GoogleDrive<A>
+where
+    A: GetToken,
+{
     async fn mkdir(&self, parent_id: Option<&Id>, name: &str) -> anyhow::Result<IdBuf> {
         if let Some(parent_id) = parent_id {
             log::info!("creating folder {name} in folder {parent_id}");
         } else {
             log::info!("creating folder {name} in root folder");
         }
-        let f = api::File{
+        let f = api::File {
             id: None,
             name: Some(name.to_string()),
             modified_time: None,
@@ -138,7 +138,10 @@ impl super::id::MkDir for GoogleDrive {
     }
 }
 
-impl super::id::CreateFile for GoogleDrive {
+impl<A> super::id::CreateFile for GoogleDrive<A>
+where
+    A: GetToken,
+{
     async fn create_file(
         &self,
         parent_id: Option<&Id>,
@@ -159,9 +162,12 @@ impl super::id::CreateFile for GoogleDrive {
     }
 }
 
-impl super::id::Storage for GoogleDrive {
+impl<A> super::id::Storage for GoogleDrive<A>
+where
+    A: GetToken + PersistCache,
+{
     async fn shutdown(&self) {
-        let _ = self.auth.flush_cache().await;
+        let _ = self.auth.persist_cache().await;
     }
 }
 
@@ -208,7 +214,7 @@ mod api {
     use tokio::io;
 
     use super::utils::{check_response, num_from_str, num_to_str};
-    use crate::storage::id::IdBuf;
+    use crate::{oauth::GetToken, storage::id::IdBuf};
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -354,7 +360,10 @@ mod api {
 
     const UPLOAD_CHUNK_SZ: u64 = 2 * 256 * 1024;
 
-    impl super::GoogleDrive {
+    impl<A> super::GoogleDrive<A>
+    where
+        A: GetToken,
+    {
         pub async fn about_get(&self) -> anyhow::Result<About> {
             let path = "/about";
             let query_params = vec![("fields", ABOUT_FIELDS)];
@@ -424,10 +433,10 @@ mod api {
         pub async fn files_create(&self, file: &File) -> anyhow::Result<File> {
             let scopes = &[Scope::Full];
             let path = "/files";
-            let query_params = &[
-                ("fields", FILE_FIELDS)
-            ];
-            let res = self.post_json_query(scopes, path, query_params, file).await?;
+            let query_params = &[("fields", FILE_FIELDS)];
+            let res = self
+                .post_json_query(scopes, path, query_params, file)
+                .await?;
             let res = check_response("POST", path, res).await?;
 
             let file: File = res.json().await?;
@@ -496,6 +505,7 @@ mod utils {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     use super::api;
+    use crate::oauth::GetToken;
 
     pub fn num_to_str<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -531,7 +541,10 @@ mod utils {
         Ok(res)
     }
 
-    impl super::GoogleDrive {
+    impl<A> super::GoogleDrive<A>
+    where
+        A: GetToken,
+    {
         pub async fn fetch_token(&self, scopes: &[api::Scope]) -> anyhow::Result<AccessToken> {
             let scopes = scopes.iter().map(|&s| s.into()).collect();
             Ok(self.auth.get_token(scopes).await?)
@@ -569,7 +582,7 @@ mod utils {
             path: &str,
             query_params: Q,
             body: &T,
-        ) -> anyhow::Result<Response> 
+        ) -> anyhow::Result<Response>
         where
             T: Serialize,
             Q: IntoIterator,
@@ -586,7 +599,8 @@ mod utils {
                 .header(header::USER_AGENT, &self.user_agent)
                 .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
                 .json(body)
-                .send().await?;
+                .send()
+                .await?;
             Ok(res)
         }
 

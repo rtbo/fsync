@@ -85,7 +85,19 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
 
     match &config.provider {
         fsync::Provider::GoogleDrive => {
-            let remote = storage::gdrive::GoogleDrive::new(oauth2_params).await?;
+            log::info!(
+                "Initializing Google Drive storage with client-id {}",
+                oauth2_params.secret.client_id.as_str()
+            );
+
+            let client = reqwest::Client::builder().build()?;
+            let auth = fsyncd::oauth::Client::new(
+                oauth2_params.secret,
+                fsyncd::oauth::TokenCache::MemoryAndDisk(oauth2_params.token_cache_path.into()),
+                Some(client.clone()),
+            )
+            .await?;
+            let remote = storage::gdrive::GoogleDrive::new(auth, client).await?;
             start_service(cli, local, remote, shutdown_ref).await
         }
     }
