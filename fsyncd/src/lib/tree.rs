@@ -118,7 +118,7 @@ pub struct DiffTree {
 }
 
 impl DiffTree {
-    pub async fn from_cache<L, R>(local: Arc<L>, remote: Arc<R>) -> anyhow::Result<Self>
+    pub async fn build<L, R>(local: Arc<L>, remote: Arc<R>) -> anyhow::Result<Self>
     where
         L: storage::Storage,
         R: storage::Storage,

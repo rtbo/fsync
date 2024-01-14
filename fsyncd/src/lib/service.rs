@@ -35,7 +35,7 @@ where
     pub async fn new(local: L, remote: R, abort_handle: AbortHandle) -> anyhow::Result<Self> {
         let local = Arc::new(local);
         let remote = Arc::new(remote);
-        let tree = DiffTree::from_cache(local.clone(), remote.clone()).await?;
+        let tree = DiffTree::build(local.clone(), remote.clone()).await?;
         Ok(Self {
             local,
             remote,
