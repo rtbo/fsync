@@ -1,0 +1,20 @@
+[package]
+name = "tests"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish = false
+
+[[test]]
+name = "integration"
+path = "src/bin.rs"
+
+[dependencies]
+fsync = { path = "../fsync" }
+fsyncd = { path = "../fsyncd" }
+
+anyhow = { workspace = true }
+futures = { workspace = true }
+rand = { workspace = true }
+tarpc = { workspace = true }
+tokio = { workspace = true }
