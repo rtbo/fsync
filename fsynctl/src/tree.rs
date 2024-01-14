@@ -41,7 +41,10 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 
     let client = Arc::new(FsyncClient::new(client::Config::default(), transport.await?).spawn());
     let path = args.path.unwrap_or_else(PathBuf::root);
-    let node = client.entry(context::current(), path.clone()).await?;
+    let node = client
+        .entry(context::current(), path.clone())
+        .await?
+        .unwrap();
 
     if node.is_none() {
         println!("No such entry: {path}");
@@ -72,6 +75,7 @@ fn walk(
         let mut len = children.len();
 
         for child in children {
+            let child = child.unwrap();
             len -= 1;
             if child.is_none() {
                 continue;

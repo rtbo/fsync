@@ -42,6 +42,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     let entry = client
         .entry(context::current(), path.clone())
         .await
+        .unwrap()
         .unwrap();
 
     if entry.is_none() {

@@ -58,7 +58,10 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     let client = Arc::new(FsyncClient::new(client::Config::default(), transport.await?).spawn());
 
     let path = args.path.clone().unwrap_or_else(PathBuf::root);
-    let node = client.entry(context::current(), path.clone()).await?;
+    let node = client
+        .entry(context::current(), path.clone())
+        .await?
+        .unwrap();
     if node.is_none() {
         anyhow::bail!("No such entry: {path}",);
     }
@@ -339,7 +342,7 @@ impl SyncCommand {
                 let path = node.path();
                 for c in node.children() {
                     let path = path.join(c);
-                    let node = self.client.entry(context::current(), path).await?;
+                    let node = self.client.entry(context::current(), path).await?.unwrap();
                     self.node(node.as_ref().unwrap()).await?;
                 }
             }

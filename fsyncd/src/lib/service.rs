@@ -85,19 +85,29 @@ where
     }
 }
 
+fn check_path(path: &Path) -> Result<(), String> {
+    if path.is_relative() {
+        Err(format!("Expect an absolute path, got '{path}'"))
+    } else {
+        Ok(())
+    }
+}
+
 impl<L, R> Service<L, R>
 where
     L: storage::Storage,
     R: storage::Storage,
 {
-    async fn impl_entry(self, path: &Path) -> Option<fsync::tree::Node> {
-        self.tree.entry(&path).map(Into::into)
+    async fn impl_entry(self, path: &Path) -> Result<Option<fsync::tree::Node>, String> {
+        check_path(path)?;
+        Ok(self.tree.entry(&path).map(Into::into))
     }
 
     async fn impl_copy_remote_to_local(self, path: &Path) -> Result<(), String> {
+        check_path(path)?;
         let entry = self.tree.entry(&path);
         if entry.is_none() {
-            return Err(format!("no such entry in remote drive: {path}"));
+            return Err(format!("No such entry in remote drive: '{path}'"));
         }
         let node = entry.unwrap();
 
@@ -117,14 +127,15 @@ where
                 self.tree.add_local(&path, local).unwrap();
                 Ok(())
             }
-            _ => Err(format!("{path} is not only on remote")),
+            _ => Err(format!("'{path}' is not only on remote")),
         }
     }
 
     async fn impl_copy_local_to_remote(self, path: &Path) -> Result<(), String> {
+        check_path(path)?;
         let entry = self.tree.entry(&path);
         if entry.is_none() {
-            return Err(format!("no such entry in local drive: {path}"));
+            return Err(format!("No such entry in local drive: '{path}'"));
         }
         let node = entry.unwrap();
 
@@ -141,8 +152,8 @@ where
                 self.tree.add_remote(&path, remote).unwrap();
                 Ok(())
             }
-            tree::Entry::Remote(..) => Err(format!("{path} is on the remote drive only")),
-            _ => Err(format!("{path} is not only on remote")),
+            tree::Entry::Remote(..) => Err(format!("'{path}' is on the remote drive only")),
+            _ => Err(format!("'{path}' is not only on remote")),
         }
     }
 }
@@ -153,7 +164,7 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    async fn entry(self, _: Context, path: PathBuf) -> Option<fsync::tree::Node> {
+    async fn entry(self, _: Context, path: PathBuf) -> Result<Option<fsync::tree::Node>, String> {
         let res = self.impl_entry(&path).await;
         log::trace!(target: "RPC", "Fsync::entry(path: {path:?}) -> {res:#?}");
         res

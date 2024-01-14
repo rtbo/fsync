@@ -169,7 +169,7 @@ pub mod tree {
 
 #[tarpc::service]
 pub trait Fsync {
-    async fn entry(path: PathBuf) -> Option<tree::Node>;
+    async fn entry(path: PathBuf) -> Result<Option<tree::Node>, String>;
     async fn copy_remote_to_local(path: PathBuf) -> Result<(), String>;
     async fn copy_local_to_remote(path: PathBuf) -> Result<(), String>;
 }
