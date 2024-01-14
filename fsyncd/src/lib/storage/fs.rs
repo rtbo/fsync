@@ -80,11 +80,11 @@ fn test_check_symlink() {
 }
 
 #[derive(Debug, Clone)]
-pub struct Storage {
+pub struct FileSystem {
     root: FsPathBuf,
 }
 
-impl Storage {
+impl FileSystem {
     /// Build a new filesystem storage.
     /// Panics if [root] is not an absolute path.
     pub fn new<P>(root: P) -> anyhow::Result<Self>
@@ -96,7 +96,7 @@ impl Storage {
         let root = root.canonicalize_utf8()?;
         log::info!("Initializing FS storage in {root}");
 
-        Ok(Storage { root })
+        Ok(FileSystem { root })
     }
 
     pub fn root(&self) -> &FsPath {
@@ -104,7 +104,7 @@ impl Storage {
     }
 }
 
-impl super::DirEntries for Storage {
+impl super::DirEntries for FileSystem {
     fn dir_entries(
         &self,
         parent_path: PathBuf,
@@ -126,7 +126,7 @@ impl super::DirEntries for Storage {
     }
 }
 
-impl super::ReadFile for Storage {
+impl super::ReadFile for FileSystem {
     async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
@@ -135,7 +135,7 @@ impl super::ReadFile for Storage {
     }
 }
 
-impl super::MkDir for Storage {
+impl super::MkDir for FileSystem {
     async fn mkdir(&self, path: &Path, parents: bool) -> anyhow::Result<()> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
@@ -149,7 +149,7 @@ impl super::MkDir for Storage {
     }
 }
 
-impl super::CreateFile for Storage {
+impl super::CreateFile for FileSystem {
     async fn create_file(
         &self,
         metadata: &fsync::Metadata,
@@ -180,9 +180,9 @@ impl super::CreateFile for Storage {
     }
 }
 
-impl PersistCache for Storage {}
+impl PersistCache for FileSystem {}
 
-impl super::Storage for Storage {}
+impl super::Storage for FileSystem {}
 
 async fn map_direntry(parent_path: &Path, direntry: &DirEntry) -> anyhow::Result<fsync::Metadata> {
     let fs_path = FsPathBuf::try_from(direntry.path())?;

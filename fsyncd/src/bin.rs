@@ -68,7 +68,7 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
     let config = fsync::Config::load_from_file(&config_file).await?;
     log::trace!("Loaded config: {config:?}");
 
-    let local = storage::fs::Storage::new(&config.local_dir)?;
+    let local = storage::fs::FileSystem::new(&config.local_dir)?;
 
     let secret_path = inst::oauth_secret_file(&cli.instance)?;
     let secret = {
