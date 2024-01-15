@@ -36,7 +36,7 @@ pub mod uri {
     }
 }
 
-trait PersistCache {
+pub trait PersistCache {
     fn persist_cache(&self) -> impl Future<Output = anyhow::Result<()>> + Send;
 }
 
