@@ -1,19 +1,13 @@
 #![cfg(test)]
 
-use std::sync::Arc;
-
-use fsync::{
-    path::{FsPath, FsPathBuf, Path, PathBuf},
-    Fsync,
-};
+use fsync::path::{FsPath, FsPathBuf, Path, PathBuf};
 use fsyncd::{
     service::Service,
     storage::{self, fs::FileSystem, Storage},
 };
+use futures::future::BoxFuture;
 use futures::prelude::*;
-use futures::{future::BoxFuture, stream::AbortHandle};
 use rand::{distributions::Alphanumeric, Rng};
-use tarpc::context::current;
 use tokio::{
     fs::{self},
     io::{self, AsyncReadExt},
@@ -135,8 +129,6 @@ impl Storage for FsStub {}
 
 pub struct Harness<L, R> {
     pub service: Service<L, R>,
-    pub local: Arc<L>,
-    pub remote: Arc<R>,
 }
 
 impl<L, R> Harness<L, R>
@@ -144,8 +136,16 @@ where
     L: Storage,
     R: Storage,
 {
+    pub fn local(&self) -> &L {
+        self.service.local()
+    }
+
+    pub fn remote(&self) -> &R {
+        self.service.remote()
+    }
+
     pub async fn local_file_content(&self, path: &Path) -> anyhow::Result<String> {
-        let r = self.local.read_file(path.to_owned()).await?;
+        let r = self.local().read_file(path.to_owned()).await?;
         let c = file_content(r).await?;
         Ok(c)
     }
@@ -161,25 +161,15 @@ pub async fn make_fs_harness() -> Harness<FsStub, FsStub> {
     let remote = FsStub::new("remote", &remote_dir);
 
     let (local, remote) = tokio::try_join!(local, remote).unwrap();
-    let local = Arc::new(local);
-    let remote = Arc::new(remote);
 
-    let (abort_handle, _abort_reg) = AbortHandle::new_pair();
-
-    let service = Service::new_shared(local.clone(), remote.clone(), abort_handle)
-        .await
-        .unwrap();
+    let service = Service::new(local, remote).await.unwrap();
 
     // {
     //     let service = service.clone();
     //     tokio::spawn(async move { service.start("test", abort_reg).await });
     // }
 
-    Harness {
-        service,
-        local,
-        remote,
-    }
+    Harness { service }
 }
 
 pub async fn file_content<R>(read: R) -> anyhow::Result<String>
@@ -198,12 +188,7 @@ async fn test_copy_remote_to_local() -> anyhow::Result<()> {
 
     let path = PathBuf::from("/only-remote.txt");
 
-    harness
-        .service
-        .clone()
-        .copy_remote_to_local(current(), path.clone())
-        .await
-        .unwrap();
+    harness.service.copy_remote_to_local(&path).await.unwrap();
 
     let content = harness.local_file_content(&path).await?;
     assert_eq!(&content, path.as_str());
@@ -217,11 +202,7 @@ async fn test_copy_remote_to_local_fail_missing() {
 
     let path = PathBuf::from("/not-a-file.txt");
 
-    harness
-        .service
-        .copy_remote_to_local(current(), path.clone())
-        .await
-        .unwrap();
+    harness.service.copy_remote_to_local(&path).await.unwrap();
 }
 
 #[tokio::test]
@@ -231,9 +212,5 @@ async fn test_copy_remote_to_local_fail_relative() {
 
     let path = PathBuf::from("only-remote.txt");
 
-    harness
-        .service
-        .copy_remote_to_local(current(), path.clone())
-        .await
-        .unwrap();
+    harness.service.copy_remote_to_local(&path).await.unwrap();
 }

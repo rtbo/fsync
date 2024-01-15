@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use fsync::{loc::inst, oauth};
+use fsyncd::service::RpcService;
 use fsyncd::{service, storage, Shutdown};
 use futures::stream::AbortHandle;
 use tokio::sync::RwLock;
@@ -123,14 +124,15 @@ where
         remote.populate_from_entries().await?;
     }
 
-    let (abort_handle, abort_reg) = AbortHandle::new_pair();
-
-    let service = service::Service::new(local, remote.clone(), abort_handle).await?;
+    let service = service::Service::new(local, remote.clone()).await?;
     let service = Arc::new(service);
 
     shutdown_ref.set(service.clone()).await;
 
-    service.start(&cli.instance, abort_reg).await
+    let (abort_handle, abort_reg) = AbortHandle::new_pair();
+
+    let rpc = RpcService::new(service, abort_handle).await;
+    rpc.start(&cli.instance, abort_reg).await
 }
 
 pub fn exit_program(shutdown_res: anyhow::Result<()>) -> ExitCode {

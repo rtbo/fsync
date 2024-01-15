@@ -15,16 +15,17 @@ use tarpc::{
     server::{self, incoming::Incoming, Channel},
     tokio_serde::formats::Bincode,
 };
+use tokio::sync::RwLock;
 
 use crate::storage;
 use crate::tree::{self, DiffTree};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Service<L, R> {
-    local: Arc<L>,
-    remote: Arc<R>,
-    tree: Arc<DiffTree>,
-    abort_handle: AbortHandle,
+    local: L,
+    remote: R,
+    tree: DiffTree,
+    abort_handle: RwLock<Option<AbortHandle>>,
 }
 
 impl<L, R> Service<L, R>
@@ -32,30 +33,142 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    pub async fn new(local: L, remote: R, abort_handle: AbortHandle) -> anyhow::Result<Self> {
+    pub async fn new(local: L, remote: R) -> anyhow::Result<Self> {
         let local = Arc::new(local);
         let remote = Arc::new(remote);
         let tree = DiffTree::build(local.clone(), remote.clone()).await?;
+        let local = Arc::into_inner(local).unwrap();
+        let remote = Arc::into_inner(remote).unwrap();
+
         Ok(Self {
             local,
             remote,
-            tree: Arc::new(tree),
-            abort_handle,
+            tree,
+            abort_handle: RwLock::new(None),
         })
     }
 
-    pub async fn new_shared(
-        local: Arc<L>,
-        remote: Arc<R>,
-        abort_handle: AbortHandle,
-    ) -> anyhow::Result<Self> {
-        let tree = DiffTree::build(local.clone(), remote.clone()).await?;
-        Ok(Self {
-            local,
-            remote,
-            tree: Arc::new(tree),
-            abort_handle,
+    pub fn local(&self) -> &L {
+        &self.local
+    }
+
+    pub fn remote(&self) -> &R {
+        &self.remote
+    }
+}
+
+fn check_path(path: &Path) -> Result<(), String> {
+    if path.is_relative() {
+        Err(format!("Expect an absolute path, got '{path}'"))
+    } else {
+        Ok(())
+    }
+}
+
+impl<L, R> Service<L, R>
+where
+    L: storage::Storage,
+    R: storage::Storage,
+{
+    pub async fn entry(&self, path: &Path) -> Result<Option<fsync::tree::Node>, String> {
+        check_path(path)?;
+        Ok(self.tree.entry(&path).map(Into::into))
+    }
+
+    pub async fn copy_remote_to_local(&self, path: &Path) -> Result<(), String> {
+        check_path(path)?;
+        let entry = self.tree.entry(&path);
+        if entry.is_none() {
+            return Err(format!("No such entry in remote drive: '{path}'"));
+        }
+        let node = entry.unwrap();
+
+        match node.entry() {
+            tree::Entry::Local(..) => Err(format!("{path} is on the local drive only")),
+            tree::Entry::Remote(remote) => {
+                let read = self
+                    .remote
+                    .read_file(remote.path().to_owned())
+                    .await
+                    .map_err(|err| err.to_string())?;
+                let local = self
+                    .local
+                    .create_file(remote, read)
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.tree.add_local(&path, local).unwrap();
+                Ok(())
+            }
+            _ => Err(format!("'{path}' is not only on remote")),
+        }
+    }
+
+    pub async fn copy_local_to_remote(&self, path: &Path) -> Result<(), String> {
+        check_path(path)?;
+        let entry = self.tree.entry(&path);
+        if entry.is_none() {
+            return Err(format!("No such entry in local drive: '{path}'"));
+        }
+        let node = entry.unwrap();
+
+        match node.entry() {
+            tree::Entry::Local(local) => {
+                let read = self
+                    .local
+                    .read_file(local.path().to_owned())
+                    .await
+                    .map_err(|err| err.to_string())?;
+
+                let remote = self.remote.create_file(local, read).await.unwrap();
+
+                self.tree.add_remote(&path, remote).unwrap();
+                Ok(())
+            }
+            tree::Entry::Remote(..) => Err(format!("'{path}' is on the remote drive only")),
+            _ => Err(format!("'{path}' is not only on remote")),
+        }
+    }
+}
+
+impl<L, R> crate::Shutdown for Service<L, R>
+where
+    L: storage::Storage,
+    R: storage::Storage,
+{
+    fn shutdown(&self) -> BoxFuture<'_, anyhow::Result<()>> {
+        Box::pin(async {
+            log::info!("Shutting service down");
+            {
+                let abort_handle = self.abort_handle.read().await;
+                if let Some(abort_handle) = &*abort_handle {
+                    abort_handle.abort();
+                }
+            }
+            let fut1 = self.local.persist_cache();
+            let fut2 = self.remote.persist_cache();
+            tokio::try_join!(fut1, fut2)?;
+            Ok(())
         })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RpcService<L, R> {
+    inner: Arc<Service<L, R>>,
+}
+
+impl<L, R> RpcService<L, R>
+where
+    L: storage::Storage,
+    R: storage::Storage,
+{
+    pub async fn new(service: Arc<Service<L, R>>, abort_handle: AbortHandle) -> Self {
+        debug_assert!(
+            service.abort_handle.read().await.is_none(),
+            "Cannot share Service among multiple RpcService"
+        );
+        *service.abort_handle.write().await = Some(abort_handle);
+        Self { inner: service }
     }
 
     pub async fn start(
@@ -99,117 +212,27 @@ where
     }
 }
 
-fn check_path(path: &Path) -> Result<(), String> {
-    if path.is_relative() {
-        Err(format!("Expect an absolute path, got '{path}'"))
-    } else {
-        Ok(())
-    }
-}
-
-impl<L, R> Service<L, R>
-where
-    L: storage::Storage,
-    R: storage::Storage,
-{
-    async fn impl_entry(self, path: &Path) -> Result<Option<fsync::tree::Node>, String> {
-        check_path(path)?;
-        Ok(self.tree.entry(&path).map(Into::into))
-    }
-
-    async fn impl_copy_remote_to_local(self, path: &Path) -> Result<(), String> {
-        check_path(path)?;
-        let entry = self.tree.entry(&path);
-        if entry.is_none() {
-            return Err(format!("No such entry in remote drive: '{path}'"));
-        }
-        let node = entry.unwrap();
-
-        match node.entry() {
-            tree::Entry::Local(..) => Err(format!("{path} is on the local drive only")),
-            tree::Entry::Remote(remote) => {
-                let read = self
-                    .remote
-                    .read_file(remote.path().to_owned())
-                    .await
-                    .map_err(|err| err.to_string())?;
-                let local = self
-                    .local
-                    .create_file(remote, read)
-                    .await
-                    .map_err(|err| err.to_string())?;
-                self.tree.add_local(&path, local).unwrap();
-                Ok(())
-            }
-            _ => Err(format!("'{path}' is not only on remote")),
-        }
-    }
-
-    async fn impl_copy_local_to_remote(self, path: &Path) -> Result<(), String> {
-        check_path(path)?;
-        let entry = self.tree.entry(&path);
-        if entry.is_none() {
-            return Err(format!("No such entry in local drive: '{path}'"));
-        }
-        let node = entry.unwrap();
-
-        match node.entry() {
-            tree::Entry::Local(local) => {
-                let read = self
-                    .local
-                    .read_file(local.path().to_owned())
-                    .await
-                    .map_err(|err| err.to_string())?;
-
-                let remote = self.remote.create_file(local, read).await.unwrap();
-
-                self.tree.add_remote(&path, remote).unwrap();
-                Ok(())
-            }
-            tree::Entry::Remote(..) => Err(format!("'{path}' is on the remote drive only")),
-            _ => Err(format!("'{path}' is not only on remote")),
-        }
-    }
-}
-
 #[tarpc::server]
-impl<L, R> Fsync for Service<L, R>
+impl<L, R> Fsync for RpcService<L, R>
 where
     L: storage::Storage,
     R: storage::Storage,
 {
     async fn entry(self, _: Context, path: PathBuf) -> Result<Option<fsync::tree::Node>, String> {
-        let res = self.impl_entry(&path).await;
+        let res = self.inner.entry(&path).await;
         log::trace!(target: "RPC", "Fsync::entry(path: {path:?}) -> {res:#?}");
         res
     }
 
     async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> Result<(), String> {
-        let res = self.impl_copy_remote_to_local(&path).await;
+        let res = self.inner.copy_remote_to_local(&path).await;
         log::trace!(target: "RPC", "Fsync::copy_remote_to_local(path: {path:?}) -> {res:#?}");
         res
     }
 
     async fn copy_local_to_remote(self, _: Context, path: PathBuf) -> Result<(), String> {
-        let res = self.impl_copy_local_to_remote(&path).await;
+        let res = self.inner.copy_local_to_remote(&path).await;
         log::trace!(target: "RPC", "Fsync::copy_local_to_remote(path: {path:?}) -> {res:#?}");
         res
-    }
-}
-
-impl<L, R> crate::Shutdown for Service<L, R>
-where
-    L: storage::Storage,
-    R: storage::Storage,
-{
-    fn shutdown(&self) -> BoxFuture<'_, anyhow::Result<()>> {
-        Box::pin(async {
-            log::info!("Shutting service down");
-            self.abort_handle.abort();
-            let fut1 = self.local.persist_cache();
-            let fut2 = self.remote.persist_cache();
-            tokio::try_join!(fut1, fut2)?;
-            Ok(())
-        })
     }
 }

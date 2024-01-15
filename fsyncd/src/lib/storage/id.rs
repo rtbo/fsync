@@ -64,6 +64,12 @@ pub struct IdBuf {
 }
 
 impl IdBuf {
+    pub fn new() -> Self {
+        Self {
+            inner: String::new(),
+        }
+    }
+
     pub fn as_id(&self) -> &Id {
         Id::new(self.inner.as_str())
     }
