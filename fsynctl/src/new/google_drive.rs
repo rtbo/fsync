@@ -1,11 +1,16 @@
 use std::str;
 
-use fsync::path::FsPathBuf;
-use fsync::{cipher, loc::inst, oauth};
+use fsync::path::{FsPathBuf, PathBuf};
+use fsync::{cipher, oauth};
 use inquire::{Editor, Select, Text};
-use tokio::fs;
 
 pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
+    let root = Text::new("Choose a root (\"/\" for the entire drive)")
+        .with_default("/")
+        .prompt_skippable()?;
+
+    let root = root.map(PathBuf::from);
+
     let options = &[
         "Use built-in application secret",
         "Provide path to client_secret.json",
@@ -18,7 +23,7 @@ pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
     )
     .prompt()?;
     let ind = options.iter().position(|e| *e == ans).unwrap();
-    let opts = match ind {
+    let secret = match ind {
         0 => SecretOpts::Fsync,
         1 => SecretOpts::JsonPath(
             Text::new("Enter path to client_scret.json")
@@ -36,7 +41,8 @@ pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
         }
         _ => panic!("Did not recognize answer: {ans}"),
     };
-    Ok(super::ProviderOpts::GoogleDrive(opts))
+
+    Ok(super::ProviderOpts::GoogleDrive(Opts { root, secret }))
 }
 
 #[derive(Debug, Clone)]
@@ -102,14 +108,6 @@ impl SecretOpts {
             }),
         }
     }
-
-    pub async fn create_config(&self, instance_name: &str) -> anyhow::Result<()> {
-        let secret = self.get()?;
-        let path = inst::oauth_secret_file(instance_name)?;
-        let json = serde_json::to_string_pretty(&secret)?;
-        fs::write(path, json).await?;
-        Ok(())
-    }
 }
 
 #[tokio::test]
@@ -128,4 +126,20 @@ async fn cipher_app_secret() -> anyhow::Result<()> {
         tokio::fs::write(&output, &encoded).await?;
     }
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+pub struct Opts {
+    pub root: Option<PathBuf>,
+    pub secret: SecretOpts,
+}
+
+impl TryFrom<&Opts> for fsync::config::google_drive::Config {
+    type Error = anyhow::Error;
+    fn try_from(value: &Opts) -> Result<Self, Self::Error> {
+        let root = value.root.clone();
+        let secret = value.secret.get()?;
+
+        Ok(fsync::config::google_drive::Config { root, secret })
+    }
 }

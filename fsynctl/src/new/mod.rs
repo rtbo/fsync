@@ -76,15 +76,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 }
 
 enum ProviderOpts {
-    GoogleDrive(google_drive::SecretOpts),
-}
-
-impl ProviderOpts {
-    async fn create_config(&self, instance_name: &str) -> anyhow::Result<()> {
-        match self {
-            Self::GoogleDrive(opts) => opts.create_config(instance_name).await,
-        }
-    }
+    GoogleDrive(google_drive::Opts),
 }
 
 impl From<&ProviderOpts> for fsync::Provider {
@@ -92,6 +84,15 @@ impl From<&ProviderOpts> for fsync::Provider {
         match value {
             ProviderOpts::GoogleDrive(..) => fsync::Provider::GoogleDrive,
         }
+    }
+}
+
+impl TryFrom<&ProviderOpts> for fsync::ProviderConfig {
+    type Error = anyhow::Error;
+    fn try_from(value: &ProviderOpts) -> Result<Self, Self::Error> {
+        match value {
+            ProviderOpts::GoogleDrive(opts) => Ok(fsync::ProviderConfig::GoogleDrive(opts.try_into()?)),
+        } 
     }
 }
 
@@ -112,14 +113,13 @@ async fn create_config(
 
     let config = fsync::Config {
         local_dir: local_dir.to_owned(),
-        provider: opts.into(),
+        provider: opts.try_into()?,
     };
     let config_json = serde_json::to_string_pretty(&config)?;
     let config_file = inst::config_file(instance_name)?;
     println!("Writing configuration file: {config_file}");
     tokio::fs::write(&config_file, config_json).await?;
-
-    opts.create_config(instance_name).await
+    Ok(())
 }
 
 fn validate_chars(mut invalid_chars: Vec<&str>) -> Result<Validation, CustomUserError> {

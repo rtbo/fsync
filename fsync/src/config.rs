@@ -25,10 +25,10 @@ impl PatternList {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub local_dir: FsPathBuf,
-    pub provider: crate::Provider,
+    pub provider: ProviderConfig,
 }
 
 impl Config {
@@ -38,5 +38,23 @@ impl Config {
             .with_context(|| format!("Failed to read config from {path}"))?;
         let config_json = std::str::from_utf8(&config_json)?;
         Ok(serde_json::from_str(config_json)?)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ProviderConfig {
+    GoogleDrive(google_drive::Config),
+}
+
+pub mod google_drive {
+    use serde::{Deserialize, Serialize};
+
+    use crate::oauth;
+    use crate::path::PathBuf;
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct Config {
+        pub root: Option<PathBuf>,
+        pub secret: oauth::Secret,
     }
 }

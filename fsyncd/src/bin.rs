@@ -2,11 +2,10 @@ use std::sync::Arc;
 use std::{ffi::OsString, process::ExitCode};
 
 use clap::Parser;
-use fsync::{loc::inst, oauth};
+use fsync::loc::inst;
 use fsyncd::{
     service::{RpcService, Service},
-    storage,
-    ShutdownObj,
+    storage, ShutdownObj,
 };
 use futures::stream::AbortHandle;
 use tokio::sync::RwLock;
@@ -76,34 +75,24 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
 
     let local = storage::fs::FileSystem::new(&config.local_dir)?;
 
-    let secret_path = inst::oauth_secret_file(&cli.instance)?;
-    let secret = {
-        let json = tokio::fs::read(&secret_path).await?;
-        serde_json::from_slice(&json)?
-    };
-    log::trace!("Loaded OAuth2 secrets from {secret_path}");
-
     let token_cache_path = &inst::token_cache_file(&cli.instance)?;
-    let oauth2_params = oauth::Params {
-        secret,
-        token_cache_path,
-    };
 
     match &config.provider {
-        fsync::Provider::GoogleDrive => {
+        fsync::ProviderConfig::GoogleDrive(config) => {
             log::info!(
                 "Initializing Google Drive storage with client-id {}",
-                oauth2_params.secret.client_id.as_str()
+                config.secret.client_id.as_str()
             );
 
             let client = reqwest::Client::builder().build()?;
             let auth = fsyncd::oauth::Client::new(
-                oauth2_params.secret,
-                fsyncd::oauth::TokenCache::MemoryAndDisk(oauth2_params.token_cache_path.into()),
+                config.secret.clone(),
+                fsyncd::oauth::TokenCache::MemoryAndDisk(token_cache_path.into()),
                 Some(client.clone()),
             )
             .await?;
-            let remote = storage::gdrive::GoogleDrive::new(auth, client, None).await?;
+            let remote =
+                storage::gdrive::GoogleDrive::new(auth, client, config.root.as_deref()).await?;
             start_service(cli, local, remote, shutdown_ref).await
         }
     }

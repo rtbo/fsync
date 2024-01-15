@@ -14,7 +14,7 @@ pub struct Secret {
 
 #[derive(Debug)]
 pub struct Params<'a> {
-    pub secret: Secret,
+    pub secret: &'a Secret,
     pub token_cache_path: &'a FsPath,
 }
 
