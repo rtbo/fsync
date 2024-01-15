@@ -9,7 +9,7 @@ use tokio::io;
 use crate::{
     oauth::GetToken,
     storage::id::{Id, IdBuf},
-    PersistCache,
+    PersistCache, Shutdown,
 };
 
 #[derive(Clone)]
@@ -208,6 +208,15 @@ where
 {
     async fn persist_cache(&self) -> anyhow::Result<()> {
         self.auth.persist_cache().await
+    }
+}
+
+impl<A> Shutdown for GoogleDrive<A>
+where
+    A: PersistCache + Send + Sync,
+{
+    async fn shutdown(&self) -> anyhow::Result<()> {
+        self.persist_cache().await
     }
 }
 

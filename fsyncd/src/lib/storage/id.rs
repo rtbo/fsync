@@ -7,7 +7,7 @@ use futures::{Future, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::io;
 
-use crate::PersistCache;
+use crate::Shutdown;
 
 #[repr(transparent)]
 pub struct Id {
@@ -164,6 +164,6 @@ pub trait CreateFile {
 }
 
 pub trait Storage:
-    Clone + DirEntries + ReadFile + MkDir + CreateFile + PersistCache + Send + Sync + 'static
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + Shutdown + Send + Sync + 'static
 {
 }

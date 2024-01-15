@@ -1,5 +1,8 @@
 pub mod oauth;
-use futures::{future::{BoxFuture, self}, Future};
+use futures::{
+    future::{self, BoxFuture},
+    Future,
+};
 
 pub mod service;
 pub mod storage;
@@ -33,12 +36,27 @@ pub mod uri {
     }
 }
 
-pub trait Shutdown: Sync + Send + 'static {
-    fn shutdown(&self) -> BoxFuture<'_, anyhow::Result<()>>;
+trait PersistCache {
+    fn persist_cache(&self) -> impl Future<Output = anyhow::Result<()>> + Send;
 }
 
-pub trait PersistCache {
-    fn persist_cache(&self) -> impl Future<Output = anyhow::Result<()>> + Send {
+pub trait ShutdownObj: Send + Sync + 'static {
+    fn shutdown_obj(&self) -> BoxFuture<'_, anyhow::Result<()>> {
+        Box::pin(future::ready(Ok(())))
+    }
+}
+
+impl<T> ShutdownObj for T
+where
+    T: Shutdown + Send + Sync + 'static,
+{
+    fn shutdown_obj(&self) -> BoxFuture<'_, anyhow::Result<()>> {
+        Box::pin(self.shutdown())
+    }
+}
+
+pub trait Shutdown {
+    fn shutdown(&self) -> impl Future<Output = anyhow::Result<()>> + Send {
         future::ready(Ok(()))
     }
 }

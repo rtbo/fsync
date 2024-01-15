@@ -123,7 +123,7 @@ impl storage::CreateFile for FsStub {
     }
 }
 
-impl fsyncd::PersistCache for FsStub {}
+impl fsyncd::Shutdown for FsStub {}
 
 impl Storage for FsStub {}
 

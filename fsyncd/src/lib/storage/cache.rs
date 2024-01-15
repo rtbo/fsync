@@ -12,6 +12,7 @@ use tokio::{io, task::JoinSet};
 use tokio_stream::StreamExt;
 
 use super::id::IdBuf;
+use crate::PersistCache;
 
 #[derive(Debug, Clone)]
 pub struct CacheStorage<S> {
@@ -218,23 +219,28 @@ where
     }
 }
 
-impl<S> super::PersistCache for CacheStorage<S>
+impl<S> crate::PersistCache for CacheStorage<S>
 where
     S: super::id::Storage,
 {
     async fn persist_cache(&self) -> anyhow::Result<()> {
-        let fut1 = self.save_to_disc();
-        let fut2 = self.storage.persist_cache();
+        self.save_to_disc().await
+    }
+}
+
+impl<S> crate::Shutdown for CacheStorage<S>
+where
+    S: super::id::Storage,
+{
+    async fn shutdown(&self) -> anyhow::Result<()> {
+        let fut1 = self.persist_cache();
+        let fut2 = self.storage.shutdown();
         tokio::try_join!(fut1, fut2)?;
         Ok(())
     }
 }
 
-impl<S> super::Storage for CacheStorage<S>
-where
-    S: super::id::Storage,
-{
-}
+impl<S> super::Storage for CacheStorage<S> where S: super::id::Storage {}
 
 fn bincode_options() -> impl bincode::Options {
     bincode::DefaultOptions::new()

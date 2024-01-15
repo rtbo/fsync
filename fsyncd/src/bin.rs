@@ -1,10 +1,13 @@
-use std::{ffi::OsString, process::ExitCode};
 use std::sync::Arc;
+use std::{ffi::OsString, process::ExitCode};
 
 use clap::Parser;
 use fsync::{loc::inst, oauth};
-use fsyncd::service::RpcService;
-use fsyncd::{service, storage, Shutdown};
+use fsyncd::{
+    service::{RpcService, Service},
+    storage,
+    ShutdownObj,
+};
 use futures::stream::AbortHandle;
 use tokio::sync::RwLock;
 
@@ -24,7 +27,7 @@ fn main() {
 
 #[derive(Clone)]
 struct ShutdownRef {
-    inner: Arc<RwLock<Option<Arc<dyn Shutdown>>>>,
+    inner: Arc<RwLock<Option<Arc<dyn ShutdownObj>>>>,
 }
 
 impl ShutdownRef {
@@ -34,15 +37,15 @@ impl ShutdownRef {
         }
     }
 
-    async fn set(&self, inner: Arc<dyn Shutdown>) {
+    async fn set(&self, inner: Arc<dyn ShutdownObj>) {
         let mut write = self.inner.write().await;
         *write = Some(inner);
     }
 
-    async fn shutdown(&self) -> anyhow::Result<()>{
+    async fn shutdown(&self) -> anyhow::Result<()> {
         let read = self.inner.read().await;
         match &*read {
-            Some(shutdown) => shutdown.shutdown().await,
+            Some(inner) => inner.shutdown_obj().await,
             None => Ok(()),
         }
     }
@@ -124,7 +127,7 @@ where
         remote.populate_from_entries().await?;
     }
 
-    let service = service::Service::new(local, remote.clone()).await?;
+    let service = Service::new(local, remote.clone()).await?;
     let service = Arc::new(service);
 
     shutdown_ref.set(service.clone()).await;

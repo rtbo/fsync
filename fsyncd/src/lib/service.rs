@@ -7,7 +7,7 @@ use fsync::{
     path::{Path, PathBuf},
     Fsync,
 };
-use futures::future::{self, BoxFuture};
+use futures::future;
 use futures::prelude::*;
 use futures::stream::{AbortHandle, AbortRegistration, Abortable};
 use tarpc::{
@@ -135,20 +135,18 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    fn shutdown(&self) -> BoxFuture<'_, anyhow::Result<()>> {
-        Box::pin(async {
-            log::info!("Shutting service down");
-            {
-                let abort_handle = self.abort_handle.read().await;
-                if let Some(abort_handle) = &*abort_handle {
-                    abort_handle.abort();
-                }
+    async fn shutdown(&self) -> anyhow::Result<()> {
+        log::info!("Shutting service down");
+        {
+            let abort_handle = self.abort_handle.read().await;
+            if let Some(abort_handle) = &*abort_handle {
+                abort_handle.abort();
             }
-            let fut1 = self.local.persist_cache();
-            let fut2 = self.remote.persist_cache();
-            tokio::try_join!(fut1, fut2)?;
-            Ok(())
-        })
+        }
+        let fut1 = self.local.shutdown();
+        let fut2 = self.remote.shutdown();
+        tokio::try_join!(fut1, fut2)?;
+        Ok(())
     }
 }
 

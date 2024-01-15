@@ -5,7 +5,7 @@ use fsync::{
 use futures::{Future, Stream};
 use tokio::io;
 
-use crate::PersistCache;
+use crate::Shutdown;
 
 pub mod cache;
 pub mod fs;
@@ -39,6 +39,6 @@ pub trait CreateFile {
 }
 
 pub trait Storage:
-    Clone + DirEntries + ReadFile + MkDir + CreateFile + PersistCache + Send + Sync + 'static
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + Shutdown + Send + Sync + 'static
 {
 }

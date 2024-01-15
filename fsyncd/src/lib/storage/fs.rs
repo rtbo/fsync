@@ -8,7 +8,7 @@ use tokio::{
     io,
 };
 
-use crate::PersistCache;
+use crate::Shutdown;
 
 #[derive(Debug)]
 pub struct OutOfTreeSymlink {
@@ -180,7 +180,7 @@ impl super::CreateFile for FileSystem {
     }
 }
 
-impl PersistCache for FileSystem {}
+impl Shutdown for FileSystem {}
 
 impl super::Storage for FileSystem {}
 
