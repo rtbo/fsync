@@ -1,4 +1,6 @@
-use std::{ffi::OsString, process::ExitCode, sync::Arc};
+use std::ffi::OsString;
+use std::process::ExitCode;
+use std::sync::Arc;
 
 use tokio::task::JoinHandle;
 use windows_service::{
@@ -15,12 +17,16 @@ pub fn main() -> ExitCode {
     // Register generated `ffi_fsyncd_main` with the system and start the service, blocking
     // this thread until the service is stopped.
     match service_dispatcher::start("fsyncd", ffi_service_main) {
+        Ok(()) => ExitCode::SUCCESS,
         Err(Error::Winapi(err)) if err.raw_os_error() == Some(1063) => {
             // 1063 is "can't connect to service controller"
             // we are apparently not in a service, start the regular console handler
             console_main()
         }
-        res => exit_program(res),
+        Err(err) => {
+            log::error!("Windows service error: {err}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -67,7 +73,7 @@ fn service_main(args: Vec<OsString>) {
         .unwrap();
 }
 
-fn console_main() -> anyhow::Result<()> {
+fn console_main() -> ExitCode {
     env_logger::init();
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -86,7 +92,7 @@ fn console_main() -> anyhow::Result<()> {
     exit_program(shutdown_res)
 }
 
-fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {
+fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<anyhow::Result<()>> {
     let mut sig_c = tokio::signal::windows::ctrl_c().unwrap();
     let mut sig_break = tokio::signal::windows::ctrl_break().unwrap();
     let mut sig_close = tokio::signal::windows::ctrl_close().unwrap();
@@ -111,6 +117,6 @@ fn handle_shutdown_signals(shutdown_ref: ShutdownRef) -> JoinHandle<()> {
                 log::warn!("received SHUTDOWN");
             },
         };
-        shutdown_ref.shutdown().await;
+        shutdown_ref.shutdown().await
     })
 }

@@ -14,15 +14,17 @@ use tokio::sync::RwLock;
 #[cfg(not(target_os = "windows"))]
 mod posix;
 
+#[cfg(not(target_os = "windows"))]
+fn main() -> ExitCode {
+    posix::main()
+}
+
 #[cfg(target_os = "windows")]
 mod windows;
 
-fn main() {
-    #[cfg(not(target_os = "windows"))]
-    posix::main();
-
-    #[cfg(target_os = "windows")]
-    windows::main().unwrap();
+#[cfg(target_os = "windows")]
+fn main() -> ExitCode {
+    windows::main()
 }
 
 #[derive(Clone)]
