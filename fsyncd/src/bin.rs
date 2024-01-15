@@ -97,7 +97,7 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
                 Some(client.clone()),
             )
             .await?;
-            let remote = storage::gdrive::GoogleDrive::new(auth, client).await?;
+            let remote = storage::gdrive::GoogleDrive::new(auth, client, None).await?;
             start_service(cli, local, remote, shutdown_ref).await
         }
     }

@@ -2,7 +2,7 @@ use std::{str, sync::Arc};
 
 use anyhow::Context;
 use async_stream::try_stream;
-use fsync::path::PathBuf;
+use fsync::path::{PathBuf, Path, Component};
 use futures::Stream;
 use tokio::io;
 
@@ -20,6 +20,7 @@ pub struct GoogleDrive<A> {
     upload_base_url: &'static str,
     user_agent: String,
 
+    root: IdBuf,
     user: api::User,
     quota: api::Quota,
 }
@@ -28,7 +29,7 @@ impl<A> GoogleDrive<A>
 where
     A: GetToken,
 {
-    pub async fn new(auth: A, client: reqwest::Client) -> anyhow::Result<Self> {
+    pub async fn new(auth: A, client: reqwest::Client, root: Option<&Path>) -> anyhow::Result<Self> {
         let user_agent = format!("fsyncd/{}", env!("CARGO_PKG_VERSION"));
         let mut drive = Self {
             auth: Arc::new(auth),
@@ -36,12 +37,19 @@ where
             base_url: "https://www.googleapis.com/drive/v3",
             upload_base_url: "https://www.googleapis.com/upload/drive/v3",
             user_agent,
+            root: IdBuf::from("root"),
             user: api::User::default(),
             quota: api::Quota::default(),
         };
+
         let about = drive.about_get().await?;
         drive.user = about.user;
         drive.quota = about.storage_quota;
+
+        if let Some(root) = root {
+            let root = drive.path_to_id(root).await?.with_context(|| format!("No such path: '{root}'"))?;
+            drive.root = root;
+        }
 
         log::info!(
             "Access granted to Drive of {}{}",
@@ -66,6 +74,37 @@ where
 
         Ok(drive)
     }
+
+    async fn path_to_id<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Option<IdBuf>> {
+        let path = path.as_ref().normalize()?;
+        if path.is_relative() {
+            anyhow::bail!("expected an absolute path, got '{path}'");
+        }
+        let mut cur_id = None;
+        for comp in path.components() {
+            match comp {
+                Component::RootDir => cur_id = Some(IdBuf::from("root")),
+                Component::Normal(name) => {
+                    let q = format!("name = '{name}' and '{}' in parents", cur_id.unwrap());
+                    let files = self.files_list(q, None).await?;
+                    if files.files.is_none() {
+                        return Ok(None);
+                    }
+                    let files = files.files.unwrap();
+                    if files.len() != 1 {
+                        return Ok(None);
+                    }
+                    let id = files.into_iter().next().unwrap().id;
+                    if id.is_none() {
+                        return Ok(None);
+                    }
+                    cur_id = id;
+                }
+                _ => unreachable!(),
+            }
+        }
+        Ok(cur_id)
+    }
 }
 
 impl<A> super::id::DirEntries for GoogleDrive<A>
@@ -82,7 +121,7 @@ where
             "none Id is for root only"
         );
         log::trace!("listing entries of {parent_path}");
-        let search_id = parent_id.as_deref().unwrap_or_else(|| Id::new("root"));
+        let search_id = parent_id.as_deref().unwrap_or(&self.root);
         let q = format!("'{search_id}' in parents");
         let mut next_page_token = None;
 
