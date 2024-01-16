@@ -1,7 +1,7 @@
 use std::str;
 
 use fsync::path::{FsPathBuf, PathBuf};
-use fsync::{cipher, oauth};
+use fsync::{cipher, oauth2};
 use inquire::{Editor, Select, Text};
 
 pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
@@ -75,7 +75,7 @@ fn test_get_appsecret() -> anyhow::Result<()> {
 }
 
 impl SecretOpts {
-    pub fn get(&self) -> anyhow::Result<oauth::Secret> {
+    pub fn get(&self) -> anyhow::Result<oauth2::Secret> {
         match self {
             SecretOpts::Fsync => {
                 const CIPHERED_SECRET: &str = concat!(
@@ -96,7 +96,7 @@ impl SecretOpts {
             SecretOpts::Credentials {
                 client_id,
                 client_secret,
-            } => Ok(oauth::Secret {
+            } => Ok(oauth2::Secret {
                 client_id: oauth2::ClientId::new(client_id.clone()),
                 client_secret: oauth2::ClientSecret::new(client_secret.clone()),
                 auth_url: oauth2::AuthUrl::new(
@@ -120,7 +120,7 @@ async fn cipher_app_secret() -> anyhow::Result<()> {
         .join("google_secret.json");
     if path.exists() {
         let output = path.with_file_name("google_secret.cipher.b64");
-        let secret = fsync::oauth::load_google_secret(&path).await?;
+        let secret = fsync::oauth2::load_google_secret(&path).await?;
         let secret = serde_json::to_string(&secret)?;
         let encoded = fsync::cipher::cipher_text(&secret);
         tokio::fs::write(&output, &encoded).await?;

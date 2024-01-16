@@ -1,4 +1,5 @@
-pub mod oauth;
+#![feature(iter_intersperse)]
+
 use futures::{
     future::{self, BoxFuture},
     Future,
@@ -7,6 +8,8 @@ use futures::{
 pub mod service;
 pub mod storage;
 pub mod tree;
+
+pub mod oauth2;
 
 pub mod uri {
     #[derive(Debug)]

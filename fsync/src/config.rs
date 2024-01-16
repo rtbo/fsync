@@ -49,12 +49,12 @@ pub enum ProviderConfig {
 pub mod google_drive {
     use serde::{Deserialize, Serialize};
 
-    use crate::oauth;
+    use crate::oauth2;
     use crate::path::PathBuf;
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct Config {
         pub root: Option<PathBuf>,
-        pub secret: oauth::Secret,
+        pub secret: oauth2::Secret,
     }
 }

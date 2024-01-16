@@ -3,6 +3,7 @@ use std::{ffi::OsString, process::ExitCode};
 
 use clap::Parser;
 use fsync::loc::inst;
+use fsyncd::oauth2;
 use fsyncd::{
     service::{RpcService, Service},
     storage, ShutdownObj,
@@ -85,9 +86,9 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
             );
 
             let client = reqwest::Client::builder().build()?;
-            let auth = fsyncd::oauth::Client::new(
+            let auth = oauth2::Client::new(
                 config.secret.clone(),
-                fsyncd::oauth::TokenCache::MemoryAndDisk(token_cache_path.into()),
+                oauth2::TokenPersist::MemoryAndDisk(token_cache_path.into()),
                 Some(client.clone()),
             )
             .await?;

@@ -7,7 +7,7 @@ use futures::Stream;
 use tokio::io;
 
 use crate::{
-    oauth::GetToken,
+    oauth2::GetToken,
     storage::id::{Id, IdBuf},
     PersistCache, Shutdown,
 };
@@ -220,7 +220,7 @@ where
     }
 }
 
-impl<A> super::id::Storage for GoogleDrive<A> where A: GetToken + PersistCache {}
+impl<A> super::id::Storage for GoogleDrive<A> where A: Clone + GetToken + PersistCache {}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
@@ -265,7 +265,7 @@ mod api {
     use tokio::io;
 
     use super::utils::{check_response, num_from_str, num_to_str};
-    use crate::{oauth::GetToken, storage::id::IdBuf};
+    use crate::{oauth2::GetToken, storage::id::IdBuf};
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -556,7 +556,7 @@ mod utils {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     use super::api;
-    use crate::oauth::GetToken;
+    use crate::oauth2::GetToken;
 
     pub fn num_to_str<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
     where

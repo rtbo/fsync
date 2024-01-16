@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use fsync::path::FsPath;
 use fsyncd::{
-    oauth::GetToken,
+    oauth2::GetToken,
     storage::{self, cache::CacheStorage, gdrive::GoogleDrive},
     PersistCache,
 };
