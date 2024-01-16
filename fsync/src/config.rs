@@ -2,8 +2,7 @@ use anyhow::Context;
 use glob::{MatchOptions, Pattern, PatternError};
 use serde::{Deserialize, Serialize};
 
-use crate::path::Path;
-use crate::path::{FsPath, FsPathBuf};
+use crate::path::{FsPath, FsPathBuf, Path};
 
 #[derive(Default)]
 pub struct PatternList(Vec<Pattern>, MatchOptions);
@@ -49,8 +48,7 @@ pub enum ProviderConfig {
 pub mod google_drive {
     use serde::{Deserialize, Serialize};
 
-    use crate::oauth2;
-    use crate::path::PathBuf;
+    use crate::{oauth2, path::PathBuf};
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct Config {

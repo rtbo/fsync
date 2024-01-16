@@ -2,18 +2,19 @@ use std::net::SocketAddr;
 
 use anyhow::Context;
 use chrono::Utc;
-use oauth2::AuthorizationCode;
-use oauth2::{basic::BasicTokenResponse, Scope, RedirectUrl, PkceCodeChallenge, CsrfToken};
-use tokio::{net, io};
+use oauth2::{
+    basic::BasicTokenResponse, AuthorizationCode, CsrfToken, PkceCodeChallenge, RedirectUrl, Scope,
+};
+use tokio::{io, net};
 
+use super::{server, Client};
 use crate::uri;
 
-use super::Client;
-use super::server;
-
-
 impl Client {
-    pub(super) async fn fetch_token_pkce(&self, scopes: Vec<Scope>) -> anyhow::Result<BasicTokenResponse> {
+    pub(super) async fn fetch_token_pkce(
+        &self,
+        scopes: Vec<Scope>,
+    ) -> anyhow::Result<BasicTokenResponse> {
         log::info!("Starting PKCE flow for scopes {scopes:?}");
 
         let addr: SocketAddr = ([127, 0, 0, 1], 0).into();
@@ -25,7 +26,8 @@ impl Client {
 
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-        let (auth_url, csrf_state) = self.inner
+        let (auth_url, csrf_state) = self
+            .inner
             .oauth2
             .authorize_url(CsrfToken::new_random)
             .set_redirect_uri(redirect_url.clone())
@@ -75,7 +77,8 @@ impl Client {
 
         log::trace!("exchanging code for token");
 
-        let token_response = self.inner
+        let token_response = self
+            .inner
             .oauth2
             .exchange_code(code)
             .set_pkce_verifier(pkce_verifier)

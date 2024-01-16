@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
+use futures::prelude::*;
 use oauth2::{basic::BasicClient, HttpRequest, HttpResponse, TokenResponse};
 pub use oauth2::{AccessToken, RefreshToken, Scope};
 use tokio::sync::RwLock;
-use futures::prelude::*;
 
 mod pkce;
 mod server;
 mod token_cache;
 
+pub use self::token_cache::{CacheResult, TokenCache, TokenPersist, TokenStore};
 use crate::PersistCache;
-
-pub use self::token_cache::{TokenCache, TokenPersist, TokenStore, CacheResult};
 
 pub trait GetToken: Send + Sync + 'static {
     fn get_token(
@@ -62,7 +61,8 @@ impl Client {
         refresh_token: RefreshToken,
         scopes: Vec<Scope>,
     ) -> anyhow::Result<AccessToken> {
-        let token_response = self.inner
+        let token_response = self
+            .inner
             .oauth2
             .exchange_refresh_token(&refresh_token)
             .add_scopes(scopes.clone())
@@ -76,7 +76,6 @@ impl Client {
 
         Ok(access)
     }
-
 
     async fn http(&self, req: HttpRequest) -> reqwest::Result<HttpResponse> {
         let method = req.method.clone();
@@ -108,9 +107,7 @@ impl Client {
             body: body.into(),
         })
     }
-
 }
-
 
 impl GetToken for Client {
     async fn get_token(&self, scopes: Vec<Scope>) -> anyhow::Result<AccessToken> {

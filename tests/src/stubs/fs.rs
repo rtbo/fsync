@@ -1,6 +1,5 @@
 use fsync::path::FsPath;
-use fsyncd::storage;
-use fsyncd::storage::fs::FileSystem;
+use fsyncd::{storage, storage::fs::FileSystem};
 use futures::{Future, Stream};
 use tokio::{fs, io};
 

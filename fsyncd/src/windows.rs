@@ -1,6 +1,4 @@
-use std::ffi::OsString;
-use std::process::ExitCode;
-use std::sync::Arc;
+use std::{ffi::OsString, process::ExitCode, sync::Arc};
 
 use tokio::task::JoinHandle;
 use windows_service::{

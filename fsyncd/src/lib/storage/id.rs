@@ -1,6 +1,4 @@
-use std::borrow::Borrow;
-use std::fmt;
-use std::ops::Deref;
+use std::{borrow::Borrow, fmt, ops::Deref};
 
 use fsync::{path::PathBuf, Metadata};
 use futures::{Future, Stream};

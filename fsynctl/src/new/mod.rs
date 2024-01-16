@@ -1,7 +1,11 @@
-use fsync::loc::{inst, user};
-use fsync::path::{FsPath, FsPathBuf};
-use inquire::validator::{ErrorMessage, Validation};
-use inquire::{Confirm, CustomUserError, Select, Text};
+use fsync::{
+    loc::{inst, user},
+    path::{FsPath, FsPathBuf},
+};
+use inquire::{
+    validator::{ErrorMessage, Validation},
+    Confirm, CustomUserError, Select, Text,
+};
 
 mod google_drive;
 
@@ -91,8 +95,10 @@ impl TryFrom<&ProviderOpts> for fsync::ProviderConfig {
     type Error = anyhow::Error;
     fn try_from(value: &ProviderOpts) -> Result<Self, Self::Error> {
         match value {
-            ProviderOpts::GoogleDrive(opts) => Ok(fsync::ProviderConfig::GoogleDrive(opts.try_into()?)),
-        } 
+            ProviderOpts::GoogleDrive(opts) => {
+                Ok(fsync::ProviderConfig::GoogleDrive(opts.try_into()?))
+            }
+        }
     }
 }
 

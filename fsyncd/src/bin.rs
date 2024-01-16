@@ -1,10 +1,9 @@
-use std::sync::Arc;
-use std::{ffi::OsString, process::ExitCode};
+use std::{ffi::OsString, process::ExitCode, sync::Arc};
 
 use clap::Parser;
 use fsync::loc::inst;
-use fsyncd::oauth2;
 use fsyncd::{
+    oauth2,
     service::{RpcService, Service},
     storage, ShutdownObj,
 };

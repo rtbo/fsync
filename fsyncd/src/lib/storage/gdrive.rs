@@ -2,7 +2,7 @@ use std::{str, sync::Arc};
 
 use anyhow::Context;
 use async_stream::try_stream;
-use fsync::path::{PathBuf, Path, Component};
+use fsync::path::{Component, Path, PathBuf};
 use futures::Stream;
 use tokio::io;
 
@@ -29,7 +29,11 @@ impl<A> GoogleDrive<A>
 where
     A: GetToken,
 {
-    pub async fn new(auth: A, client: reqwest::Client, root: Option<&Path>) -> anyhow::Result<Self> {
+    pub async fn new(
+        auth: A,
+        client: reqwest::Client,
+        root: Option<&Path>,
+    ) -> anyhow::Result<Self> {
         let user_agent = format!("fsyncd/{}", env!("CARGO_PKG_VERSION"));
         let mut drive = Self {
             auth: Arc::new(auth),
@@ -47,7 +51,10 @@ where
         drive.quota = about.storage_quota;
 
         if let Some(root) = root {
-            let root = drive.path_to_id(root).await?.with_context(|| format!("No such path: '{root}'"))?;
+            let root = drive
+                .path_to_id(root)
+                .await?
+                .with_context(|| format!("No such path: '{root}'"))?;
             drive.root = root;
         }
 

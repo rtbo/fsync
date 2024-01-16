@@ -9,7 +9,7 @@ pub mod stubs {
     pub mod fs;
 }
 
-use stubs::{fs, drive};
+use stubs::{drive, fs};
 
 pub struct Harness<L, R> {
     pub service: Service<L, R>,

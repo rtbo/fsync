@@ -13,8 +13,10 @@ pub mod oauth2;
 
 mod fsync;
 
-pub use crate::config::{Config, ProviderConfig};
-pub use crate::fsync::*;
+pub use crate::{
+    config::{Config, ProviderConfig},
+    fsync::*,
+};
 
 pub mod path;
 

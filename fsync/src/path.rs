@@ -3,16 +3,9 @@
 //! In fsync, fsync::path is used for repository paths, where as
 //! camino is used for file system.
 //! There is on purpose no automatic conversion provided between this module and camino.
-use std::borrow;
-use std::cmp;
-use std::fmt;
-use std::hash;
-use std::iter::FusedIterator;
-use std::ops;
-use std::str;
+use std::{borrow, cmp, fmt, hash, iter::FusedIterator, ops, str};
 
-pub use camino::Utf8Path as FsPath;
-pub use camino::Utf8PathBuf as FsPathBuf;
+pub use camino::{Utf8Path as FsPath, Utf8PathBuf as FsPathBuf};
 use serde::{Deserialize, Serialize};
 
 #[must_use]

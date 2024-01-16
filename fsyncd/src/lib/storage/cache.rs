@@ -4,8 +4,7 @@ use anyhow::Context;
 use async_stream::try_stream;
 use bincode::Options;
 use dashmap::DashMap;
-use fsync::path::{Component, FsPathBuf};
-use fsync::path::{Path, PathBuf};
+use fsync::path::{Component, FsPathBuf, Path, PathBuf};
 use futures::{future::BoxFuture, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::{io, task::JoinSet};
@@ -41,8 +40,7 @@ where
     }
 
     pub async fn load_from_disk(&mut self) -> anyhow::Result<()> {
-        use std::fs;
-        use std::io::BufReader;
+        use std::{fs, io::BufReader};
 
         let path = self.path.clone();
         log::info!("loading cached entries from {path}");
@@ -62,8 +60,7 @@ where
     }
 
     pub async fn save_to_disc(&self) -> anyhow::Result<()> {
-        use std::fs;
-        use std::io::BufWriter;
+        use std::{fs, io::BufWriter};
 
         let path = self.path.clone();
         log::info!("saving cached entries to {path}");

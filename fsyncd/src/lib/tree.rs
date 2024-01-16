@@ -1,5 +1,4 @@
-use std::cmp::Ordering;
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
 use dashmap::DashMap;
 use fsync::path::{Path, PathBuf};

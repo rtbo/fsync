@@ -3,8 +3,7 @@ use futures::future::BoxFuture;
 use tokio::{fs, io};
 
 pub fn temp_path(prefix: Option<&str>, ext: Option<&str>) -> FsPathBuf {
-    use rand::distributions::Alphanumeric;
-    use rand::Rng;
+    use rand::{distributions::Alphanumeric, Rng};
 
     let mut filename = String::new();
     if let Some(prefix) = prefix {

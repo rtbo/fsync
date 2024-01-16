@@ -1,5 +1,7 @@
-use std::net::{IpAddr, Ipv6Addr};
-use std::sync::Arc;
+use std::{
+    net::{IpAddr, Ipv6Addr},
+    sync::Arc,
+};
 
 use fsync::{
     self,
@@ -7,9 +9,11 @@ use fsync::{
     path::{Path, PathBuf},
     Fsync,
 };
-use futures::future;
-use futures::prelude::*;
-use futures::stream::{AbortHandle, AbortRegistration, Abortable};
+use futures::{
+    future,
+    prelude::*,
+    stream::{AbortHandle, AbortRegistration, Abortable},
+};
 use tarpc::{
     context::Context,
     server::{self, incoming::Incoming, Channel},
@@ -17,8 +21,10 @@ use tarpc::{
 };
 use tokio::sync::RwLock;
 
-use crate::storage;
-use crate::tree::{self, DiffTree};
+use crate::{
+    storage,
+    tree::{self, DiffTree},
+};
 
 #[derive(Debug)]
 pub struct Service<L, R> {
