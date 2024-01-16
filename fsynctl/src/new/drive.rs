@@ -133,12 +133,12 @@ pub struct Opts {
     pub secret: SecretOpts,
 }
 
-impl TryFrom<&Opts> for fsync::config::google_drive::Config {
+impl TryFrom<&Opts> for fsync::config::drive::Config {
     type Error = anyhow::Error;
     fn try_from(value: &Opts) -> Result<Self, Self::Error> {
         let root = value.root.clone();
         let secret = value.secret.get()?;
 
-        Ok(fsync::config::google_drive::Config { root, secret })
+        Ok(fsync::config::drive::Config { root, secret })
     }
 }

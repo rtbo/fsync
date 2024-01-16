@@ -42,10 +42,10 @@ impl Config {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ProviderConfig {
-    GoogleDrive(google_drive::Config),
+    GoogleDrive(drive::Config),
 }
 
-pub mod google_drive {
+pub mod drive {
     use serde::{Deserialize, Serialize};
 
     use crate::{oauth2, path::PathBuf};

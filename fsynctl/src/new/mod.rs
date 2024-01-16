@@ -7,7 +7,7 @@ use inquire::{
     Confirm, CustomUserError, Select, Text,
 };
 
-mod google_drive;
+mod drive;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -80,7 +80,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 }
 
 enum ProviderOpts {
-    GoogleDrive(google_drive::Opts),
+    GoogleDrive(drive::Opts),
 }
 
 impl From<&ProviderOpts> for fsync::Provider {
@@ -104,7 +104,7 @@ impl TryFrom<&ProviderOpts> for fsync::ProviderConfig {
 
 async fn prompt_provider_opts(provider: fsync::Provider) -> anyhow::Result<ProviderOpts> {
     match provider {
-        fsync::Provider::GoogleDrive => google_drive::prompt_opts(),
+        fsync::Provider::GoogleDrive => drive::prompt_opts(),
     }
 }
 

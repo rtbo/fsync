@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use fsync::path::FsPath;
 use fsyncd::{
     oauth2::GetToken,
-    storage::{self, cache::CacheStorage, gdrive::GoogleDrive},
+    storage::{self, cache::CacheStorage, drive::GoogleDrive},
     PersistCache,
 };
 use futures::prelude::*;

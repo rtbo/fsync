@@ -9,7 +9,7 @@ use crate::Shutdown;
 
 pub mod cache;
 pub mod fs;
-pub mod gdrive;
+pub mod drive;
 pub mod id;
 
 pub trait DirEntries {
