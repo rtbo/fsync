@@ -1,16 +1,17 @@
 #![cfg(test)]
 
 use fsync::path::{FsPath, Path, PathBuf};
-use fsyncd::{service::Service, storage::Storage};
+use fsyncd::{service::Service, storage::{Storage, cache::{CacheStorage, CachePersist}}};
 
 mod config;
 mod utils;
 pub mod stubs {
+    pub mod id;
     pub mod drive;
     pub mod fs;
 }
 
-use stubs::{drive, fs};
+use stubs::{drive, fs, id};
 
 pub struct Harness<L, R> {
     pub service: Service<L, R>,
@@ -40,10 +41,10 @@ pub async fn make_fs_harness() -> Harness<fs::Stub, fs::Stub> {
     let dir = FsPath::new(env!("CARGO_MANIFEST_DIR"));
 
     let local_dir = dir.join("local");
-    let local = fs::Stub::new("local", &local_dir);
+    let local = fs::Stub::new(&local_dir);
 
     let remote_dir = dir.join("remote");
-    let remote = fs::Stub::new("remote", &remote_dir);
+    let remote = fs::Stub::new(&remote_dir);
 
     let (local, remote) = tokio::try_join!(local, remote).unwrap();
 
@@ -52,11 +53,28 @@ pub async fn make_fs_harness() -> Harness<fs::Stub, fs::Stub> {
     Harness { service }
 }
 
-async fn make_drive_harness() -> Harness<fs::Stub, drive::Stub> {
+async fn make_cache_harness() -> Harness<fs::Stub, CacheStorage<id::Stub>> {
     let dir = FsPath::new(env!("CARGO_MANIFEST_DIR"));
 
     let local_dir = dir.join("local");
-    let local = fs::Stub::new("local", &local_dir);
+    let local = fs::Stub::new(&local_dir);
+
+    let remote_dir = dir.join("remote");
+    let remote = id::Stub::new(&remote_dir).await.unwrap();
+    let remote = CacheStorage::new(remote, CachePersist::Memory);
+
+    let (local, remote) = tokio::try_join!(local, remote).unwrap();
+
+    let service = Service::new(local, remote).await.unwrap();
+
+    Harness { service }
+}
+
+async fn _make_drive_harness() -> Harness<fs::Stub, drive::Stub> {
+    let dir = FsPath::new(env!("CARGO_MANIFEST_DIR"));
+
+    let local_dir = dir.join("local");
+    let local = fs::Stub::new(&local_dir);
 
     let remote_cache = dir.join("remote");
     let remote = drive::Stub::new(&remote_cache);
@@ -69,8 +87,8 @@ async fn make_drive_harness() -> Harness<fs::Stub, drive::Stub> {
 }
 
 #[tokio::test]
-async fn test_copy_remote_to_local_drive() -> anyhow::Result<()> {
-    let harness = make_drive_harness().await;
+async fn test_copy_remote_to_local_cache() -> anyhow::Result<()> {
+    let harness = make_cache_harness().await;
 
     let path = PathBuf::from("/only-remote.txt");
 

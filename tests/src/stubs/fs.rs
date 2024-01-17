@@ -11,13 +11,14 @@ pub struct Stub {
 }
 
 impl Stub {
-    pub async fn new(prefix: &str, path: &FsPath) -> anyhow::Result<Self> {
-        let td = utils::temp_path(Some(prefix), None);
-        println!("copying {path} to {td}");
-        utils::copy_dir_all(path, &td).await?;
-        let inner = FileSystem::new(&td)?;
+    pub async fn new(src: &FsPath) -> anyhow::Result<Self> {
+        let dst = utils::temp_path(Some("fs"), None);
+        println!("copying {src} to {dst}");
+        utils::copy_dir_all(src, &dst).await?;
+        let inner = FileSystem::new(&dst)?;
         Ok(Self { inner })
     }
+
     fn root(&self) -> &FsPath {
         self.inner.root()
     }
