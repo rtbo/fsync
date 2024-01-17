@@ -300,7 +300,10 @@ mod api {
     use tokio::io;
 
     use super::utils::{check_response, num_from_str, num_to_str};
-    use crate::{oauth2::GetToken, storage::id::IdBuf};
+    use crate::{
+        oauth2::GetToken,
+        storage::id::{Id, IdBuf},
+    };
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -436,11 +439,16 @@ mod api {
         pub size: Option<u64>,
         pub mime_type: Option<&'a str>,
         pub fields: &'a str,
+        pub supports_all_drives: bool,
     }
 
     impl<'a> UploadParams<'a> {
         pub fn query_params(&'a self) -> Vec<(&'static str, &'a str)> {
-            vec![("uploadType", self.typ.as_str()), ("fields", self.fields)]
+            let mut params = vec![("uploadType", self.typ.as_str()), ("fields", self.fields)];
+            if self.supports_all_drives {
+                params.push(("supportsAllDrives", "true"));
+            }
+            params
         }
     }
 
@@ -474,11 +482,15 @@ mod api {
 
             let mut query_params = vec![
                 ("q", q),
-                ("fields", format!("files({FILE_FIELDS})")),
+                ("fields", format!("nextPageToken,files({FILE_FIELDS})")),
                 ("alt", "json".into()),
             ];
             if let Some(page_token) = page_token {
                 query_params.push(("pageToken", page_token));
+            }
+            if self.shared {
+                query_params.push(("includeItemsFromAllDrives", "true".to_string()));
+                query_params.push(("supportsAllDrives", "true".to_string()));
             }
 
             let res = self
@@ -519,9 +531,12 @@ mod api {
         pub async fn files_create(&self, file: &File) -> anyhow::Result<File> {
             let scopes = &[Scope::Full];
             let path = "/files";
-            let query_params = &[("fields", FILE_FIELDS)];
+            let mut query_params = vec![("fields", FILE_FIELDS)];
+            if self.shared {
+                query_params.push(("supportsAllDrives", "true"));
+            }
             let res = self
-                .post_json_query(scopes, path, query_params, file)
+                .post_json_query(scopes, path, &query_params, file)
                 .await?;
             let res = check_response("POST", path, res).await?;
 
@@ -546,6 +561,7 @@ mod api {
                 size: file.size.map(|sz| sz as _),
                 mime_type: file.mime_type.as_deref(),
                 fields: FILE_FIELDS,
+                supports_all_drives: self.shared,
             };
             let upload_url = self
                 .post_upload_request(scopes, "/files", &upload_params, Some(file))
