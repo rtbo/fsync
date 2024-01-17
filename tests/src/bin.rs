@@ -3,6 +3,7 @@
 use fsync::path::{FsPath, Path, PathBuf};
 use fsyncd::{service::Service, storage::Storage};
 
+mod config;
 mod utils;
 pub mod stubs {
     pub mod drive;
