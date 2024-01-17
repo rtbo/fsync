@@ -12,7 +12,7 @@ pub struct Stub {
 
 impl Stub {
     pub async fn new(src: &FsPath) -> anyhow::Result<Self> {
-        let dst = utils::temp_path(Some("fs"), None);
+        let dst = utils::temp_path(Some("fsync-fs"), None);
         println!("copying {src} to {dst}");
         utils::copy_dir_all(src, &dst).await?;
         let inner = FileSystem::new(&dst)?;

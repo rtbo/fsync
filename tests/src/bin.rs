@@ -1,17 +1,26 @@
 #![cfg(test)]
 
-use fsync::path::{FsPath, Path, PathBuf};
-use fsyncd::{service::Service, storage::{Storage, cache::{CacheStorage, CachePersist}}};
+use fsync::path::{FsPath, Path};
+use fsyncd::{
+    service::Service,
+    storage::{
+        cache::{CachePersist, CacheStorage},
+        Storage,
+    },
+};
+use futures::prelude::*;
 
-mod config;
+//mod config;
 mod utils;
-pub mod stubs {
-    pub mod id;
-    pub mod drive;
+mod stubs {
+    //pub mod drive;
     pub mod fs;
+    pub mod id;
 }
+mod tests;
 
-use stubs::{drive, fs, id};
+use libtest_mimic::Failed;
+use stubs::{fs, id};
 
 pub struct Harness<L, R> {
     pub service: Service<L, R>,
@@ -37,7 +46,10 @@ where
     }
 }
 
-pub async fn make_fs_harness() -> Harness<fs::Stub, fs::Stub> {
+type FsHarness = Harness<fs::Stub, fs::Stub>;
+type CacheHarness = Harness<fs::Stub, CacheStorage<id::Stub>>;
+
+pub async fn make_fs_harness() -> FsHarness {
     let dir = FsPath::new(env!("CARGO_MANIFEST_DIR"));
 
     let local_dir = dir.join("local");
@@ -53,7 +65,7 @@ pub async fn make_fs_harness() -> Harness<fs::Stub, fs::Stub> {
     Harness { service }
 }
 
-async fn make_cache_harness() -> Harness<fs::Stub, CacheStorage<id::Stub>> {
+async fn make_cache_harness() -> CacheHarness {
     let dir = FsPath::new(env!("CARGO_MANIFEST_DIR"));
 
     let local_dir = dir.join("local");
@@ -70,64 +82,55 @@ async fn make_cache_harness() -> Harness<fs::Stub, CacheStorage<id::Stub>> {
     Harness { service }
 }
 
-async fn _make_drive_harness() -> Harness<fs::Stub, drive::Stub> {
-    let dir = FsPath::new(env!("CARGO_MANIFEST_DIR"));
-
-    let local_dir = dir.join("local");
-    let local = fs::Stub::new(&local_dir);
-
-    let remote_cache = dir.join("remote");
-    let remote = drive::Stub::new(&remote_cache);
-
-    let (local, remote) = tokio::try_join!(local, remote).unwrap();
-
-    let service = Service::new(local, remote).await.unwrap();
-
-    Harness { service }
+fn trial_fs<F, Fut>(func: F) -> Result<(), Failed>
+where
+    F: FnOnce(FsHarness) -> Fut,
+    Fut: Future<Output = Result<(), Failed>> + Send,
+{
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    rt.block_on(async move {
+        let harness = make_fs_harness().await;
+        func(harness).await
+    })
 }
 
-#[tokio::test]
-async fn test_copy_remote_to_local_cache() -> anyhow::Result<()> {
-    let harness = make_cache_harness().await;
-
-    let path = PathBuf::from("/only-remote.txt");
-
-    harness.service.copy_remote_to_local(&path).await.unwrap();
-
-    let content = harness.local_file_content(&path).await?;
-    assert_eq!(&content, path.as_str());
-    Ok(())
+fn trial_cache<F, Fut>(func: F) -> Result<(), Failed>
+where
+    F: FnOnce(CacheHarness) -> Fut,
+    Fut: Future<Output = Result<(), Failed>> + Send,
+{
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    rt.block_on(async move {
+        let harness = make_cache_harness().await;
+        func(harness).await
+    })
 }
 
-#[tokio::test]
-async fn test_copy_remote_to_local() -> anyhow::Result<()> {
-    let harness = make_fs_harness().await;
-
-    let path = PathBuf::from("/only-remote.txt");
-
-    harness.service.copy_remote_to_local(&path).await.unwrap();
-
-    let content = harness.local_file_content(&path).await?;
-    assert_eq!(&content, path.as_str());
-    Ok(())
+macro_rules! add_test {
+    ($tests:expr, $func:ident) => {
+        let name_fs = concat!(stringify!($func), " - fs");
+        let name_cache = concat!(stringify!($func), " - cache");
+        $tests.push(libtest_mimic::Trial::test(name_fs, || trial_fs($func)));
+        $tests.push(libtest_mimic::Trial::test(name_cache, || {
+            trial_cache($func)
+        }));
+    };
 }
 
-#[tokio::test]
-#[should_panic(expected = "No such entry in remote drive: '/not-a-file.txt'")]
-async fn test_copy_remote_to_local_fail_missing() {
-    let harness = make_fs_harness().await;
+fn main() {
+    use libtest_mimic::Arguments;
+    use tests::*;
 
-    let path = PathBuf::from("/not-a-file.txt");
+    let args = Arguments::from_args();
+    let mut tests = Vec::new();
 
-    harness.service.copy_remote_to_local(&path).await.unwrap();
-}
+    add_test!(tests, copy_remote_to_local);
+    add_test!(tests, copy_remote_to_local_fail_missing);
+    add_test!(tests, copy_remote_to_local_fail_relative);
 
-#[tokio::test]
-#[should_panic(expected = "Expect an absolute path, got 'only-remote.txt'")]
-async fn test_copy_remote_to_local_fail_relative() {
-    let harness = make_fs_harness().await;
-
-    let path = PathBuf::from("only-remote.txt");
-
-    harness.service.copy_remote_to_local(&path).await.unwrap();
+    libtest_mimic::run(&args, tests).exit();
 }

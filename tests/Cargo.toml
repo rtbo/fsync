@@ -8,18 +8,19 @@ publish = false
 [[test]]
 name = "integration"
 path = "src/bin.rs"
+harness = false
 
 [dev-dependencies]
 fsync = { path = "../fsync" }
 fsyncd = { path = "../fsyncd" }
 
 anyhow = { workspace = true }
-oauth2 = { workspace = true }
 futures = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-url = { workspace = true }
-reqwest = { workspace = true }
-jsonwebtoken = "9.2.0"
+# serde = { workspace = true }
+# serde_json = { workspace = true }
+# url = { workspace = true }
+# reqwest = { workspace = true }
+# jsonwebtoken = "9.2.0"
+libtest-mimic = "0.7.0"

@@ -53,7 +53,7 @@ pub fn copy_dir_all<'a>(
 
 /// Copy the content of file-system `src` to storage `dst`.
 /// Both must refer to pre-existing folders.
-pub fn copy_dir_all_to_storage<'a, S>(
+pub fn _copy_dir_all_to_storage<'a, S>(
     storage: &'a S,
     src: &'a FsPath,
     dst: &'a Path,
@@ -71,7 +71,7 @@ where
             let dst = dst.join(file_name);
             if fs_metadata.is_dir() {
                 storage.mkdir(&dst, false).await?;
-                copy_dir_all_to_storage(storage, &fs_src, &dst).await?;
+                _copy_dir_all_to_storage(storage, &fs_src, &dst).await?;
             } else {
                 let metadata = fsync::Metadata::Regular {
                     path: dst,
