@@ -21,10 +21,15 @@ pub struct Stub {
 impl Stub {
     pub async fn new(src: &FsPath) -> anyhow::Result<Self> {
         let dst = utils::temp_path(Some("fsync-id"), None);
-        println!("copying {src} to {dst}");
         utils::copy_dir_all(src, &dst).await?;
         let inner = FileSystem::new(&dst)?;
         Ok(Self { inner })
+    }
+}
+
+impl Drop for Stub {
+    fn drop(&mut self) {
+        std::fs::remove_dir_all(self.inner.root()).unwrap();
     }
 }
 
