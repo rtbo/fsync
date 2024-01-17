@@ -147,7 +147,7 @@ where
         let entries = self.dir_entries(id.map(|id| id.to_owned()), path.to_owned());
         tokio::pin!(entries);
         while let Some(entry) = entries.next().await {
-            let (file_id, metadata) = entry?;
+            let (file_id, _metadata) = entry?;
             self.files_delete(&file_id).await?;
         }
         Ok(())
