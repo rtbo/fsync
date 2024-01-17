@@ -40,11 +40,7 @@ where
     R: storage::Storage,
 {
     pub async fn new(local: L, remote: R) -> anyhow::Result<Self> {
-        let local = Arc::new(local);
-        let remote = Arc::new(remote);
-        let tree = DiffTree::build(local.clone(), remote.clone()).await?;
-        let local = Arc::into_inner(local).unwrap();
-        let remote = Arc::into_inner(remote).unwrap();
+        let tree = DiffTree::build(&local, &remote).await?;
 
         Ok(Self {
             local,
