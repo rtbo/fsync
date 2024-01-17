@@ -1,4 +1,6 @@
-use fsync::path::{FsPath, FsPathBuf};
+use anyhow::Context;
+use fsync::path::{FsPath, FsPathBuf, Path};
+use fsyncd::storage::Storage;
 use futures::future::BoxFuture;
 use tokio::{fs, io};
 
@@ -43,6 +45,41 @@ pub fn copy_dir_all<'a>(
                 copy_dir_all(&src, &dst).await?;
             } else {
                 fs::copy(entry.path(), dst.join(entry.file_name())).await?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// Copy the content of file-system `src` to storage `dst`.
+/// Both must refer to pre-existing folders.
+pub fn copy_dir_all_to_storage<'a, S>(
+    storage: &'a S,
+    src: &'a FsPath,
+    dst: &'a Path,
+) -> BoxFuture<'a, anyhow::Result<()>>
+where
+    S: Storage,
+{
+    Box::pin(async move {
+        let mut entries = fs::read_dir(&src).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let fs_metadata = entry.metadata().await?;
+            let fs_src: FsPathBuf = entry.path().try_into()?;
+            let file_name = entry.file_name();
+            let file_name = file_name.to_str().context("UTF-8 filename")?;
+            let dst = dst.join(file_name);
+            if fs_metadata.is_dir() {
+                storage.mkdir(&dst, false).await?;
+                copy_dir_all_to_storage(storage, &fs_src, &dst).await?;
+            } else {
+                let metadata = fsync::Metadata::Regular {
+                    path: dst,
+                    size: fs_metadata.len(),
+                    mtime: fs_metadata.modified()?.into(),
+                };
+                let data = tokio::fs::File::open(&fs_src).await?;
+                storage.create_file(&metadata, data).await?;
             }
         }
         Ok(())
