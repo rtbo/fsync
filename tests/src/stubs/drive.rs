@@ -1,51 +1,61 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use fsync::path::FsPath;
+use fsync::path::{FsPath, Path};
 use fsyncd::{
-    oauth2::GetToken,
-    storage::{self, cache::CacheStorage, drive::GoogleDrive},
+    oauth2::{GetToken, TokenMap},
+    storage::{
+        self,
+        cache::{CachePersist, CacheStorage},
+        drive::{GoogleDrive, RootSpec},
+    },
     PersistCache,
 };
 use futures::prelude::*;
 use oauth2::{AccessToken, Scope};
 use serde::{Deserialize, Serialize};
-use tokio::{io, sync::OnceCell};
+use tokio::{
+    io,
+    sync::{OnceCell, RwLock},
+};
 
-const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
+use crate::{config, utils};
 
-#[derive(Clone)]
-struct Token(AccessToken);
+#[derive(Clone, Debug)]
+struct TokenStore {
+    map: Arc<RwLock<TokenMap<AccessToken>>>,
+}
 
-impl GetToken for Token {
+impl TokenStore {
+    fn new() -> Self {
+        Self {
+            map: Arc::new(RwLock::new(TokenMap::new())),
+        }
+    }
+}
+
+impl GetToken for TokenStore {
     async fn get_token(&self, scopes: Vec<Scope>) -> anyhow::Result<AccessToken> {
-        assert_eq!(scopes, &[Scope::new(DRIVE_SCOPE.to_string())]);
-        Ok(self.0.clone())
+        let token = self
+            .map
+            .read()
+            .await
+            .get(&scopes)
+            .next()
+            .map(|(tok, ..)| tok.clone());
+
+        if let Some(token) = token {
+            Ok(token)
+        } else {
+            let token = fetch_token_from_google(&scopes).await?;
+            self.map.write().await.insert(scopes, token.clone());
+            Ok(token)
+        }
     }
 }
 
-impl PersistCache for Token {
-    fn persist_cache(&self) -> impl Future<Output = anyhow::Result<()>> + Send {
-        future::ready(Ok(()))
-    }
-}
+impl PersistCache for TokenStore {}
 
-static TOKEN: OnceCell<AccessToken> = OnceCell::const_new();
-
-#[derive(Debug, Serialize, Deserialize)]
-struct AccountKey {
-    #[serde(rename = "type")]
-    typ: String,
-    project_id: String,
-    private_key_id: String,
-    private_key: String,
-    client_email: String,
-    client_id: String,
-    auth_uri: String,
-    token_uri: String,
-    auth_provider_x509_cert_url: String,
-    client_x509_cert_url: String,
-    universe_domain: String,
-}
+static TOKEN: OnceCell<TokenStore> = OnceCell::const_new();
 
 #[derive(Debug, Serialize, Deserialize)]
 struct JwtClaims {
@@ -63,12 +73,13 @@ struct OAuthResp {
     token_type: String,
 }
 
-async fn fetch_token_from_google() -> anyhow::Result<AccessToken> {
+async fn fetch_token_from_google(scopes: &[Scope]) -> anyhow::Result<AccessToken> {
     use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 
-    let keypath = FsPath::new(env!("CARGO_MANIFEST_DIR")).join("pkey.json");
-    let key = tokio::fs::read_to_string(&keypath).await?;
-    let account_key: AccountKey = serde_json::from_str(&key)?;
+    assert_eq!(scopes.len(), 1, "only single scope query are supported");
+    let scope = &scopes[0];
+
+    let account_key = config::load_account_key().await?;
 
     let mut header = Header::new(Algorithm::RS256);
     header.typ = Some("JWT".to_string());
@@ -79,7 +90,7 @@ async fn fetch_token_from_google() -> anyhow::Result<AccessToken> {
 
     let claims = JwtClaims {
         iss: account_key.client_email,
-        scope: DRIVE_SCOPE.to_string(),
+        scope: scope.to_string(),
         aud: account_key.token_uri.clone(),
         iat,
         exp,
@@ -112,15 +123,21 @@ async fn fetch_token_from_google() -> anyhow::Result<AccessToken> {
 
 #[derive(Clone)]
 pub struct Stub {
-    inner: CacheStorage<GoogleDrive<Token>>,
+    inner: CacheStorage<GoogleDrive<TokenStore>>,
 }
 
 impl Stub {
-    pub async fn new(path: &FsPath) -> anyhow::Result<Self> {
-        let token = TOKEN.get_or_try_init(fetch_token_from_google).await?;
-        let token = Token(token.clone());
-        let drive = GoogleDrive::new(token, reqwest::Client::new(), None).await?;
-        let cache = CacheStorage::new(drive, path.to_owned());
+    pub async fn new(source: &FsPath) -> anyhow::Result<Self> {
+        let token = TOKEN.get_or_init(|| future::ready(TokenStore::new())).await;
+        let root_id = config::load_drive_root_id().await?;
+        let root = RootSpec::SharedId(&root_id);
+        let drive = GoogleDrive::new(token.clone(), reqwest::Client::new(), root).await?;
+        drive.delete_folder_content(None, Path::root()).await?;
+
+        let cache = CacheStorage::new(drive, CachePersist::Memory).await?;
+
+        utils::copy_dir_all_to_storage(&cache, source, Path::root()).await?;
+
         Ok(Self { inner: cache })
     }
 }

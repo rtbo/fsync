@@ -58,7 +58,7 @@ async fn make_drive_harness() -> Harness<fs::Stub, drive::Stub> {
     let local_dir = dir.join("local");
     let local = fs::Stub::new("local", &local_dir);
 
-    let remote_cache = utils::temp_path(Some("drive-cache"), Some("bin"));
+    let remote_cache = dir.join("remote");
     let remote = drive::Stub::new(&remote_cache);
 
     let (local, remote) = tokio::try_join!(local, remote).unwrap();
