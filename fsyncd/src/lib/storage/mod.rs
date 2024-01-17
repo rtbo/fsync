@@ -8,8 +8,8 @@ use tokio::io;
 use crate::Shutdown;
 
 pub mod cache;
-pub mod fs;
 pub mod drive;
+pub mod fs;
 pub mod id;
 
 pub trait DirEntries {

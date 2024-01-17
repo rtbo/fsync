@@ -3,7 +3,7 @@ use std::{str, sync::Arc};
 use anyhow::Context;
 use async_stream::try_stream;
 use fsync::path::{Component, Path, PathBuf};
-use futures::Stream;
+use futures::prelude::*;
 use tokio::io;
 
 use crate::{
@@ -139,6 +139,18 @@ where
             }
         }
         Ok(cur_id)
+    }
+
+    pub async fn delete_folder_content(&self, id: Option<&Id>, path: &Path) -> anyhow::Result<()> {
+        use super::id::DirEntries;
+
+        let entries = self.dir_entries(id.map(|id| id.to_owned()), path.to_owned());
+        tokio::pin!(entries);
+        while let Some(entry) = entries.next().await {
+            let (file_id, metadata) = entry?;
+            self.files_delete(&file_id).await?;
+        }
+        Ok(())
     }
 }
 
@@ -596,6 +608,19 @@ mod api {
             };
             Ok(file)
         }
+
+        pub async fn files_delete(&self, file_id: &Id) -> anyhow::Result<()> {
+            let scopes = &[Scope::Full];
+            let path = format!("/files/{file_id}");
+            let query_params: &[_] = if self.shared {
+                &[("supportsAllDrives", "true")]
+            } else {
+                &[]
+            };
+            let res = self.delete_query(scopes, &path, query_params).await?;
+            check_response("DELETE", &path, res).await?;
+            Ok(())
+        }
     }
 }
 
@@ -774,6 +799,31 @@ mod utils {
                 );
             }
             Ok(req.body(data).send().await?)
+        }
+
+        pub async fn delete_query<Q, K, V>(
+            &self,
+            scopes: &[api::Scope],
+            path: &str,
+            query_params: Q,
+        ) -> anyhow::Result<Response>
+        where
+            Q: IntoIterator,
+            Q::Item: Borrow<(K, V)>,
+            K: AsRef<str>,
+            V: AsRef<str>,
+        {
+            let token = self.fetch_token(scopes).await?;
+            let url = url_with_query(self.base_url, path, query_params);
+            let res = self
+                .client
+                .delete(url)
+                .bearer_auth(token.secret())
+                .header(header::USER_AGENT, &self.user_agent)
+                .header(header::CONTENT_LENGTH, 0)
+                .send()
+                .await?;
+            Ok(res)
         }
     }
 
