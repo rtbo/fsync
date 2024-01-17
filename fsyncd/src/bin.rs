@@ -5,7 +5,8 @@ use fsync::loc::inst;
 use fsyncd::{
     oauth2,
     service::{RpcService, Service},
-    storage, ShutdownObj,
+    storage::{self, cache::CachePersist},
+    ShutdownObj,
 };
 use futures::stream::AbortHandle;
 use tokio::sync::RwLock;
@@ -92,7 +93,8 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
             )
             .await?;
             let remote =
-                storage::drive::GoogleDrive::new(auth, client, config.root.as_deref()).await?;
+                storage::drive::GoogleDrive::new(auth, client, config.root.as_deref().into())
+                    .await?;
             start_service(cli, local, remote, shutdown_ref).await
         }
     }
@@ -113,10 +115,8 @@ where
     log::trace!("mkdir -p {remote_cache_dir}");
     tokio::fs::create_dir_all(remote_cache_dir).await.unwrap();
 
-    let mut remote = storage::cache::CacheStorage::new(remote, remote_cache_path);
-    if remote.load_from_disk().await.is_err() {
-        remote.populate_from_entries().await?;
-    }
+    let persist = CachePersist::MemoryAndDisk(remote_cache_path);
+    let remote = storage::cache::CacheStorage::new(remote, persist).await?;
 
     let service = Service::new(local, remote.clone()).await?;
     let service = Arc::new(service);

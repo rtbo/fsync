@@ -12,6 +12,28 @@ use crate::{
     PersistCache, Shutdown,
 };
 
+#[derive(Default, Debug)]
+pub enum RootSpec<'a> {
+    #[default]
+    /// Root is the default "/"
+    Root,
+    /// Root is at specified path
+    Path(&'a Path),
+    /// Root is at specified shared folder id.
+    /// This is used mainly for testing with service account.
+    SharedId(&'a Id),
+}
+
+impl<'a> From<Option<&'a Path>> for RootSpec<'a> {
+    fn from(path: Option<&'a Path>) -> Self {
+        match path {
+            None => RootSpec::Root,
+            Some(path) if path.is_root() => RootSpec::Root,
+            Some(path) => RootSpec::Path(path),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct GoogleDrive<A> {
     client: reqwest::Client,
@@ -21,6 +43,7 @@ pub struct GoogleDrive<A> {
     user_agent: String,
 
     root: IdBuf,
+    shared: bool,
     user: api::User,
     quota: api::Quota,
 }
@@ -29,11 +52,7 @@ impl<A> GoogleDrive<A>
 where
     A: GetToken,
 {
-    pub async fn new(
-        auth: A,
-        client: reqwest::Client,
-        root: Option<&Path>,
-    ) -> anyhow::Result<Self> {
+    pub async fn new(auth: A, client: reqwest::Client, root: RootSpec<'_>) -> anyhow::Result<Self> {
         let user_agent = format!("fsyncd/{}", env!("CARGO_PKG_VERSION"));
         let mut drive = Self {
             auth: Arc::new(auth),
@@ -42,6 +61,7 @@ where
             upload_base_url: "https://www.googleapis.com/upload/drive/v3",
             user_agent,
             root: IdBuf::from("root"),
+            shared: false,
             user: api::User::default(),
             quota: api::Quota::default(),
         };
@@ -50,12 +70,20 @@ where
         drive.user = about.user;
         drive.quota = about.storage_quota;
 
-        if let Some(root) = root {
+        match root {
+            RootSpec::Root => (),
+            RootSpec::Path(path) if path.is_root() => (),
+            RootSpec::Path(path) => {
             let root = drive
-                .path_to_id(root)
+                    .path_to_id(path)
                 .await?
-                .with_context(|| format!("No such path: '{root}'"))?;
+                    .with_context(|| format!("No such path: '{path}'"))?;
             drive.root = root;
+            }
+            RootSpec::SharedId(id) => {
+                drive.root = id.to_owned();
+                drive.shared = true;
+            }
         }
 
         log::info!(

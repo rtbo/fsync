@@ -4,20 +4,38 @@ use anyhow::Context;
 use async_stream::try_stream;
 use bincode::Options;
 use dashmap::DashMap;
-use fsync::path::{Component, FsPathBuf, Path, PathBuf};
+use fsync::{
+    path::{Component, FsPath, FsPathBuf, Path, PathBuf},
+    Metadata,
+};
 use futures::{future::BoxFuture, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::{io, task::JoinSet};
 use tokio_stream::StreamExt;
 
-use super::id::IdBuf;
+use super::id::{self, IdBuf};
 use crate::PersistCache;
+
+#[derive(Clone, Debug)]
+pub enum CachePersist {
+    Memory,
+    MemoryAndDisk(FsPathBuf),
+}
+
+impl CachePersist {
+    fn try_path(&self) -> Option<&FsPath> {
+        match self {
+            Self::MemoryAndDisk(path) => Some(path),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct CacheStorage<S> {
     entries: Arc<DashMap<PathBuf, CacheNode>>,
     storage: Arc<S>,
-    path: FsPathBuf,
+    persist: CachePersist,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,76 +47,82 @@ struct CacheNode {
 
 impl<S> CacheStorage<S>
 where
-    S: super::id::Storage,
+    S: id::Storage,
 {
-    pub fn new(storage: S, path: FsPathBuf) -> Self {
-        Self {
-            entries: Arc::new(DashMap::new()),
-            storage: Arc::new(storage),
-            path,
-        }
-    }
-
-    pub async fn load_from_disk(&mut self) -> anyhow::Result<()> {
-        use std::{fs, io::BufReader};
-
-        let path = self.path.clone();
-        log::info!("loading cached entries from {path}");
-
-        let handle = tokio::task::spawn_blocking(move || {
-            let reader = fs::File::open(path)?;
-            let reader = BufReader::new(reader);
-            let opts = bincode_options();
-            let entries: DashMap<PathBuf, CacheNode> = opts.deserialize_from(reader)?;
-            Ok::<_, anyhow::Error>(entries)
-        });
-
-        let entries = handle.await.unwrap()?;
-        log::trace!("loaded {} entries", entries.len());
-        self.entries = Arc::new(entries);
-        Ok(())
-    }
-
-    pub async fn save_to_disc(&self) -> anyhow::Result<()> {
-        use std::{fs, io::BufWriter};
-
-        let path = self.path.clone();
-        log::info!("saving cached entries to {path}");
-
-        let entries = self.entries.clone();
-        log::trace!("saving {} entries", entries.len());
-
-        let handle = tokio::task::spawn_blocking(move || {
-            let writer = fs::File::create(&path)?;
-            let writer = BufWriter::new(writer);
-            let opts = bincode_options();
-            opts.serialize_into(writer, &*entries)?;
-            Ok::<_, anyhow::Error>(())
-        });
-
-        handle.await.unwrap()
+    pub async fn new(storage: S, persist: CachePersist) -> anyhow::Result<Self> {
+        let storage = Arc::new(storage);
+        let entries = if let Some(path) = persist.try_path() {
+            load_from_disk(path).await?
+        } else {
+            populate_from_storage(storage.clone()).await?
+        };
+        Ok(Self {
+            entries,
+            storage,
+            persist,
+        })
     }
 }
 
-impl<S> CacheStorage<S>
+async fn populate_from_storage<S>(
+    storage: Arc<S>,
+) -> anyhow::Result<Arc<DashMap<PathBuf, CacheNode>>>
 where
-    S: super::id::DirEntries + Send + Sync + 'static,
+    S: id::Storage,
 {
-    pub async fn populate_from_entries(&mut self) -> anyhow::Result<()> {
-        let entries = Arc::new(DashMap::new());
-        let children =
-            populate_recurse(None, PathBuf::root(), entries.clone(), self.storage.clone()).await?;
-        entries.insert(
-            PathBuf::root(),
-            CacheNode {
-                id: None,
-                metadata: fsync::Metadata::root(),
-                children,
-            },
-        );
-        self.entries = entries;
-        Ok(())
-    }
+    let entries = Arc::new(DashMap::new());
+    let children = populate_recurse(None, PathBuf::root(), entries.clone(), storage).await?;
+    entries.insert(
+        PathBuf::root(),
+        CacheNode {
+            id: None,
+            metadata: fsync::Metadata::root(),
+            children,
+        },
+    );
+    Ok(entries)
+}
+
+async fn load_from_disk(path: &FsPath) -> anyhow::Result<Arc<DashMap<PathBuf, CacheNode>>> {
+    log::trace!("loading cached entries from {path}");
+
+    let path2 = path.to_owned();
+
+    let handle = tokio::task::spawn_blocking(move || {
+        use std::{fs, io::BufReader};
+
+        let reader = fs::File::open(path2)?;
+        let reader = BufReader::new(reader);
+        let opts = bincode_options();
+        let entries: DashMap<PathBuf, CacheNode> = opts.deserialize_from(reader)?;
+        Ok::<_, anyhow::Error>(entries)
+    });
+
+    let entries = handle.await.unwrap()?;
+    log::info!("loaded {} entries from {path}", entries.len());
+
+    Ok(Arc::new(entries))
+}
+
+async fn save_to_disc(
+    path: &FsPath,
+    entries: Arc<DashMap<PathBuf, CacheNode>>,
+) -> anyhow::Result<()> {
+    use std::{fs, io::BufWriter};
+
+    log::info!("saving {} entries to {path}", entries.len());
+
+    let path = path.to_owned();
+
+    let handle = tokio::task::spawn_blocking(move || {
+        let writer = fs::File::create(&path)?;
+        let writer = BufWriter::new(writer);
+        let opts = bincode_options();
+        opts.serialize_into(writer, &*entries)?;
+        Ok::<_, anyhow::Error>(())
+    });
+
+    handle.await.unwrap()
 }
 
 impl<S> super::DirEntries for CacheStorage<S>
@@ -165,19 +189,49 @@ where
                     parent_id = entry.id.clone();
                 } else {
                     let id = self.storage.mkdir(parent_id.as_deref(), c.as_str()).await?;
+                    let metadata = Metadata::Directory { path: cur.clone() };
+                    {
+                        let parent = cur.parent().unwrap();
+                        let mut parent_entry = self.entries.get_mut(parent).unwrap();
+                        parent_entry
+                            .children
+                            .push(cur.file_name().unwrap().to_string());
+                    }
+                    self.entries.insert(
+                        cur.clone(),
+                        CacheNode {
+                            id: Some(id.clone()),
+                            metadata,
+                            children: Vec::new(),
+                        },
+                    );
                     parent_id = Some(id)
                 }
             }
         } else {
             let parent = path.parent().unwrap();
-            let entry = self
-                .entries
-                .get(parent)
-                .with_context(|| format!("no such entry: {parent}"))?;
-            let parent_id = entry.id.clone();
-            self.storage
-                .mkdir(parent_id.as_deref(), path.file_name().unwrap())
-                .await?;
+            let id = {
+                let mut entry = self
+                    .entries
+                    .get_mut(parent)
+                    .with_context(|| format!("no such entry: {parent}"))?;
+                let parent_id = entry.id.clone();
+                let id = self
+                    .storage
+                    .mkdir(parent_id.as_deref(), path.file_name().unwrap())
+                    .await?;
+                entry.children.push(path.file_name().unwrap().to_string());
+                id
+            };
+            let metadata = Metadata::Directory { path: path.clone() };
+            self.entries.insert(
+                path.clone(),
+                CacheNode {
+                    id: Some(id.clone()),
+                    metadata,
+                    children: Vec::new(),
+                },
+            );
         }
         Ok(())
     }
@@ -221,7 +275,10 @@ where
     S: super::id::Storage,
 {
     async fn persist_cache(&self) -> anyhow::Result<()> {
-        self.save_to_disc().await
+        if let Some(path) = self.persist.try_path() {
+            save_to_disc(path, self.entries.clone()).await?;
+        }
+        Ok(())
     }
 }
 
