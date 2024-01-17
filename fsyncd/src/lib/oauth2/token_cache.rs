@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use chrono::{DateTime, Utc};
 use fsync::path::{FsPath, FsPathBuf};
 use oauth2::{AccessToken, RefreshToken, Scope, TokenResponse, TokenType};
@@ -6,66 +8,27 @@ use serde::{Deserialize, Serialize};
 use crate::PersistCache;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct TokenEntry {
+struct TokenMapEntry<T> {
     scopes_hash: u64,
     scopes: Vec<Scope>,
-    access_token: AccessToken,
-    refresh_token: Option<RefreshToken>,
-    expiration: Option<DateTime<Utc>>,
+    token: T,
 }
 
-#[derive(Debug)]
-pub enum CacheResult {
-    None,
-    Expired(RefreshToken, Vec<Scope>),
-    Ok(AccessToken),
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TokenMap<T> {
+    entries: Vec<TokenMapEntry<T>>,
 }
 
-#[derive(Debug, Default)]
-pub struct TokenStore {
-    entries: Vec<TokenEntry>,
-}
-
-impl TokenStore {
+impl<T> TokenMap<T> {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
         }
     }
 
-    /// Attempts to read the cache from disk
-    /// Returns `Ok(None)` if the path doesn't exist.
-    /// Returns `Ok(Some)` if succesfully reads entries.
-    /// Returns `Err` if the deserialization failed.
-    async fn try_read_from_disk(path: &FsPath) -> anyhow::Result<Option<Self>> {
-        log::info!("reading cached tokens from {path}");
-        let json = tokio::fs::read_to_string(path).await;
-        if json.is_err() {
-            return Ok(None);
-        }
-        let json = json.unwrap();
-        let entries = serde_json::from_str(&json)?;
-        Ok(Some(TokenStore { entries }))
-    }
-
-    async fn write_to_disk(&self, path: &FsPath) -> anyhow::Result<()> {
-        log::info!("caching tokens to {path}");
-        let json = serde_json::to_string_pretty(&self.entries)?;
-        tokio::fs::write(path, json).await?;
-        Ok(())
-    }
-
-    pub fn insert<T, TT>(&mut self, tok: &T)
-    where
-        T: TokenResponse<TT>,
-        TT: TokenType,
-    {
-        let scopes = {
-            let mut scopes = tok.scopes().cloned().unwrap_or_default();
-            scopes.sort_unstable_by(|a, b| a.as_str().cmp(b.as_str()));
-            scopes
-        };
-        log::trace!(target: "fsyncd::oauth2::TokenStore", "inserting token for scopes {scopes:#?}");
+    pub fn insert(&mut self, scopes: Vec<Scope>, token: T) {
+        let mut scopes = scopes;
+        scopes.sort_unstable_by(|a, b| a.as_str().cmp(b.as_str()));
 
         let scopes_hash = {
             use std::hash::{Hash, Hasher};
@@ -73,18 +36,15 @@ impl TokenStore {
             scopes.hash(&mut state);
             state.finish()
         };
-        let expiration = tok.expires_in().map(|exp| Utc::now() + exp);
-        let entry = TokenEntry {
+        let entry = TokenMapEntry {
             scopes_hash,
             scopes,
-            access_token: tok.access_token().clone(),
-            refresh_token: tok.refresh_token().cloned(),
-            expiration,
+            token,
         };
         self.emplace_entry(entry);
     }
 
-    fn emplace_entry(&mut self, token: TokenEntry) {
+    fn emplace_entry(&mut self, token: TokenMapEntry<T>) {
         for ent in self.entries.iter_mut() {
             if ent.scopes_hash == token.scopes_hash {
                 *ent = token;
@@ -94,28 +54,18 @@ impl TokenStore {
         self.entries.push(token);
     }
 
-    pub fn get(&self, scopes: &[Scope]) -> CacheResult {
-        for ent in self.entries.iter() {
-            if !scopes.iter().all(|s| ent.scopes.contains(s)) {
-                continue;
-            }
-            // ent contains all scopes, let's check expiration
-            // Note: Typically only a handful of scopes are used with few combinations.
-            // Therefore, to keep things simpler, we stop at the first hit that meet all
-            // required scopes.
-            if let Some(expiration) = ent.expiration {
-                if expiration < Utc::now() {
-                    if let Some(refresh_token) = &ent.refresh_token {
-                        let scopes = ent.scopes.clone();
-                        return CacheResult::Expired(refresh_token.clone(), scopes);
-                    } else {
-                        return CacheResult::None;
-                    }
-                }
-            }
-            return CacheResult::Ok(ent.access_token.clone());
-        }
-        CacheResult::None
+    /// Returns an iterator over all entries that contain all required scopes
+    pub fn get<'a, 'b>(
+        &'a self,
+        scopes: &'b [Scope],
+    ) -> impl Iterator<Item = (&'a T, &'a [Scope])> + 'a
+    where
+        'b: 'a,
+    {
+        self.entries
+            .iter()
+            .filter(|&ent| scopes.iter().all(|s| ent.scopes.contains(s)))
+            .map(move |ent| (&ent.token, &ent.scopes[..]))
     }
 }
 
@@ -150,21 +100,43 @@ impl TokenPersist {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CacheToken {
+    access_token: AccessToken,
+    refresh_token: Option<RefreshToken>,
+    expiration: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug)]
+pub enum CacheResult {
+    None,
+    Expired(RefreshToken, Vec<Scope>),
+    Ok(AccessToken),
+}
+
 #[derive(Debug)]
 pub struct TokenCache {
     persist: TokenPersist,
-    store: TokenStore,
+    map: TokenMap<CacheToken>,
 }
 
 impl TokenCache {
     pub async fn new(persist: TokenPersist) -> anyhow::Result<Self> {
-        let store = if let Some(path) = persist.try_path() {
-            TokenStore::try_read_from_disk(path).await?
+        let map: Option<TokenMap<CacheToken>> = if let Some(path) = persist.try_path() {
+            log::info!("reading cached tokens from {path}");
+            let json = tokio::fs::read_to_string(path).await;
+            if let Ok(json) = json {
+                serde_json::from_str(&json)?
+            } else {
+                None
+            }
         } else {
             None
         };
-        let store = store.unwrap_or_default();
-        Ok(TokenCache { persist, store })
+        let map = map.unwrap_or_else(|| TokenMap {
+            entries: Vec::new(),
+        });
+        Ok(Self { persist, map })
     }
 
     pub fn put<T, TT>(&mut self, tok: &T)
@@ -180,14 +152,39 @@ impl TokenCache {
             tok.scopes(),
             tok.expires_in()
         );
-        self.store.insert(tok);
+
+        let scopes = tok.scopes().cloned().unwrap_or_default();
+
+        let tok = CacheToken {
+            access_token: tok.access_token().clone(),
+            refresh_token: tok.refresh_token().cloned(),
+            expiration: tok.expires_in().map(|dur| Utc::now() + dur),
+        };
+
+        self.map.insert(scopes, tok);
     }
 
     pub fn check(&self, scopes: &[Scope]) -> CacheResult {
         if !self.persist.has_mem() {
             return CacheResult::None;
         }
-        let res = self.store.get(scopes);
+        let res = self.map.get(scopes).next().map(|(tok, scopes)| {
+            if let Some(expiration) = &tok.expiration {
+                if *expiration < Utc::now() {
+                    if let Some(refresh_token) = &tok.refresh_token {
+                        CacheResult::Expired(refresh_token.clone(), scopes.to_vec())
+                    } else {
+                        CacheResult::None
+                    }
+                } else {
+                    CacheResult::Ok(tok.access_token.clone())
+                }
+            } else {
+                CacheResult::Ok(tok.access_token.clone())
+            }
+        });
+
+        let res = res.unwrap_or(CacheResult::None);
 
         if log::max_level() >= log::LevelFilter::Trace {
             let res = match &res {
@@ -210,7 +207,9 @@ impl TokenCache {
 impl PersistCache for TokenCache {
     async fn persist_cache(&self) -> anyhow::Result<()> {
         if let Some(path) = self.persist.try_path() {
-            self.store.write_to_disk(path).await?;
+            log::info!("caching tokens to {path}");
+            let json = serde_json::to_string_pretty(&self.map)?;
+            tokio::fs::write(path, json).await?;
         }
         Ok(())
     }

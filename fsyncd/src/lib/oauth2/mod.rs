@@ -9,7 +9,7 @@ mod pkce;
 mod server;
 mod token_cache;
 
-pub use self::token_cache::{CacheResult, TokenCache, TokenPersist, TokenStore};
+pub use self::token_cache::{CacheResult, TokenCache, TokenMap, TokenPersist};
 use crate::PersistCache;
 
 pub trait GetToken: Send + Sync + 'static {
