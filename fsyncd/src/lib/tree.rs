@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::sync::Arc;
 
 use dashmap::DashMap;
 use fsync::path::{Path, PathBuf};
@@ -114,21 +113,21 @@ impl From<Node> for fsync::tree::Node {
 
 #[derive(Debug)]
 pub struct DiffTree {
-    nodes: Arc<DashMap<PathBuf, Node>>,
+    nodes: DashMap<PathBuf, Node>,
 }
 
 impl DiffTree {
-    pub async fn from_cache<L, R>(local: Arc<L>, remote: Arc<R>) -> anyhow::Result<Self>
+    pub async fn build<L, R>(local: &L, remote: &R) -> anyhow::Result<Self>
     where
         L: storage::Storage,
         R: storage::Storage,
     {
-        let nodes = Arc::new(DashMap::new());
+        let nodes = DashMap::new();
 
         let build = DiffTreeBuild {
             local,
             remote,
-            nodes: nodes.clone(),
+            nodes: &nodes,
         };
         build
             .both(fsync::Metadata::root(), fsync::Metadata::root())
@@ -209,13 +208,13 @@ impl DiffTree {
     }
 }
 
-struct DiffTreeBuild<L, R> {
-    local: Arc<L>,
-    remote: Arc<R>,
-    nodes: Arc<DashMap<PathBuf, Node>>,
+struct DiffTreeBuild<'a, L, R> {
+    local: &'a L,
+    remote: &'a R,
+    nodes: &'a DashMap<PathBuf, Node>,
 }
 
-impl<L, R> DiffTreeBuild<L, R>
+impl<'a, L, R> DiffTreeBuild<'a, L, R>
 where
     L: storage::Storage,
     R: storage::Storage,

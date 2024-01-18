@@ -3,6 +3,7 @@ name = "fsyncd"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+publish = false
 
 [lib]
 name = "fsyncd"

@@ -3,16 +3,9 @@
 //! In fsync, fsync::path is used for repository paths, where as
 //! camino is used for file system.
 //! There is on purpose no automatic conversion provided between this module and camino.
-use std::borrow;
-use std::cmp;
-use std::fmt;
-use std::hash;
-use std::iter::FusedIterator;
-use std::ops;
-use std::str;
+use std::{borrow, cmp, fmt, hash, iter::FusedIterator, ops, str};
 
-pub use camino::Utf8Path as FsPath;
-pub use camino::Utf8PathBuf as FsPathBuf;
+pub use camino::{Utf8Path as FsPath, Utf8PathBuf as FsPathBuf};
 use serde::{Deserialize, Serialize};
 
 #[must_use]
@@ -43,7 +36,7 @@ pub enum Component<'a> {
 
 impl<'a> Component<'a> {
     #[must_use = "`self` will be dropped if the result is not used"]
-    fn as_str(self) -> &'a str {
+    pub fn as_str(self) -> &'a str {
         match self {
             Component::RootDir => "/",
             Component::CurDir => ".",
@@ -697,6 +690,35 @@ impl Path {
         let mut buf = self.to_path_buf();
         buf.push(path);
         buf
+    }
+
+    /// Normalizes a path. That is, it removes '.' and '..' components, as well as separator duplicates.
+    /// Returns Err if the path can't be normalized (because of '..' going before the root)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fsync::path::{Path, PathBuf};
+    ///
+    /// assert_eq!(Path::new("/some//path").normalize().unwrap(), Path::new("/some/path"));
+    /// assert_eq!(Path::new("/some/./path/.").normalize().unwrap(), Path::new("/some/path"));
+    /// assert_eq!(Path::new("/some//other/../path").normalize().unwrap(), Path::new("/some/path"));
+    /// assert!(Path::new("/../path").normalize().is_err());
+    /// ```
+    pub fn normalize(&self) -> anyhow::Result<PathBuf> {
+        let mut res = PathBuf::new();
+        for c in self.components() {
+            match c {
+                Component::RootDir | Component::Normal(_) => res.push(c.as_str()),
+                Component::CurDir => (),
+                Component::ParentDir => {
+                    if !res.pop() {
+                        anyhow::bail!("{self} can't be normalized");
+                    }
+                }
+            }
+        }
+        Ok(res)
     }
 }
 

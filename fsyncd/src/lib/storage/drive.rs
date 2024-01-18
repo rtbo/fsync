@@ -1,41 +1,58 @@
 use std::{str, sync::Arc};
 
+use anyhow::Context;
 use async_stream::try_stream;
-use fsync::path::PathBuf;
-use futures::Stream;
+use fsync::path::{Component, Path, PathBuf};
+use futures::prelude::*;
 use tokio::io;
 
-use super::id::IdBuf;
-use crate::oauth;
-use crate::storage::id::Id;
+use crate::{
+    oauth2::GetToken,
+    storage::id::{Id, IdBuf},
+    PersistCache, Shutdown,
+};
+
+#[derive(Default, Debug)]
+pub enum RootSpec<'a> {
+    #[default]
+    /// Root is the default "/"
+    Root,
+    /// Root is at specified path
+    Path(&'a Path),
+    /// Root is at specified shared folder id.
+    /// This is used mainly for testing with service account.
+    SharedId(&'a Id),
+}
+
+impl<'a> From<Option<&'a Path>> for RootSpec<'a> {
+    fn from(path: Option<&'a Path>) -> Self {
+        match path {
+            None => RootSpec::Root,
+            Some(path) if path.is_root() => RootSpec::Root,
+            Some(path) => RootSpec::Path(path),
+        }
+    }
+}
 
 #[derive(Clone)]
-pub struct GoogleDrive {
+pub struct GoogleDrive<A> {
     client: reqwest::Client,
-    auth: Arc<oauth::Client>,
+    auth: Arc<A>,
     base_url: &'static str,
     upload_base_url: &'static str,
     user_agent: String,
 
+    root: IdBuf,
+    shared: bool,
     user: api::User,
     quota: api::Quota,
 }
 
-impl GoogleDrive {
-    pub async fn new(oauth_params: fsync::oauth::Params<'_>) -> anyhow::Result<Self> {
-        log::info!(
-            "Initializing Google Drive storage with client-id {}",
-            oauth_params.secret.client_id.as_str()
-        );
-
-        let client = reqwest::Client::builder().build()?;
-        let auth = oauth::Client::new(
-            oauth_params.secret,
-            oauth::TokenCache::MemoryAndDisk(oauth_params.token_cache_path.into()),
-            None,
-        )
-        .await?;
-
+impl<A> GoogleDrive<A>
+where
+    A: GetToken,
+{
+    pub async fn new(auth: A, client: reqwest::Client, root: RootSpec<'_>) -> anyhow::Result<Self> {
         let user_agent = format!("fsyncd/{}", env!("CARGO_PKG_VERSION"));
         let mut drive = Self {
             auth: Arc::new(auth),
@@ -43,12 +60,31 @@ impl GoogleDrive {
             base_url: "https://www.googleapis.com/drive/v3",
             upload_base_url: "https://www.googleapis.com/upload/drive/v3",
             user_agent,
+            root: IdBuf::from("root"),
+            shared: false,
             user: api::User::default(),
             quota: api::Quota::default(),
         };
+
         let about = drive.about_get().await?;
         drive.user = about.user;
         drive.quota = about.storage_quota;
+
+        match root {
+            RootSpec::Root => (),
+            RootSpec::Path(path) if path.is_root() => (),
+            RootSpec::Path(path) => {
+            let root = drive
+                    .path_to_id(path)
+                .await?
+                    .with_context(|| format!("No such path: '{path}'"))?;
+            drive.root = root;
+            }
+            RootSpec::SharedId(id) => {
+                drive.root = id.to_owned();
+                drive.shared = true;
+            }
+        }
 
         log::info!(
             "Access granted to Drive of {}{}",
@@ -73,9 +109,55 @@ impl GoogleDrive {
 
         Ok(drive)
     }
+
+    async fn path_to_id<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<Option<IdBuf>> {
+        let path = path.as_ref().normalize()?;
+        if path.is_relative() {
+            anyhow::bail!("expected an absolute path, got '{path}'");
+        }
+        let mut cur_id = None;
+        for comp in path.components() {
+            match comp {
+                Component::RootDir => cur_id = Some(IdBuf::from("root")),
+                Component::Normal(name) => {
+                    let q = format!("name = '{name}' and '{}' in parents", cur_id.unwrap());
+                    let files = self.files_list(q, None).await?;
+                    if files.files.is_none() {
+                        return Ok(None);
+                    }
+                    let files = files.files.unwrap();
+                    if files.len() != 1 {
+                        return Ok(None);
+                    }
+                    let id = files.into_iter().next().unwrap().id;
+                    if id.is_none() {
+                        return Ok(None);
+                    }
+                    cur_id = id;
+                }
+                _ => unreachable!(),
+            }
+        }
+        Ok(cur_id)
+    }
+
+    pub async fn delete_folder_content(&self, id: Option<&Id>, path: &Path) -> anyhow::Result<()> {
+        use super::id::DirEntries;
+
+        let entries = self.dir_entries(id.map(|id| id.to_owned()), path.to_owned());
+        tokio::pin!(entries);
+        while let Some(entry) = entries.next().await {
+            let (file_id, _metadata) = entry?;
+            self.files_delete(&file_id).await?;
+        }
+        Ok(())
+    }
 }
 
-impl super::id::DirEntries for GoogleDrive {
+impl<A> super::id::DirEntries for GoogleDrive<A>
+where
+    A: GetToken,
+{
     fn dir_entries(
         &self,
         parent_id: Option<IdBuf>,
@@ -86,7 +168,7 @@ impl super::id::DirEntries for GoogleDrive {
             "none Id is for root only"
         );
         log::trace!("listing entries of {parent_path}");
-        let search_id = parent_id.as_deref().unwrap_or_else(|| Id::new("root"));
+        let search_id = parent_id.as_deref().unwrap_or(&self.root);
         let q = format!("'{search_id}' in parents");
         let mut next_page_token = None;
 
@@ -107,7 +189,10 @@ impl super::id::DirEntries for GoogleDrive {
     }
 }
 
-impl super::id::ReadFile for GoogleDrive {
+impl<A> super::id::ReadFile for GoogleDrive<A>
+where
+    A: GetToken,
+{
     async fn read_file(&self, id: IdBuf) -> anyhow::Result<impl io::AsyncRead> {
         log::trace!("reading file {id}");
         Ok(self
@@ -117,7 +202,33 @@ impl super::id::ReadFile for GoogleDrive {
     }
 }
 
-impl super::id::CreateFile for GoogleDrive {
+impl<A> super::id::MkDir for GoogleDrive<A>
+where
+    A: GetToken,
+{
+    async fn mkdir(&self, parent_id: Option<&Id>, name: &str) -> anyhow::Result<IdBuf> {
+        if let Some(parent_id) = parent_id {
+            log::info!("creating folder {name} in folder {parent_id}");
+        } else {
+            log::info!("creating folder {name} in root folder");
+        }
+        let f = api::File {
+            id: None,
+            name: Some(name.to_string()),
+            modified_time: None,
+            size: None,
+            mime_type: Some(FOLDER_MIMETYPE.to_string()),
+            parents: parent_id.map(|id| vec![id.to_id_buf()]),
+        };
+        let res = self.files_create(&f).await?;
+        Ok(res.id.context("No ID returned")?)
+    }
+}
+
+impl<A> super::id::CreateFile for GoogleDrive<A>
+where
+    A: GetToken,
+{
     async fn create_file(
         &self,
         parent_id: Option<&Id>,
@@ -132,17 +243,31 @@ impl super::id::CreateFile for GoogleDrive {
         );
         let file = map_metadata(parent_id, None, metadata);
         let file = self
-            .files_create(&file, metadata.size().unwrap(), data)
+            .files_create_upload(&file, metadata.size().unwrap(), data)
             .await?;
         map_file(metadata.path().parent().unwrap().to_owned(), file)
     }
 }
 
-impl super::id::Storage for GoogleDrive {
-    async fn shutdown(&self) {
-        let _ = self.auth.flush_cache().await;
+impl<A> PersistCache for GoogleDrive<A>
+where
+    A: PersistCache + Send + Sync,
+{
+    async fn persist_cache(&self) -> anyhow::Result<()> {
+        self.auth.persist_cache().await
     }
 }
+
+impl<A> Shutdown for GoogleDrive<A>
+where
+    A: PersistCache + Send + Sync,
+{
+    async fn shutdown(&self) -> anyhow::Result<()> {
+        self.persist_cache().await
+    }
+}
+
+impl<A> super::id::Storage for GoogleDrive<A> where A: Clone + GetToken + PersistCache {}
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
@@ -187,7 +312,10 @@ mod api {
     use tokio::io;
 
     use super::utils::{check_response, num_from_str, num_to_str};
-    use crate::storage::id::IdBuf;
+    use crate::{
+        oauth2::GetToken,
+        storage::id::{Id, IdBuf},
+    };
 
     #[derive(Default, Clone, Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -323,17 +451,25 @@ mod api {
         pub size: Option<u64>,
         pub mime_type: Option<&'a str>,
         pub fields: &'a str,
+        pub supports_all_drives: bool,
     }
 
     impl<'a> UploadParams<'a> {
         pub fn query_params(&'a self) -> Vec<(&'static str, &'a str)> {
-            vec![("uploadType", self.typ.as_str()), ("fields", self.fields)]
+            let mut params = vec![("uploadType", self.typ.as_str()), ("fields", self.fields)];
+            if self.supports_all_drives {
+                params.push(("supportsAllDrives", "true"));
+            }
+            params
         }
     }
 
     const UPLOAD_CHUNK_SZ: u64 = 2 * 256 * 1024;
 
-    impl super::GoogleDrive {
+    impl<A> super::GoogleDrive<A>
+    where
+        A: GetToken,
+    {
         pub async fn about_get(&self) -> anyhow::Result<About> {
             let path = "/about";
             let query_params = vec![("fields", ABOUT_FIELDS)];
@@ -358,11 +494,15 @@ mod api {
 
             let mut query_params = vec![
                 ("q", q),
-                ("fields", format!("files({FILE_FIELDS})")),
+                ("fields", format!("nextPageToken,files({FILE_FIELDS})")),
                 ("alt", "json".into()),
             ];
             if let Some(page_token) = page_token {
                 query_params.push(("pageToken", page_token));
+            }
+            if self.shared {
+                query_params.push(("includeItemsFromAllDrives", "true".to_string()));
+                query_params.push(("supportsAllDrives", "true".to_string()));
             }
 
             let res = self
@@ -400,7 +540,23 @@ mod api {
             )))
         }
 
-        pub async fn files_create<D>(
+        pub async fn files_create(&self, file: &File) -> anyhow::Result<File> {
+            let scopes = &[Scope::Full];
+            let path = "/files";
+            let mut query_params = vec![("fields", FILE_FIELDS)];
+            if self.shared {
+                query_params.push(("supportsAllDrives", "true"));
+            }
+            let res = self
+                .post_json_query(scopes, path, &query_params, file)
+                .await?;
+            let res = check_response("POST", path, res).await?;
+
+            let file: File = res.json().await?;
+            Ok(file)
+        }
+
+        pub async fn files_create_upload<D>(
             &self,
             file: &File,
             data_len: u64,
@@ -417,6 +573,7 @@ mod api {
                 size: file.size.map(|sz| sz as _),
                 mime_type: file.mime_type.as_deref(),
                 fields: FILE_FIELDS,
+                supports_all_drives: self.shared,
             };
             let upload_url = self
                 .post_upload_request(scopes, "/files", &upload_params, Some(file))
@@ -451,6 +608,19 @@ mod api {
             };
             Ok(file)
         }
+
+        pub async fn files_delete(&self, file_id: &Id) -> anyhow::Result<()> {
+            let scopes = &[Scope::Full];
+            let path = format!("/files/{file_id}");
+            let query_params: &[_] = if self.shared {
+                &[("supportsAllDrives", "true")]
+            } else {
+                &[]
+            };
+            let res = self.delete_query(scopes, &path, query_params).await?;
+            check_response("DELETE", &path, res).await?;
+            Ok(())
+        }
     }
 }
 
@@ -462,6 +632,7 @@ mod utils {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     use super::api;
+    use crate::oauth2::GetToken;
 
     pub fn num_to_str<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -497,7 +668,10 @@ mod utils {
         Ok(res)
     }
 
-    impl super::GoogleDrive {
+    impl<A> super::GoogleDrive<A>
+    where
+        A: GetToken,
+    {
         pub async fn fetch_token(&self, scopes: &[api::Scope]) -> anyhow::Result<AccessToken> {
             let scopes = scopes.iter().map(|&s| s.into()).collect();
             Ok(self.auth.get_token(scopes).await?)
@@ -526,6 +700,34 @@ mod utils {
                 .send()
                 .await?;
 
+            Ok(res)
+        }
+
+        pub async fn post_json_query<T, Q, K, V>(
+            &self,
+            scopes: &[api::Scope],
+            path: &str,
+            query_params: Q,
+            body: &T,
+        ) -> anyhow::Result<Response>
+        where
+            T: Serialize,
+            Q: IntoIterator,
+            Q::Item: Borrow<(K, V)>,
+            K: AsRef<str>,
+            V: AsRef<str>,
+        {
+            let token = self.fetch_token(scopes).await?;
+            let url = url_with_query(self.base_url, path, query_params);
+            let res = self
+                .client
+                .post(url)
+                .bearer_auth(token.secret())
+                .header(header::USER_AGENT, &self.user_agent)
+                .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+                .json(body)
+                .send()
+                .await?;
             Ok(res)
         }
 
@@ -597,6 +799,31 @@ mod utils {
                 );
             }
             Ok(req.body(data).send().await?)
+        }
+
+        pub async fn delete_query<Q, K, V>(
+            &self,
+            scopes: &[api::Scope],
+            path: &str,
+            query_params: Q,
+        ) -> anyhow::Result<Response>
+        where
+            Q: IntoIterator,
+            Q::Item: Borrow<(K, V)>,
+            K: AsRef<str>,
+            V: AsRef<str>,
+        {
+            let token = self.fetch_token(scopes).await?;
+            let url = url_with_query(self.base_url, path, query_params);
+            let res = self
+                .client
+                .delete(url)
+                .bearer_auth(token.secret())
+                .header(header::USER_AGENT, &self.user_agent)
+                .header(header::CONTENT_LENGTH, 0)
+                .send()
+                .await?;
+            Ok(res)
         }
     }
 

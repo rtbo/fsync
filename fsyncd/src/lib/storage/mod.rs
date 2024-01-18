@@ -1,10 +1,15 @@
-use fsync::{path::PathBuf, Metadata};
-use futures::{future, Future, Stream};
+use fsync::{
+    path::{Path, PathBuf},
+    Metadata,
+};
+use futures::{Future, Stream};
 use tokio::io;
 
+use crate::Shutdown;
+
 pub mod cache;
+pub mod drive;
 pub mod fs;
-pub mod gdrive;
 pub mod id;
 
 pub trait DirEntries {
@@ -21,6 +26,10 @@ pub trait ReadFile {
     ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead + Send>> + Send;
 }
 
+pub trait MkDir {
+    fn mkdir(&self, path: &Path, parents: bool) -> impl Future<Output = anyhow::Result<()>> + Send;
+}
+
 pub trait CreateFile {
     fn create_file(
         &self,
@@ -29,8 +38,7 @@ pub trait CreateFile {
     ) -> impl Future<Output = anyhow::Result<Metadata>> + Send;
 }
 
-pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {
-    fn shutdown(&self) -> impl Future<Output = ()> + Send {
-        future::ready(())
-    }
+pub trait Storage:
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + Shutdown + Send + Sync + 'static
+{
 }

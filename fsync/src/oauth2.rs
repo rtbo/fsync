@@ -1,4 +1,4 @@
-use oauth2::{AuthUrl, ClientId, ClientSecret, TokenUrl};
+pub use oauth2::{AuthUrl, ClientId, ClientSecret, TokenUrl};
 use serde::{Deserialize, Serialize};
 use tokio::fs;
 
@@ -14,7 +14,7 @@ pub struct Secret {
 
 #[derive(Debug)]
 pub struct Params<'a> {
-    pub secret: Secret,
+    pub secret: &'a Secret,
     pub token_cache_path: &'a FsPath,
 }
 

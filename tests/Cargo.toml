@@ -1,0 +1,26 @@
+[package]
+name = "tests"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish = false
+
+[[test]]
+name = "integration"
+path = "src/bin.rs"
+
+[dev-dependencies]
+fsync = { path = "../fsync" }
+fsyncd = { path = "../fsyncd" }
+
+anyhow = { workspace = true }
+env_logger = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true }
+# serde = { workspace = true }
+# serde_json = { workspace = true }
+# url = { workspace = true }
+# reqwest = { workspace = true }
+# jsonwebtoken = "9.2.0"

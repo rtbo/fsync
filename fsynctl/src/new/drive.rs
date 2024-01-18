@@ -1,11 +1,18 @@
 use std::str;
 
-use fsync::path::FsPathBuf;
-use fsync::{cipher, loc::inst, oauth};
+use fsync::{
+    cipher, oauth2,
+    path::{FsPathBuf, PathBuf},
+};
 use inquire::{Editor, Select, Text};
-use tokio::fs;
 
 pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
+    let root = Text::new("Choose a root (\"/\" for the entire drive)")
+        .with_default("/")
+        .prompt_skippable()?;
+
+    let root = root.map(PathBuf::from);
+
     let options = &[
         "Use built-in application secret",
         "Provide path to client_secret.json",
@@ -18,7 +25,7 @@ pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
     )
     .prompt()?;
     let ind = options.iter().position(|e| *e == ans).unwrap();
-    let opts = match ind {
+    let secret = match ind {
         0 => SecretOpts::Fsync,
         1 => SecretOpts::JsonPath(
             Text::new("Enter path to client_scret.json")
@@ -36,7 +43,8 @@ pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
         }
         _ => panic!("Did not recognize answer: {ans}"),
     };
-    Ok(super::ProviderOpts::GoogleDrive(opts))
+
+    Ok(super::ProviderOpts::GoogleDrive(Opts { root, secret }))
 }
 
 #[derive(Debug, Clone)]
@@ -69,7 +77,7 @@ fn test_get_appsecret() -> anyhow::Result<()> {
 }
 
 impl SecretOpts {
-    pub fn get(&self) -> anyhow::Result<oauth::Secret> {
+    pub fn get(&self) -> anyhow::Result<oauth2::Secret> {
         match self {
             SecretOpts::Fsync => {
                 const CIPHERED_SECRET: &str = concat!(
@@ -90,7 +98,7 @@ impl SecretOpts {
             SecretOpts::Credentials {
                 client_id,
                 client_secret,
-            } => Ok(oauth::Secret {
+            } => Ok(oauth2::Secret {
                 client_id: oauth2::ClientId::new(client_id.clone()),
                 client_secret: oauth2::ClientSecret::new(client_secret.clone()),
                 auth_url: oauth2::AuthUrl::new(
@@ -102,30 +110,35 @@ impl SecretOpts {
             }),
         }
     }
-
-    pub async fn create_config(&self, instance_name: &str) -> anyhow::Result<()> {
-        let secret = self.get()?;
-        let path = inst::oauth_secret_file(instance_name)?;
-        let json = serde_json::to_string_pretty(&secret)?;
-        fs::write(path, json).await?;
-        Ok(())
-    }
 }
 
 #[tokio::test]
 async fn cipher_app_secret() -> anyhow::Result<()> {
     use fsync::path::FsPath;
 
-    let path = FsPath::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("google_secret.json");
+    let path = FsPath::new(env!("CARGO_MANIFEST_DIR")).join("google_secret.json");
     if path.exists() {
         let output = path.with_file_name("google_secret.cipher.b64");
-        let secret = fsync::oauth::load_google_secret(&path).await?;
+        let secret = fsync::oauth2::load_google_secret(&path).await?;
         let secret = serde_json::to_string(&secret)?;
         let encoded = fsync::cipher::cipher_text(&secret);
         tokio::fs::write(&output, &encoded).await?;
     }
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+pub struct Opts {
+    pub root: Option<PathBuf>,
+    pub secret: SecretOpts,
+}
+
+impl TryFrom<&Opts> for fsync::config::drive::Config {
+    type Error = anyhow::Error;
+    fn try_from(value: &Opts) -> Result<Self, Self::Error> {
+        let root = value.root.clone();
+        let secret = value.secret.get()?;
+
+        Ok(fsync::config::drive::Config { root, secret })
+    }
 }

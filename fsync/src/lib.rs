@@ -9,12 +9,14 @@ use serde::{Deserialize, Serialize};
 pub mod cipher;
 pub mod config;
 pub mod loc;
-pub mod oauth;
+pub mod oauth2;
 
 mod fsync;
 
-pub use crate::config::Config;
-pub use crate::fsync::*;
+pub use crate::{
+    config::{Config, ProviderConfig},
+    fsync::*,
+};
 
 pub mod path;
 

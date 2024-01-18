@@ -1,11 +1,11 @@
-use std::borrow::Borrow;
-use std::fmt;
-use std::ops::Deref;
+use std::{borrow::Borrow, fmt, ops::Deref};
 
 use fsync::{path::PathBuf, Metadata};
-use futures::{future, Future, Stream};
+use futures::{Future, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::io;
+
+use crate::Shutdown;
 
 #[repr(transparent)]
 pub struct Id {
@@ -62,6 +62,12 @@ pub struct IdBuf {
 }
 
 impl IdBuf {
+    pub fn new() -> Self {
+        Self {
+            inner: String::new(),
+        }
+    }
+
     pub fn as_id(&self) -> &Id {
         Id::new(self.inner.as_str())
     }
@@ -138,6 +144,14 @@ pub trait ReadFile {
     ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead + Send>> + Send;
 }
 
+pub trait MkDir {
+    fn mkdir(
+        &self,
+        parent_id: Option<&Id>,
+        name: &str,
+    ) -> impl Future<Output = anyhow::Result<IdBuf>> + Send;
+}
+
 pub trait CreateFile {
     fn create_file(
         &self,
@@ -147,8 +161,7 @@ pub trait CreateFile {
     ) -> impl Future<Output = anyhow::Result<(IdBuf, Metadata)>> + Send;
 }
 
-pub trait Storage: Clone + DirEntries + ReadFile + CreateFile + Send + Sync + 'static {
-    fn shutdown(&self) -> impl Future<Output = ()> + Send {
-        future::ready(())
-    }
+pub trait Storage:
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + Shutdown + Send + Sync + 'static
+{
 }
