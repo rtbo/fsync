@@ -1,5 +1,3 @@
-use std::fmt;
-
 use async_stream::try_stream;
 use fsync::path::{self, FsPath, FsPathBuf, Path, PathBuf};
 use futures::Stream;
@@ -10,21 +8,7 @@ use tokio::{
 
 use crate::Shutdown;
 
-#[derive(Debug)]
-pub struct OutOfTreeSymlink {
-    path: PathBuf,
-    target: String,
-}
-
-impl fmt::Display for OutOfTreeSymlink {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Out of tree symlink: {} -> {}", self.path, self.target)
-    }
-}
-
-impl std::error::Error for OutOfTreeSymlink {}
-
-fn check_symlink<P1, P2>(link: P1, target: P2) -> Result<(), OutOfTreeSymlink>
+fn check_symlink<P1, P2>(link: P1, target: P2) -> fsync::Result<()>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
@@ -37,7 +21,7 @@ where
         "must be called with link relative to storage root"
     );
     if target.is_absolute() {
-        return Err(OutOfTreeSymlink {
+        return Err(fsync::Error::IllegalSymlink {
             path: link.to_owned(),
             target: target.to_string(),
         });
@@ -57,7 +41,7 @@ where
             }
             path::Component::CurDir => (),
             path::Component::ParentDir if num_comps <= 0 => {
-                return Err(OutOfTreeSymlink {
+                return Err(fsync::Error::IllegalSymlink {
                     path: link.to_owned(),
                     target: target.to_string(),
                 });
@@ -108,7 +92,7 @@ impl super::DirEntries for FileSystem {
     fn dir_entries(
         &self,
         parent_path: PathBuf,
-    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
+    ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         debug_assert!(parent_path.is_absolute());
         let fs_base = self.root.join(parent_path.without_root().as_str());
         log::trace!("listing entries of {fs_base}");
@@ -127,7 +111,7 @@ impl super::DirEntries for FileSystem {
 }
 
 impl super::ReadFile for FileSystem {
-    async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
+    async fn read_file(&self, path: PathBuf) -> fsync::Result<impl io::AsyncRead> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
         log::trace!("reading {fs_path}");
@@ -136,7 +120,7 @@ impl super::ReadFile for FileSystem {
 }
 
 impl super::MkDir for FileSystem {
-    async fn mkdir(&self, path: &Path, parents: bool) -> anyhow::Result<()> {
+    async fn mkdir(&self, path: &Path, parents: bool) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
         log::info!("mkdir {}{}", if parents { "-p " } else { "" }, fs_path);
@@ -154,15 +138,15 @@ impl super::CreateFile for FileSystem {
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> anyhow::Result<fsync::Metadata> {
+    ) -> fsync::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_absolute());
         let fs_path = self.root.join(metadata.path().without_root().as_str());
         log::info!("creating {fs_path}");
         if fs_path.is_dir() {
-            anyhow::bail!("{} exists and is a direceory: {fs_path}", metadata.path());
+            fsync::io_bail!("{} exists and is a direceory: {fs_path}", metadata.path());
         }
         if fs_path.exists() {
-            anyhow::bail!("{} already exists here: {fs_path}", metadata.path());
+            fsync::io_bail!("{} already exists here: {fs_path}", metadata.path());
         }
         {
             tokio::pin!(data);
@@ -184,7 +168,7 @@ impl Shutdown for FileSystem {}
 
 impl super::Storage for FileSystem {}
 
-async fn map_direntry(parent_path: &Path, direntry: &DirEntry) -> anyhow::Result<fsync::Metadata> {
+async fn map_direntry(parent_path: &Path, direntry: &DirEntry) -> fsync::Result<fsync::Metadata> {
     let fs_path = FsPathBuf::try_from(direntry.path())?;
     let file_name = String::from_utf8(direntry.file_name().into_encoded_bytes())?;
     let path = parent_path.join(&file_name);
@@ -196,7 +180,7 @@ async fn map_metadata(
     path: PathBuf,
     metadata: &std::fs::Metadata,
     fs_path: &FsPath,
-) -> anyhow::Result<fsync::Metadata> {
+) -> fsync::Result<fsync::Metadata> {
     let metadata = if metadata.is_symlink() {
         let target = tokio::fs::read_link(fs_path).await?;
         let target = PathBuf::try_from(target)?;

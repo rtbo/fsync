@@ -16,18 +16,18 @@ pub trait DirEntries {
     fn dir_entries(
         &self,
         parent_path: PathBuf,
-    ) -> impl Stream<Item = anyhow::Result<Metadata>> + Send;
+    ) -> impl Stream<Item = fsync::Result<Metadata>> + Send;
 }
 
 pub trait ReadFile {
     fn read_file(
         &self,
         path: PathBuf,
-    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead + Send>> + Send;
+    ) -> impl Future<Output = fsync::Result<impl io::AsyncRead + Send>> + Send;
 }
 
 pub trait MkDir {
-    fn mkdir(&self, path: &Path, parents: bool) -> impl Future<Output = anyhow::Result<()>> + Send;
+    fn mkdir(&self, path: &Path, parents: bool) -> impl Future<Output = fsync::Result<()>> + Send;
 }
 
 pub trait CreateFile {
@@ -35,7 +35,7 @@ pub trait CreateFile {
         &self,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = anyhow::Result<Metadata>> + Send;
+    ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
 pub trait Storage:

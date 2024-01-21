@@ -132,7 +132,7 @@ where
     fn dir_entries(
         &self,
         parent_path: PathBuf,
-    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
+    ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         log::trace!("listing entries for {parent_path}");
         let parent = self.entries.get(&parent_path);
         try_stream! {
@@ -151,18 +151,18 @@ impl<S> super::ReadFile for CacheStorage<S>
 where
     S: super::id::ReadFile + Sync + Send,
 {
-    async fn read_file(&self, path: PathBuf) -> anyhow::Result<impl io::AsyncRead> {
+    async fn read_file(&self, path: PathBuf) -> fsync::Result<impl io::AsyncRead> {
         log::info!("read file {path}");
         let node = self.entries.get(&path);
         if let Some(node) = node {
             if !node.metadata.is_file() {
-                anyhow::bail!("{path} is not a file.");
+                fsync::io_bail!("{path} is not a file.");
             }
             let id = node.id.clone();
             let res = self.storage.read_file(id.expect("File without Id")).await?;
             Ok(res)
         } else {
-            anyhow::bail!("No such entry in the cache: {path}");
+            fsync::other_bail!("No such entry in the cache: {path}");
         }
     }
 }
@@ -171,7 +171,7 @@ impl<S> super::MkDir for CacheStorage<S>
 where
     S: super::id::MkDir + Send + Sync,
 {
-    async fn mkdir(&self, path: &Path, parents: bool) -> anyhow::Result<()> {
+    async fn mkdir(&self, path: &Path, parents: bool) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
         let path = path.normalize()?;
         if path.is_root() {
@@ -245,7 +245,7 @@ where
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> anyhow::Result<fsync::Metadata> {
+    ) -> fsync::Result<fsync::Metadata> {
         log::info!("creating file {}", metadata.path());
 
         debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());

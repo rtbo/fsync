@@ -10,13 +10,13 @@ mod server;
 mod token_cache;
 
 pub use self::token_cache::{CacheResult, TokenCache, TokenMap, TokenPersist};
-use crate::PersistCache;
+use crate::{error, PersistCache};
 
 pub trait GetToken: Send + Sync + 'static {
     fn get_token(
         &self,
         scopes: Vec<Scope>,
-    ) -> impl Future<Output = anyhow::Result<AccessToken>> + Send;
+    ) -> impl Future<Output = fsync::Result<AccessToken>> + Send;
 }
 
 #[derive(Debug)]
@@ -60,14 +60,15 @@ impl Client {
         &self,
         refresh_token: RefreshToken,
         scopes: Vec<Scope>,
-    ) -> anyhow::Result<AccessToken> {
+    ) -> fsync::Result<AccessToken> {
         let token_response = self
             .inner
             .oauth2
             .exchange_refresh_token(&refresh_token)
             .add_scopes(scopes.clone())
             .request_async(|req| async { self.http(req).await })
-            .await?;
+            .await
+            .map_err(error::auth)?;
 
         let access = token_response.access_token().to_owned();
 
@@ -110,7 +111,7 @@ impl Client {
 }
 
 impl GetToken for Client {
-    async fn get_token(&self, scopes: Vec<Scope>) -> anyhow::Result<AccessToken> {
+    async fn get_token(&self, scopes: Vec<Scope>) -> fsync::Result<AccessToken> {
         let cache = self.inner.cache.read().await.check(&scopes);
         match cache {
             CacheResult::Ok(access_token) => Ok(access_token),

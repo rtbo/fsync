@@ -1,9 +1,12 @@
 use fsync::path::{FsPath, PathBuf};
-use fsyncd::{storage::{
-    fs::FileSystem,
-    id::{self, IdBuf},
-    DirEntries, ReadFile, MkDir, CreateFile,
-}, Shutdown};
+use fsyncd::{
+    storage::{
+        fs::FileSystem,
+        id::{self, IdBuf},
+        CreateFile, DirEntries, MkDir, ReadFile,
+    },
+    Shutdown,
+};
 use futures::prelude::*;
 use tokio::io;
 
@@ -38,7 +41,7 @@ impl id::DirEntries for Stub {
         &self,
         _parent_id: Option<id::IdBuf>,
         parent_path: fsync::path::PathBuf,
-    ) -> impl Stream<Item = anyhow::Result<(IdBuf, fsync::Metadata)>> + Send {
+    ) -> impl Stream<Item = fsync::Result<(IdBuf, fsync::Metadata)>> + Send {
         self.inner
             .dir_entries(parent_path)
             .map_ok(|md| (IdBuf::from(md.path().as_str()), md))
@@ -46,14 +49,14 @@ impl id::DirEntries for Stub {
 }
 
 impl id::ReadFile for Stub {
-    async fn read_file(&self, id: IdBuf) -> anyhow::Result<impl io::AsyncRead + Send> {
+    async fn read_file(&self, id: IdBuf) -> fsync::Result<impl io::AsyncRead + Send> {
         let path = PathBuf::from(id.into_string());
         self.inner.read_file(path).await
     }
 }
 
 impl id::MkDir for Stub {
-    async fn mkdir(&self, parent_id: Option<&id::Id>, name: &str) -> anyhow::Result<IdBuf> {
+    async fn mkdir(&self, parent_id: Option<&id::Id>, name: &str) -> fsync::Result<IdBuf> {
         let parent_path = parent_id.map(PathBuf::from).unwrap_or_else(PathBuf::root);
         let path = parent_path.join(name);
         self.inner.mkdir(&path, false).await?;
@@ -63,11 +66,11 @@ impl id::MkDir for Stub {
 
 impl id::CreateFile for Stub {
     async fn create_file(
-            &self,
-            _parent_id: Option<&id::Id>,
-            metadata: &fsync::Metadata,
-            data: impl io::AsyncRead + Send,
-        ) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
+        &self,
+        _parent_id: Option<&id::Id>,
+        metadata: &fsync::Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
         let metadata = self.inner.create_file(metadata, data).await?;
         let id = IdBuf::from(metadata.path());
         Ok((id, metadata))

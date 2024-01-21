@@ -33,7 +33,7 @@ impl storage::DirEntries for Stub {
     fn dir_entries(
         &self,
         parent_path: fsync::path::PathBuf,
-    ) -> impl Stream<Item = anyhow::Result<fsync::Metadata>> + Send {
+    ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         self.inner.dir_entries(parent_path)
     }
 }
@@ -42,7 +42,7 @@ impl storage::ReadFile for Stub {
     fn read_file(
         &self,
         path: fsync::path::PathBuf,
-    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead + Send>> + Send {
+    ) -> impl Future<Output = fsync::Result<impl io::AsyncRead + Send>> + Send {
         self.inner.read_file(path)
     }
 }
@@ -52,7 +52,7 @@ impl storage::MkDir for Stub {
         &self,
         path: &fsync::path::Path,
         parents: bool,
-    ) -> impl Future<Output = anyhow::Result<()>> + Send {
+    ) -> impl Future<Output = fsync::Result<()>> + Send {
         self.inner.mkdir(path, parents)
     }
 }
@@ -62,7 +62,7 @@ impl storage::CreateFile for Stub {
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = anyhow::Result<fsync::Metadata>> + Send {
+    ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
         self.inner.create_file(metadata, data)
     }
 }
