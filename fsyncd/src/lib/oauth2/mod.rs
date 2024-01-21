@@ -10,7 +10,7 @@ mod server;
 mod token_cache;
 
 pub use self::token_cache::{CacheResult, TokenCache, TokenMap, TokenPersist};
-use crate::{PersistCache, error};
+use crate::{error, PersistCache};
 
 pub trait GetToken: Send + Sync + 'static {
     fn get_token(

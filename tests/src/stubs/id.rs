@@ -1,9 +1,12 @@
 use fsync::path::{FsPath, PathBuf};
-use fsyncd::{storage::{
-    fs::FileSystem,
-    id::{self, IdBuf},
-    DirEntries, ReadFile, MkDir, CreateFile,
-}, Shutdown};
+use fsyncd::{
+    storage::{
+        fs::FileSystem,
+        id::{self, IdBuf},
+        CreateFile, DirEntries, MkDir, ReadFile,
+    },
+    Shutdown,
+};
 use futures::prelude::*;
 use tokio::io;
 
@@ -63,11 +66,11 @@ impl id::MkDir for Stub {
 
 impl id::CreateFile for Stub {
     async fn create_file(
-            &self,
-            _parent_id: Option<&id::Id>,
-            metadata: &fsync::Metadata,
-            data: impl io::AsyncRead + Send,
-        ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
+        &self,
+        _parent_id: Option<&id::Id>,
+        metadata: &fsync::Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
         let metadata = self.inner.create_file(metadata, data).await?;
         let id = IdBuf::from(metadata.path());
         Ok((id, metadata))

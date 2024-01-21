@@ -7,7 +7,7 @@ use oauth2::{
 use tokio::{io, net};
 
 use super::{server, Client};
-use crate::{uri, error};
+use crate::{error, uri};
 
 impl Client {
     pub(super) async fn fetch_token_pkce(
