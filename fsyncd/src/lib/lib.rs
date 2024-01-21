@@ -39,6 +39,23 @@ pub mod uri {
     }
 }
 
+mod error {
+    /// Maps error to fsync::Error::Auth (to be used in `map_err`)
+    pub fn auth<E: std::error::Error>(err: E) -> fsync::Error {
+        fsync::Error::Auth(err.to_string())
+    }
+
+    /// Maps error to fsync::Error::Api (to be used in `map_err`)
+    pub fn api<E: std::error::Error>(err: E) -> fsync::Error {
+        fsync::Error::Api(err.to_string())
+    }
+
+    /// Maps error to fsync::Error::Io (to be used in `map_err`)
+    pub fn io<E: std::error::Error>(err: E) -> fsync::Error {
+        fsync::Error::Io(err.to_string())
+    }
+}
+
 pub trait PersistCache {
     fn persist_cache(&self) -> impl Future<Output = anyhow::Result<()>> + Send {
         future::ready(Ok(()))

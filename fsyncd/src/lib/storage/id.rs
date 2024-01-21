@@ -134,14 +134,14 @@ pub trait DirEntries {
         &self,
         parent_id: Option<IdBuf>,
         parent_path: PathBuf,
-    ) -> impl Stream<Item = anyhow::Result<(IdBuf, Metadata)>> + Send;
+    ) -> impl Stream<Item = fsync::Result<(IdBuf, Metadata)>> + Send;
 }
 
 pub trait ReadFile {
     fn read_file(
         &self,
         id: IdBuf,
-    ) -> impl Future<Output = anyhow::Result<impl io::AsyncRead + Send>> + Send;
+    ) -> impl Future<Output = fsync::Result<impl io::AsyncRead + Send>> + Send;
 }
 
 pub trait MkDir {
@@ -149,7 +149,7 @@ pub trait MkDir {
         &self,
         parent_id: Option<&Id>,
         name: &str,
-    ) -> impl Future<Output = anyhow::Result<IdBuf>> + Send;
+    ) -> impl Future<Output = fsync::Result<IdBuf>> + Send;
 }
 
 pub trait CreateFile {
@@ -158,7 +158,7 @@ pub trait CreateFile {
         parent_id: Option<&Id>,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = anyhow::Result<(IdBuf, Metadata)>> + Send;
+    ) -> impl Future<Output = fsync::Result<(IdBuf, Metadata)>> + Send;
 }
 
 pub trait Storage:

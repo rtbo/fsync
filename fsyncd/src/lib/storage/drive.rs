@@ -74,11 +74,11 @@ where
             RootSpec::Root => (),
             RootSpec::Path(path) if path.is_root() => (),
             RootSpec::Path(path) => {
-            let root = drive
+                let root = drive
                     .path_to_id(path)
-                .await?
+                    .await?
                     .with_context(|| format!("No such path: '{path}'"))?;
-            drive.root = root;
+                drive.root = root;
             }
             RootSpec::SharedId(id) => {
                 drive.root = id.to_owned();
@@ -162,7 +162,7 @@ where
         &self,
         parent_id: Option<IdBuf>,
         parent_path: PathBuf,
-    ) -> impl Stream<Item = anyhow::Result<(IdBuf, fsync::Metadata)>> + Send {
+    ) -> impl Stream<Item = fsync::Result<(IdBuf, fsync::Metadata)>> + Send {
         debug_assert!(
             parent_id.is_some() || parent_path.is_root(),
             "none Id is for root only"
@@ -193,7 +193,7 @@ impl<A> super::id::ReadFile for GoogleDrive<A>
 where
     A: GetToken,
 {
-    async fn read_file(&self, id: IdBuf) -> anyhow::Result<impl io::AsyncRead> {
+    async fn read_file(&self, id: IdBuf) -> fsync::Result<impl io::AsyncRead> {
         log::trace!("reading file {id}");
         Ok(self
             .files_get_media(id.as_str())
@@ -206,7 +206,7 @@ impl<A> super::id::MkDir for GoogleDrive<A>
 where
     A: GetToken,
 {
-    async fn mkdir(&self, parent_id: Option<&Id>, name: &str) -> anyhow::Result<IdBuf> {
+    async fn mkdir(&self, parent_id: Option<&Id>, name: &str) -> fsync::Result<IdBuf> {
         if let Some(parent_id) = parent_id {
             log::info!("creating folder {name} in folder {parent_id}");
         } else {
@@ -234,7 +234,7 @@ where
         parent_id: Option<&Id>,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead,
-    ) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
+    ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
         debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
         log::info!(
             "creating file {} ({} bytes)",
@@ -271,18 +271,18 @@ impl<A> super::id::Storage for GoogleDrive<A> where A: Clone + GetToken + Persis
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
-fn map_file(parent_path: PathBuf, f: api::File) -> anyhow::Result<(IdBuf, fsync::Metadata)> {
+fn map_file(parent_path: PathBuf, f: api::File) -> fsync::Result<(IdBuf, fsync::Metadata)> {
     let id = f.id.unwrap_or_default();
     let path = parent_path.join(f.name.as_deref().unwrap());
     let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
         fsync::Metadata::Directory { path }
     } else {
         let mtime = f.modified_time.ok_or_else(|| {
-            anyhow::anyhow!("Expected to receive modifiedTime from Google for {path}")
+            fsync::api_error!("Expected to receive modifiedTime from Google for {path}")
         })?;
         let size = f
             .size
-            .ok_or_else(|| anyhow::anyhow!("Expected to receive size from Google for {path}"))?
+            .ok_or_else(|| fsync::api_error!("Expected to receive size from Google for {path}"))?
             as _;
         fsync::Metadata::Regular { path, size, mtime }
     };
@@ -313,6 +313,7 @@ mod api {
 
     use super::utils::{check_response, num_from_str, num_to_str};
     use crate::{
+        error,
         oauth2::GetToken,
         storage::id::{Id, IdBuf},
     };
@@ -470,7 +471,7 @@ mod api {
     where
         A: GetToken,
     {
-        pub async fn about_get(&self) -> anyhow::Result<About> {
+        pub async fn about_get(&self) -> fsync::Result<About> {
             let path = "/about";
             let query_params = vec![("fields", ABOUT_FIELDS)];
 
@@ -478,9 +479,9 @@ mod api {
                 .get_query(&[Scope::MetadataReadOnly], path, query_params)
                 .await?;
             let res = check_response("GET", &path, res).await?;
-            let about: About = res.json().await?;
+            let about: About = res.json().await.map_err(error::api)?;
             if about.kind != "drive#about" {
-                anyhow::bail!("/about returned wrong kind!");
+                fsync::api_bail!("/about returned wrong kind!");
             }
             Ok(about)
         }
@@ -489,7 +490,7 @@ mod api {
             &self,
             q: String,
             page_token: Option<String>,
-        ) -> anyhow::Result<FileList> {
+        ) -> fsync::Result<FileList> {
             let path = "/files";
 
             let mut query_params = vec![
@@ -510,7 +511,7 @@ mod api {
                 .await?;
             let res = check_response("GET", &path, res).await?;
 
-            let file_list: FileList = res.json().await?;
+            let file_list: FileList = res.json().await.map_err(error::api)?;
 
             Ok(file_list)
         }
@@ -518,7 +519,7 @@ mod api {
         pub async fn files_get_media(
             &self,
             file_id: &str,
-        ) -> anyhow::Result<Option<impl io::AsyncRead>> {
+        ) -> fsync::Result<Option<impl io::AsyncRead>> {
             use futures::stream::{StreamExt, TryStreamExt};
 
             let path = format!("/files/{file_id}");
@@ -540,7 +541,7 @@ mod api {
             )))
         }
 
-        pub async fn files_create(&self, file: &File) -> anyhow::Result<File> {
+        pub async fn files_create(&self, file: &File) -> fsync::Result<File> {
             let scopes = &[Scope::Full];
             let path = "/files";
             let mut query_params = vec![("fields", FILE_FIELDS)];
@@ -552,7 +553,7 @@ mod api {
                 .await?;
             let res = check_response("POST", path, res).await?;
 
-            let file: File = res.json().await?;
+            let file: File = res.json().await.map_err(error::api)?;
             Ok(file)
         }
 
@@ -561,7 +562,7 @@ mod api {
             file: &File,
             data_len: u64,
             data: D,
-        ) -> anyhow::Result<File>
+        ) -> fsync::Result<File>
         where
             D: io::AsyncRead,
         {
@@ -596,20 +597,20 @@ mod api {
                 sent += sz as u64;
                 let status = res.status();
                 if status.is_success() && sent == data_len {
-                    break res.json().await?;
+                    break res.json().await.map_err(error::api)?;
                 } else if status.is_server_error() {
-                    anyhow::bail!("Upload failed ({status}). No support yet to resume upload");
+                    fsync::api_bail!("Upload failed ({status}). No support yet to resume upload");
                 } else if res.status().is_client_error() {
                     panic!(
                         "bad request ({status}): {}",
-                        String::from_utf8_lossy(&res.bytes().await?)
+                        String::from_utf8_lossy(&res.bytes().await.unwrap())
                     );
                 }
             };
             Ok(file)
         }
 
-        pub async fn files_delete(&self, file_id: &Id) -> anyhow::Result<()> {
+        pub async fn files_delete(&self, file_id: &Id) -> fsync::Result<()> {
             let scopes = &[Scope::Full];
             let path = format!("/files/{file_id}");
             let query_params: &[_] = if self.shared {
@@ -632,7 +633,7 @@ mod utils {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     use super::api;
-    use crate::oauth2::GetToken;
+    use crate::{error, oauth2::GetToken};
 
     pub fn num_to_str<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -657,12 +658,12 @@ mod utils {
         method: &str,
         path: &str,
         res: Response,
-    ) -> anyhow::Result<Response> {
+    ) -> fsync::Result<Response> {
         if !res.status().is_success() {
-            anyhow::bail!(
+            fsync::api_bail!(
                 "{method} {path} returned {}\n{}",
                 res.status(),
-                res.text().await?
+                res.text().await.map_err(error::io)?
             );
         }
         Ok(res)
@@ -672,7 +673,7 @@ mod utils {
     where
         A: GetToken,
     {
-        pub async fn fetch_token(&self, scopes: &[api::Scope]) -> anyhow::Result<AccessToken> {
+        pub async fn fetch_token(&self, scopes: &[api::Scope]) -> fsync::Result<AccessToken> {
             let scopes = scopes.iter().map(|&s| s.into()).collect();
             Ok(self.auth.get_token(scopes).await?)
         }
@@ -682,7 +683,7 @@ mod utils {
             scopes: &[api::Scope],
             path: &str,
             query_params: Q,
-        ) -> anyhow::Result<Response>
+        ) -> fsync::Result<Response>
         where
             Q: IntoIterator,
             Q::Item: Borrow<(K, V)>,
@@ -698,7 +699,8 @@ mod utils {
                 .header(header::USER_AGENT, &self.user_agent)
                 .bearer_auth(token.secret())
                 .send()
-                .await?;
+                .await
+                .map_err(error::api)?;
 
             Ok(res)
         }

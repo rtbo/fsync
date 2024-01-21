@@ -11,10 +11,12 @@ pub mod config;
 pub mod loc;
 pub mod oauth2;
 
+mod error;
 mod fsync;
 
 pub use crate::{
     config::{Config, ProviderConfig},
+    error::*,
     fsync::*,
 };
 
