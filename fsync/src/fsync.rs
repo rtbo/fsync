@@ -106,6 +106,13 @@ pub mod tree {
     }
 
     impl Entry {
+        pub fn root() -> Self {
+            Self::Both {
+                local: super::Metadata::root(),
+                remote: super::Metadata::root(),
+            }
+        }
+
         pub fn path(&self) -> &Path {
             match self {
                 Entry::Both { local, remote } => {

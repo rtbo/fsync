@@ -21,6 +21,13 @@ pub enum Entry {
 }
 
 impl Entry {
+    pub fn root() -> Self {
+        Self::Both {
+            local: fsync::Metadata::root(),
+            remote: fsync::Metadata::root(),
+        }
+    }
+
     fn with_remote(self, remote: fsync::Metadata) -> Self {
         match self {
             Entry::Local(local) => Entry::Both { local, remote },
