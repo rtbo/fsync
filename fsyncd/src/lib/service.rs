@@ -8,6 +8,7 @@ use fsync::{
     loc::inst,
     path::{Path, PathBuf},
     Fsync,
+    Error, Location, PathError,
 };
 use futures::{
     future,
@@ -59,9 +60,9 @@ where
     }
 }
 
-fn check_path(path: &Path) -> Result<(), String> {
+fn check_path(path: &Path) -> Result<(), PathError> {
     if path.is_relative() {
-        Err(format!("Expect an absolute path, got '{path}'"))
+        Err(PathError::Illegal(path.to_owned(), Some("Expected an absolute path".to_string())))
     } else {
         Ok(())
     }
@@ -72,44 +73,42 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    pub async fn entry(&self, path: &Path) -> Result<Option<fsync::tree::Node>, String> {
+    pub async fn entry(&self, path: &Path) -> Result<Option<fsync::tree::Node>, Error> {
         check_path(path)?;
         Ok(self.tree.entry(&path).map(Into::into))
     }
 
-    pub async fn copy_remote_to_local(&self, path: &Path) -> Result<(), String> {
+    pub async fn copy_remote_to_local(&self, path: &Path) -> Result<(), Error> {
         check_path(path)?;
         let entry = self.tree.entry(&path);
         if entry.is_none() {
-            return Err(format!("No such entry in remote drive: '{path}'"));
+            Err(PathError::NotFound(path.to_owned(), None))?;
         }
         let node = entry.unwrap();
 
         match node.entry() {
-            tree::Entry::Local(..) => Err(format!("{path} is on the local drive only")),
+            tree::Entry::Local(..) => Err(PathError::Only(path.to_owned(), Location::Local))?,
             tree::Entry::Remote(remote) => {
                 let read = self
                     .remote
                     .read_file(remote.path().to_owned())
-                    .await
-                    .map_err(|err| err.to_string())?;
+                    .await?;
                 let local = self
                     .local
                     .create_file(remote, read)
-                    .await
-                    .map_err(|err| err.to_string())?;
+                    .await?;
                 self.tree.add_local(&path, local).unwrap();
                 Ok(())
             }
-            _ => Err(format!("'{path}' is not only on remote")),
+            _ => Err(PathError::Unexpected(path.to_owned(), Location::Both))?,
         }
     }
 
-    pub async fn copy_local_to_remote(&self, path: &Path) -> Result<(), String> {
+    pub async fn copy_local_to_remote(&self, path: &Path) -> Result<(), fsync::Error> {
         check_path(path)?;
         let entry = self.tree.entry(&path);
         if entry.is_none() {
-            return Err(format!("No such entry in local drive: '{path}'"));
+            Err(PathError::NotFound(path.to_owned(), None))?;
         }
         let node = entry.unwrap();
 
@@ -118,16 +117,15 @@ where
                 let read = self
                     .local
                     .read_file(local.path().to_owned())
-                    .await
-                    .map_err(|err| err.to_string())?;
+                    .await?;
 
                 let remote = self.remote.create_file(local, read).await.unwrap();
 
                 self.tree.add_remote(&path, remote).unwrap();
                 Ok(())
             }
-            tree::Entry::Remote(..) => Err(format!("'{path}' is on the remote drive only")),
-            _ => Err(format!("'{path}' is not only on remote")),
+            tree::Entry::Remote(..) => Err(PathError::Only(path.to_owned(), Location::Remote))?,
+            _ => Err(PathError::Unexpected(path.to_owned(), Location::Both))?,
         }
     }
 }
@@ -218,19 +216,19 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    async fn entry(self, _: Context, path: PathBuf) -> Result<Option<fsync::tree::Node>, String> {
+    async fn entry(self, _: Context, path: PathBuf) -> Result<Option<fsync::tree::Node>, fsync::Error> {
         let res = self.inner.entry(&path).await;
         log::trace!(target: "RPC", "Fsync::entry(path: {path:?}) -> {res:#?}");
         res
     }
 
-    async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> Result<(), String> {
+    async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> Result<(), fsync::Error> {
         let res = self.inner.copy_remote_to_local(&path).await;
         log::trace!(target: "RPC", "Fsync::copy_remote_to_local(path: {path:?}) -> {res:#?}");
         res
     }
 
-    async fn copy_local_to_remote(self, _: Context, path: PathBuf) -> Result<(), String> {
+    async fn copy_local_to_remote(self, _: Context, path: PathBuf) -> Result<(), fsync::Error> {
         let res = self.inner.copy_local_to_remote(&path).await;
         log::trace!(target: "RPC", "Fsync::copy_local_to_remote(path: {path:?}) -> {res:#?}");
         res

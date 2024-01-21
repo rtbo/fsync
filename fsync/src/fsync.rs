@@ -1,3 +1,4 @@
+use std::{error, fmt, io};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -167,9 +168,101 @@ pub mod tree {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Location {
+    Local,
+    Remote,
+    Both,
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Location::Local => f.write_str("local drive"),
+            Location::Remote => f.write_str("remote drive"),
+            Location::Both => f.write_str("both drives"),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum PathError {
+    NotFound(PathBuf, Option<Location>),
+    Only(PathBuf, Location),
+    Unexpected(PathBuf, Location),
+    Illegal(PathBuf, Option<String>),
+}
+
+impl fmt::Display for PathError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound(path, None) => write!(f, "No such entry: {path}"),
+            Self::NotFound(path, Some(loc)) => write!(f, "Did not find '{path} on {loc}"),
+            Self::Only(path, loc) => write!(f, "Could only find '{path}' on {loc}"),
+            Self::Unexpected(path, loc) => write!(f, "Did not expect to find '{path}' on {loc}"),
+            Self::Illegal(path, None) => write!(f, "Illegal path: {path}"),
+            Self::Illegal(path, Some(reason)) => write!(f, "{reason}: {path}"),
+        }
+    }
+}
+
+impl error::Error for PathError {}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Error {
+    Path(PathError),
+    Io(String),
+    Api(String),
+    Other(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Path(err) => err.fmt(f),
+            Self::Io(msg) => write!(f, "Io error: {msg}"),
+            Self::Api(msg) => write!(f, "API error: {msg}"),
+            Self::Other(msg) => f.write_str(msg),
+        }
+    }
+}
+
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Error::Path(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<PathError> for Error {
+    fn from(value: PathError) -> Self {
+        Self::Path(value)
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
+        Self::Io(value.to_string())
+    }
+}
+
+impl From<anyhow::Error> for Error {
+    fn from(value: anyhow::Error) -> Self {
+        Self::Other(value.to_string())
+    }
+}
+
+impl From<String> for Error {
+    fn from(value: String) -> Self {
+        Self::Other(value)
+    }
+}
+
 #[tarpc::service]
 pub trait Fsync {
-    async fn entry(path: PathBuf) -> Result<Option<tree::Node>, String>;
-    async fn copy_remote_to_local(path: PathBuf) -> Result<(), String>;
-    async fn copy_local_to_remote(path: PathBuf) -> Result<(), String>;
+    async fn entry(path: PathBuf) -> Result<Option<tree::Node>, Error>;
+    async fn copy_remote_to_local(path: PathBuf) -> Result<(), Error>;
+    async fn copy_local_to_remote(path: PathBuf) -> Result<(), Error>;
 }
