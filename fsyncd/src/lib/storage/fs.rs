@@ -91,7 +91,7 @@ impl FileSystem {
 impl super::DirEntries for FileSystem {
     fn dir_entries(
         &self,
-        parent_path: PathBuf,
+        parent_path: &Path,
     ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         debug_assert!(parent_path.is_absolute());
         let fs_base = self.root.join(parent_path.without_root().as_str());

@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, fmt, ops::Deref};
 
-use fsync::{path::PathBuf, Metadata};
+use fsync::{path::Path, Metadata};
 use futures::{Future, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::io;
@@ -132,8 +132,8 @@ impl ToOwned for Id {
 pub trait DirEntries {
     fn dir_entries(
         &self,
-        parent_id: Option<IdBuf>,
-        parent_path: PathBuf,
+        parent_id: Option<&Id>,
+        parent_path: &Path,
     ) -> impl Stream<Item = fsync::Result<(IdBuf, Metadata)>> + Send;
 }
 

@@ -1,4 +1,4 @@
-use fsync::path::{FsPath, PathBuf};
+use fsync::path::{FsPath, Path, PathBuf};
 use fsyncd::{
     storage::{
         fs::FileSystem,
@@ -39,8 +39,8 @@ impl Drop for Stub {
 impl id::DirEntries for Stub {
     fn dir_entries(
         &self,
-        _parent_id: Option<id::IdBuf>,
-        parent_path: fsync::path::PathBuf,
+        _parent_id: Option<&id::Id>,
+        parent_path: &Path,
     ) -> impl Stream<Item = fsync::Result<(IdBuf, fsync::Metadata)>> + Send {
         self.inner
             .dir_entries(parent_path)

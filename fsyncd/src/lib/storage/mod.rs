@@ -15,7 +15,7 @@ pub mod id;
 pub trait DirEntries {
     fn dir_entries(
         &self,
-        parent_path: PathBuf,
+        parent_path: &Path,
     ) -> impl Stream<Item = fsync::Result<Metadata>> + Send;
 }
 
