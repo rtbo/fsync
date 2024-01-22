@@ -225,18 +225,6 @@ where
         res
     }
 
-    async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> fsync::Result<()> {
-        let res = self.inner.copy_remote_to_local(&path).await;
-        log::trace!(target: "RPC", "Fsync::copy_remote_to_local(path: {path:?}) -> {res:#?}");
-        res
-    }
-
-    async fn copy_local_to_remote(self, _: Context, path: PathBuf) -> fsync::Result<()> {
-        let res = self.inner.copy_local_to_remote(&path).await;
-        log::trace!(target: "RPC", "Fsync::copy_local_to_remote(path: {path:?}) -> {res:#?}");
-        res
-    }
-
     async fn operate(self, _: Context, action: fsync::Operation) -> fsync::Result<()> {
         let res = self.inner.operate(&action).await;
         log::trace!(target: "RPC", "{action:#?} -> {res:#?}");
