@@ -14,8 +14,9 @@ pub trait UnwrapDisplay {
     fn unwrap_display(self) -> Self::Inner;
 }
 
-impl<T, E> UnwrapDisplay for std::result::Result<T, E> 
-where E: std::error::Error
+impl<T, E> UnwrapDisplay for std::result::Result<T, E>
+where
+    E: std::error::Error,
 {
     type Inner = T;
 

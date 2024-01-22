@@ -13,10 +13,8 @@ pub mod fs;
 pub mod id;
 
 pub trait DirEntries {
-    fn dir_entries(
-        &self,
-        parent_path: &Path,
-    ) -> impl Stream<Item = fsync::Result<Metadata>> + Send;
+    fn dir_entries(&self, parent_path: &Path)
+        -> impl Stream<Item = fsync::Result<Metadata>> + Send;
 }
 
 pub trait ReadFile {

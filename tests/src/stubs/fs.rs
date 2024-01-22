@@ -1,4 +1,4 @@
-use fsync::path::{Path, FsPath};
+use fsync::path::{FsPath, Path};
 use fsyncd::{storage, storage::fs::FileSystem};
 use futures::{Future, Stream};
 use tokio::{fs, io};
