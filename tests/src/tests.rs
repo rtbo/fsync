@@ -3,7 +3,7 @@ use fsync::{
     Operation,
 };
 
-use crate::harness;
+use crate::{harness, utils::UnwrapDisplay};
 
 #[tokio::test]
 async fn entry() {
@@ -32,25 +32,25 @@ async fn copy_remote_to_local() {
 }
 
 #[tokio::test]
-#[should_panic(expected = "not found")]
+#[should_panic(expected = "No such entry: /not-a-file.txt")]
 async fn copy_remote_to_local_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
         .operate(&Operation::CopyRemoteToLocal(path))
         .await
-        .unwrap();
+        .unwrap_display();
 }
 
 #[tokio::test]
-#[should_panic(expected = "relative")]
+#[should_panic(expected = "Expected an absolute path: only-remote.txt")]
 async fn copy_remote_to_local_fail_relative() {
     let h = harness().await;
     let path = PathBuf::from("only-remote.txt");
     h.service
         .operate(&Operation::CopyRemoteToLocal(path))
         .await
-        .unwrap();
+        .unwrap_display();
 }
 
 #[tokio::test]
@@ -66,12 +66,12 @@ async fn copy_local_to_remote() {
 }
 
 #[tokio::test]
-#[should_panic(expected = "not found")]
+#[should_panic(expected = "No such entry: /not-a-file.txt")]
 async fn copy_local_to_remote_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
         .operate(&Operation::CopyLocalToRemote(path.clone()))
         .await
-        .unwrap();
+        .unwrap_display();
 }
