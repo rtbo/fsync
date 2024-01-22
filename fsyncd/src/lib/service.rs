@@ -7,7 +7,7 @@ use fsync::{
     self,
     loc::inst,
     path::{Path, PathBuf},
-    Error, Fsync, Location, PathError,
+    Error, Fsync, Location, Operation, PathError,
 };
 use futures::{
     future,
@@ -121,6 +121,13 @@ where
             _ => Err(PathError::Unexpected(path.to_owned(), Location::Both))?,
         }
     }
+
+    pub async fn operate(&self, operation: &Operation) -> fsync::Result<()> {
+        match operation {
+            Operation::CopyRemoteToLocal(path) => self.copy_remote_to_local(path.as_ref()).await,
+            Operation::CopyLocalToRemote(path) => self.copy_local_to_remote(path.as_ref()).await,
+        }
+    }
 }
 
 impl<L, R> crate::Shutdown for Service<L, R>
@@ -227,6 +234,12 @@ where
     async fn copy_local_to_remote(self, _: Context, path: PathBuf) -> fsync::Result<()> {
         let res = self.inner.copy_local_to_remote(&path).await;
         log::trace!(target: "RPC", "Fsync::copy_local_to_remote(path: {path:?}) -> {res:#?}");
+        res
+    }
+
+    async fn operate(self, _: Context, action: fsync::Operation) -> fsync::Result<()> {
+        let res = self.inner.operate(&action).await;
+        log::trace!(target: "RPC", "{action:#?} -> {res:#?}");
         res
     }
 }

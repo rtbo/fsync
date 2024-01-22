@@ -174,9 +174,16 @@ pub mod tree {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Operation {
+    CopyRemoteToLocal(PathBuf),
+    CopyLocalToRemote(PathBuf),
+}
+
 #[tarpc::service]
 pub trait Fsync {
     async fn entry(path: PathBuf) -> crate::Result<Option<tree::Node>>;
     async fn copy_remote_to_local(path: PathBuf) -> crate::Result<()>;
     async fn copy_local_to_remote(path: PathBuf) -> crate::Result<()>;
+    async fn operate(operation: Operation) -> crate::Result<()>;
 }

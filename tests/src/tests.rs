@@ -1,4 +1,7 @@
-use fsync::path::{Path, PathBuf};
+use fsync::{
+    path::{Path, PathBuf},
+    Operation,
+};
 
 use crate::harness;
 
@@ -20,40 +23,55 @@ async fn entry() {
 async fn copy_remote_to_local() {
     let h = harness().await;
     let path = PathBuf::from("/only-remote.txt");
-    h.service.copy_remote_to_local(&path).await.unwrap();
+    h.service
+        .operate(&Operation::CopyRemoteToLocal(path.clone()))
+        .await
+        .unwrap();
     let content = h.local_file_content(&path).await.unwrap();
     assert_eq!(&content, path.as_str());
 }
 
 #[tokio::test]
-#[should_panic]
+#[should_panic(expected = "not found")]
 async fn copy_remote_to_local_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
-    h.service.copy_remote_to_local(&path).await.unwrap();
+    h.service
+        .operate(&Operation::CopyRemoteToLocal(path))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
-#[should_panic]
+#[should_panic(expected = "relative")]
 async fn copy_remote_to_local_fail_relative() {
-    let harness = harness().await;
+    let h = harness().await;
     let path = PathBuf::from("only-remote.txt");
-    harness.service.copy_remote_to_local(&path).await.unwrap();
+    h.service
+        .operate(&Operation::CopyRemoteToLocal(path))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn copy_local_to_remote() {
     let h = harness().await;
     let path = PathBuf::from("/only-local.txt");
-    h.service.copy_local_to_remote(&path).await.unwrap();
+    h.service
+        .operate(&Operation::CopyLocalToRemote(path.clone()))
+        .await
+        .unwrap();
     let content = h.remote_file_content(&path).await.unwrap();
     assert_eq!(&content, path.as_str());
 }
 
 #[tokio::test]
-#[should_panic]
+#[should_panic(expected = "not found")]
 async fn copy_local_to_remote_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
-    h.service.copy_local_to_remote(&path).await.unwrap();
+    h.service
+        .operate(&Operation::CopyLocalToRemote(path.clone()))
+        .await
+        .unwrap();
 }
