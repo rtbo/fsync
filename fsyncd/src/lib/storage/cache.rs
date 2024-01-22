@@ -131,10 +131,10 @@ where
 {
     fn dir_entries(
         &self,
-        parent_path: PathBuf,
+        parent_path: &Path,
     ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         log::trace!("listing entries for {parent_path}");
-        let parent = self.entries.get(&parent_path);
+        let parent = self.entries.get(parent_path);
         try_stream! {
             if let Some(parent) = parent {
                 for c in parent.children.iter() {
@@ -312,7 +312,7 @@ where
     S: super::id::DirEntries + Send + Sync + 'static,
 {
     Box::pin(async move {
-        let dirent = storage.dir_entries(dir_id.clone(), dir_path.clone());
+        let dirent = storage.dir_entries(dir_id.as_deref(), &dir_path);
         tokio::pin!(dirent);
 
         let mut children: Vec<String> = Vec::new();

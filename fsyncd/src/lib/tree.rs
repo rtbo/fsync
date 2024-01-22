@@ -300,7 +300,7 @@ where
 
             if entry.is_dir() {
                 let mut joinvec = Vec::new();
-                let children = self.local.dir_entries(entry.path().to_owned());
+                let children = self.local.dir_entries(entry.path());
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -325,7 +325,7 @@ where
 
             if entry.is_dir() {
                 let mut joinvec = Vec::new();
-                let children = self.remote.dir_entries(entry.path().to_owned());
+                let children = self.remote.dir_entries(entry.path());
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -355,8 +355,7 @@ where
     if !entry.is_dir() {
         return Ok(vec![]);
     }
-    let path = entry.path().to_owned();
-    let children = storage.dir_entries(path);
+    let children = storage.dir_entries(entry.path());
     let mut children = children.try_collect::<Vec<_>>().await?;
 
     children.sort_unstable_by(|a, b| a.name().cmp(b.name()));

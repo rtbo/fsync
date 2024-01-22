@@ -1,4 +1,4 @@
-use fsync::path::FsPath;
+use fsync::path::{Path, FsPath};
 use fsyncd::{storage, storage::fs::FileSystem};
 use futures::{Future, Stream};
 use tokio::{fs, io};
@@ -32,7 +32,7 @@ impl Drop for Stub {
 impl storage::DirEntries for Stub {
     fn dir_entries(
         &self,
-        parent_path: fsync::path::PathBuf,
+        parent_path: &Path,
     ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         self.inner.dir_entries(parent_path)
     }

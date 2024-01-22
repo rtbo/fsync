@@ -144,7 +144,7 @@ where
     pub async fn delete_folder_content(&self, id: Option<&Id>, path: &Path) -> anyhow::Result<()> {
         use super::id::DirEntries;
 
-        let entries = self.dir_entries(id.map(|id| id.to_owned()), path.to_owned());
+        let entries = self.dir_entries(id, path);
         tokio::pin!(entries);
         while let Some(entry) = entries.next().await {
             let (file_id, _metadata) = entry?;
@@ -160,8 +160,8 @@ where
 {
     fn dir_entries(
         &self,
-        parent_id: Option<IdBuf>,
-        parent_path: PathBuf,
+        parent_id: Option<&Id>,
+        parent_path: &Path,
     ) -> impl Stream<Item = fsync::Result<(IdBuf, fsync::Metadata)>> + Send {
         debug_assert!(
             parent_id.is_some() || parent_path.is_root(),
@@ -178,7 +178,7 @@ where
                 next_page_token = file_list.next_page_token;
                 if let Some(files) = file_list.files {
                     for f in files {
-                        yield map_file(parent_path.clone(), f)?;
+                        yield map_file(parent_path.to_owned(), f)?;
                     }
                 }
                 if next_page_token.is_none() {
