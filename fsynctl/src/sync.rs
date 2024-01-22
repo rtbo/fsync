@@ -697,8 +697,9 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
+            let operation = fsync::Operation::CopyRemoteToLocal(entry.path().to_owned());
             self.client
-                .copy_remote_to_local(context::current(), entry.path().to_owned())
+                .operate(context::current(), operation)
                 .await?
                 // TODO: clean errors from Fsync
                 .map_err(|msg| anyhow::anyhow!("Deamon error: {msg}"))?;
@@ -713,8 +714,9 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
+            let operation = fsync::Operation::CopyLocalToRemote(entry.path().to_owned());
             self.client
-                .copy_local_to_remote(context::current(), entry.path().to_owned())
+                .operate(context::current(), operation)
                 .await?
                 // TODO: clean errors from Fsync
                 .map_err(|msg| anyhow::anyhow!("Deamon error: {msg}"))?;
