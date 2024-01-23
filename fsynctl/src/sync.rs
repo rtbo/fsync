@@ -698,11 +698,7 @@ impl SyncCommand {
 
         if !self.args.dry_run {
             let operation = fsync::Operation::CopyRemoteToLocal(entry.path().to_owned());
-            self.client
-                .operate(context::current(), operation)
-                .await?
-                // TODO: clean errors from Fsync
-                .map_err(|msg| anyhow::anyhow!("Deamon error: {msg}"))?;
+            self.client.operate(context::current(), operation).await??;
         }
         Ok(())
     }
@@ -715,11 +711,7 @@ impl SyncCommand {
 
         if !self.args.dry_run {
             let operation = fsync::Operation::CopyLocalToRemote(entry.path().to_owned());
-            self.client
-                .operate(context::current(), operation)
-                .await?
-                // TODO: clean errors from Fsync
-                .map_err(|msg| anyhow::anyhow!("Deamon error: {msg}"))?;
+            self.client.operate(context::current(), operation).await??;
         }
         Ok(())
     }
@@ -734,6 +726,7 @@ impl SyncCommand {
         local: &fsync::Metadata,
         remote: &fsync::Metadata,
     ) -> anyhow::Result<()> {
+        assert_eq!(local.path(), remote.path());
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::ReplaceLocalByRemote {
@@ -743,7 +736,8 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
-            todo!("replace local by remote");
+            let operation = fsync::Operation::ReplaceLocalByRemote(local.path().to_owned());
+            self.client.operate(context::current(), operation).await??;
         }
         Ok(())
     }
@@ -753,6 +747,7 @@ impl SyncCommand {
         local: &fsync::Metadata,
         remote: &fsync::Metadata,
     ) -> anyhow::Result<()> {
+        assert_eq!(local.path(), remote.path());
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::ReplaceRemoteByLocal {
@@ -762,7 +757,8 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
-            todo!("replace remote by local");
+            let operation = fsync::Operation::ReplaceRemoteByLocal(local.path().to_owned());
+            self.client.operate(context::current(), operation).await??;
         }
         Ok(())
     }
@@ -774,7 +770,8 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
-            todo!("delete local");
+            let operation = fsync::Operation::DeleteLocal(local.path().to_owned());
+            self.client.operate(context::current(), operation).await??;
         }
         Ok(())
     }

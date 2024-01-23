@@ -198,6 +198,9 @@ pub mod tree {
 pub enum Operation {
     CopyRemoteToLocal(PathBuf),
     CopyLocalToRemote(PathBuf),
+    ReplaceLocalByRemote(PathBuf),
+    ReplaceRemoteByLocal(PathBuf),
+    DeleteLocal(PathBuf),
 }
 
 #[tarpc::service]
