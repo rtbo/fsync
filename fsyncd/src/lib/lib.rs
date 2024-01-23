@@ -1,5 +1,3 @@
-#![feature(iter_intersperse)]
-
 use futures::{
     future::{self, BoxFuture},
     Future,

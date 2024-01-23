@@ -192,11 +192,8 @@ impl TokenCache {
                 CacheResult::Expired(..) => "Expired",
                 CacheResult::Ok(..) => "Ok",
             };
-            let scopes: String = scopes
-                .iter()
-                .map(|s| s.as_str())
-                .intersperse(", ")
-                .collect();
+            let scopes: Vec<_> = scopes.iter().map(|s| s.as_str()).collect();
+            let scopes = scopes.join(", ");
             log::trace!("check token for scopes {scopes}: {res}");
         }
 
