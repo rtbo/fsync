@@ -1,5 +1,4 @@
 #![allow(async_fn_in_trait)]
-#![feature(async_closure)]
 
 use std::{cmp, fmt, str, time};
 
