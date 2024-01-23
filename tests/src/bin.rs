@@ -2,7 +2,10 @@
 
 use std::sync::Once;
 
-use fsync::path::{FsPath, Path};
+use fsync::{
+    path::{FsPath, Path},
+    Metadata,
+};
 use fsyncd::{
     service::Service,
     storage::{
@@ -37,6 +40,18 @@ where
 
     pub fn remote(&self) -> &R {
         self.service.remote()
+    }
+
+    pub async fn local_metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>> {
+        let e = self.service.entry(path).await?;
+        Ok(e.map(|node| node.into_entry().into_local_metadata())
+            .flatten())
+    }
+
+    pub async fn remote_metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>> {
+        let e = self.service.entry(path).await?;
+        Ok(e.map(|node| node.into_entry().into_remote_metadata())
+            .flatten())
     }
 
     pub async fn local_file_content(&self, path: &Path) -> anyhow::Result<String> {
