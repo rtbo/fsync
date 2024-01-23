@@ -124,6 +124,22 @@ pub mod tree {
             }
         }
 
+        pub fn into_local_metadata(self) -> Option<super::Metadata> {
+            match self {
+                Self::Local(metadata) => Some(metadata),
+                Self::Remote(..) => None,
+                Self::Both { local, .. } => Some(local),
+            }
+        }
+
+        pub fn into_remote_metadata(self) -> Option<super::Metadata> {
+            match self {
+                Self::Local(..) => None,
+                Self::Remote(metadata) => Some(metadata),
+                Self::Both { remote, .. } => Some(remote),
+            }
+        }
+
         pub fn is_local_only(&self) -> bool {
             matches!(self, Entry::Local(..))
         }
@@ -150,6 +166,10 @@ pub mod tree {
 
         pub fn entry(&self) -> &Entry {
             &self.entry
+        }
+
+        pub fn into_entry(self) -> Entry {
+            self.entry
         }
 
         pub fn children(&self) -> &[String] {
