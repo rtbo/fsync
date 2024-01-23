@@ -71,7 +71,21 @@ async fn copy_local_to_remote_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
-        .operate(&Operation::CopyLocalToRemote(path.clone()))
+        .operate(&Operation::CopyLocalToRemote(path))
         .await
         .unwrap_display();
+}
+
+#[tokio::test]
+async fn replace_local_by_remote() {
+    let h = harness().await;
+    let path = PathBuf::from("/both.txt");
+    h.service
+        .operate(&Operation::ReplaceLocalByRemote(path.clone()))
+        .await
+        .unwrap();
+    let local_content = h.local_file_content(&path).await.unwrap();
+    let remote_content = h.remote_file_content(&path).await.unwrap();
+    assert_eq!(&local_content, "/both.txt - remote");
+    assert_eq!(&remote_content, "/both.txt - remote");
 }

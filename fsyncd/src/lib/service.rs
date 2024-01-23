@@ -126,6 +126,7 @@ where
         match operation {
             Operation::CopyRemoteToLocal(path) => self.copy_remote_to_local(path.as_ref()).await,
             Operation::CopyLocalToRemote(path) => self.copy_local_to_remote(path.as_ref()).await,
+            _ => Err(fsync::other_error!("unimplemented")),
         }
     }
 }
