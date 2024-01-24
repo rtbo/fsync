@@ -59,6 +59,11 @@ where
     }
 }
 
+impl<L, R> Service<L, R>
+where
+    L: storage::Storage,
+    R: storage::Storage,
+{
 fn check_path(path: &Path) -> Result<(), PathError> {
     if path.is_relative() {
         Err(PathError::Illegal(
@@ -67,6 +72,14 @@ fn check_path(path: &Path) -> Result<(), PathError> {
         ))
     } else {
         Ok(())
+        }
+    }
+
+    fn check_node(&self, path: &Path) -> fsync::Result<tree::Node> {
+        Self::check_path(path)?;
+        let node = self.tree.entry(path);
+        let node = node.ok_or_else(|| fsync::PathError::NotFound(path.to_owned(), None))?;
+        Ok(node)
     }
 }
 
@@ -76,18 +89,12 @@ where
     R: storage::Storage,
 {
     pub async fn entry(&self, path: &Path) -> Result<Option<fsync::tree::Node>, Error> {
-        check_path(path)?;
+        Self::check_path(path)?;
         Ok(self.tree.entry(&path).map(Into::into))
     }
 
     pub async fn copy_remote_to_local(&self, path: &Path) -> Result<(), Error> {
-        check_path(path)?;
-        let entry = self.tree.entry(&path);
-        if entry.is_none() {
-            Err(PathError::NotFound(path.to_owned(), None))?;
-        }
-        let node = entry.unwrap();
-
+        let node = self.check_node(path)?;
         match node.entry() {
             tree::Entry::Local(..) => Err(PathError::Only(path.to_owned(), Location::Local))?,
             tree::Entry::Remote(remote) => {
@@ -101,13 +108,7 @@ where
     }
 
     pub async fn copy_local_to_remote(&self, path: &Path) -> Result<(), fsync::Error> {
-        check_path(path)?;
-        let entry = self.tree.entry(&path);
-        if entry.is_none() {
-            Err(PathError::NotFound(path.to_owned(), None))?;
-        }
-        let node = entry.unwrap();
-
+        let node = self.check_node(path)?;
         match node.entry() {
             tree::Entry::Local(local) => {
                 let read = self.local.read_file(local.path().to_owned()).await?;
