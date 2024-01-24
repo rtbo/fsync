@@ -67,6 +67,16 @@ impl storage::CreateFile for Stub {
     }
 }
 
+impl storage::WriteFile for Stub {
+    fn write_file(
+        &self,
+        metadata: &fsync::Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
+        self.inner.write_file(metadata, data)
+    }
+}
+
 impl fsyncd::Shutdown for Stub {
     async fn shutdown(&self) -> anyhow::Result<()> {
         let _ = fs::remove_dir_all(self.root()).await;

@@ -88,6 +88,29 @@ impl FileSystem {
     }
 }
 
+impl FileSystem {
+    async fn do_write(
+        &self,
+        fs_path: &FsPath,
+        metadata: &fsync::Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> fsync::Result<fsync::Metadata> {
+        {
+            tokio::pin!(data);
+
+            let mut f = tokio::fs::File::create(&fs_path).await?;
+            tokio::io::copy(&mut data, &mut f).await?;
+
+            if let Some(mtime) = metadata.mtime() {
+                let f = f.into_std().await;
+                f.set_modified(mtime.into())?;
+            }
+        }
+        let fs_metadata = tokio::fs::metadata(&fs_path).await?;
+        map_metadata(metadata.path().to_owned(), &fs_metadata, &fs_path).await
+    }
+}
+
 impl super::DirEntries for FileSystem {
     fn dir_entries(
         &self,
@@ -148,19 +171,26 @@ impl super::CreateFile for FileSystem {
         if fs_path.exists() {
             fsync::io_bail!("{} already exists here: {fs_path}", metadata.path());
         }
-        {
-            tokio::pin!(data);
+        Ok(self.do_write(&fs_path, metadata, data).await?)
+    }
+}
 
-            let mut f = tokio::fs::File::create(&fs_path).await?;
-            tokio::io::copy(&mut data, &mut f).await?;
-
-            if let Some(mtime) = metadata.mtime() {
-                let f = f.into_std().await;
-                f.set_modified(mtime.into())?;
-            }
+impl super::WriteFile for FileSystem {
+    async fn write_file(
+        &self,
+        metadata: &fsync::Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> fsync::Result<fsync::Metadata> {
+        debug_assert!(metadata.path().is_absolute());
+        let fs_path = self.root.join(metadata.path().without_root().as_str());
+        log::info!("writing {fs_path}");
+        if fs_path.is_dir() {
+            fsync::io_bail!("{} is a direceory: {fs_path}", metadata.path());
         }
-        let fs_metadata = tokio::fs::metadata(&fs_path).await?;
-        map_metadata(metadata.path().to_owned(), &fs_metadata, &fs_path).await
+        if !fs_path.exists() {
+            fsync::io_bail!("{} doesn't exists here: {fs_path}", metadata.path());
+        }
+        Ok(self.do_write(&fs_path, metadata, data).await?)
     }
 }
 

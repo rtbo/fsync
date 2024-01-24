@@ -249,6 +249,21 @@ where
     }
 }
 
+impl<A> super::id::WriteFile for GoogleDrive<A>
+where
+    A: GetToken,
+{
+    async fn write_file(
+        &self,
+        _id: &Id,
+        metadata: &fsync::Metadata,
+        _data: impl io::AsyncRead,
+    ) -> fsync::Result<fsync::Metadata> {
+        debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
+        unimplemented!()
+    }
+}
+
 impl<A> PersistCache for GoogleDrive<A>
 where
     A: PersistCache + Send + Sync,
@@ -577,7 +592,7 @@ mod api {
                 supports_all_drives: self.shared,
             };
             let upload_url = self
-                .post_upload_request(scopes, "/files", &upload_params, Some(file))
+                .upload_request(reqwest::Method::POST, scopes, "/files", &upload_params, Some(file))
                 .await?;
 
             tokio::pin!(data);
@@ -733,8 +748,9 @@ mod utils {
             Ok(res)
         }
 
-        pub async fn post_upload_request<'a, B>(
+        pub async fn upload_request<'a, B>(
             &self,
+            method: reqwest::Method,
             scopes: &[api::Scope],
             path: &str,
             params: &api::UploadParams<'_>,
@@ -748,7 +764,7 @@ mod utils {
             let url = url_with_query(&self.upload_base_url, path, params.query_params());
             let mut req = self
                 .client
-                .post(url.clone())
+                .request(method, url.clone())
                 .bearer_auth(token.secret())
                 .header(header::USER_AGENT, &self.user_agent);
             if let Some(mt) = params.mime_type {

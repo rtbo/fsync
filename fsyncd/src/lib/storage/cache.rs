@@ -270,6 +270,20 @@ where
     }
 }
 
+impl<S> super::WriteFile for CacheStorage<S>
+where
+    S: super::id::WriteFile + Send + Sync,
+{
+    async fn write_file(
+        &self,
+        metadata: &fsync::Metadata,
+        _data: impl io::AsyncRead + Send,
+    ) -> fsync::Result<fsync::Metadata> {
+        log::info!("creating file {}", metadata.path());
+        unimplemented!()
+    }
+}
+
 impl<S> crate::PersistCache for CacheStorage<S>
 where
     S: super::id::Storage,

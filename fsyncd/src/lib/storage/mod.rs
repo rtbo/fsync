@@ -36,7 +36,16 @@ pub trait CreateFile {
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
+pub trait WriteFile {
+    fn write_file(
+        &self,
+        metadata: &Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
+}
+
+/// A trait for path-based storage
 pub trait Storage:
-    Clone + DirEntries + ReadFile + MkDir + CreateFile + Shutdown + Send + Sync + 'static
+    Clone + DirEntries + ReadFile + MkDir + CreateFile  + WriteFile + Shutdown + Send + Sync + 'static
 {
 }

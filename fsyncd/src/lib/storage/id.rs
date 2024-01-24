@@ -161,7 +161,17 @@ pub trait CreateFile {
     ) -> impl Future<Output = fsync::Result<(IdBuf, Metadata)>> + Send;
 }
 
+pub trait WriteFile {
+    fn write_file(
+        &self,
+        id: &Id,
+        metadata: &Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
+}
+
+/// A trait for an ID-based storage
 pub trait Storage:
-    Clone + DirEntries + ReadFile + MkDir + CreateFile + Shutdown + Send + Sync + 'static
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + WriteFile + Shutdown + Send + Sync + 'static
 {
 }
