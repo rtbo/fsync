@@ -72,8 +72,8 @@ impl id::CreateFile for Stub {
         data: impl io::AsyncRead + Send,
     ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
         let metadata = self.inner.create_file(metadata, data).await?;
-        let id = IdBuf::from(metadata.path());
-        Ok((id, metadata))
+        let id: String = metadata.path().normalize()?.into_string();
+        Ok((IdBuf::from(id), metadata))
     }
 }
 
@@ -81,6 +81,7 @@ impl id::WriteFile for Stub {
     async fn write_file(
         &self,
         _id: &id::Id,
+        _parent_id: Option<&id::Id>,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
     ) -> fsync::Result<fsync::Metadata> {

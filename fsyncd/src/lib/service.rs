@@ -111,6 +111,7 @@ where
         let node = self.check_node(path)?;
         match node.entry() {
             tree::Entry::Local(local) => {
+
                 let read = self.local.read_file(local.path().to_owned()).await?;
 
                 let remote = self.remote.create_file(local, read).await.unwrap();
@@ -138,7 +139,27 @@ where
             ))?,
             tree::Entry::Remote(remote) => Err(PathError::Unexpected(
                 remote.path().to_owned(),
+                Location::Remote,
+            ))?,
+        }
+    }
+
+    pub async fn replace_remote_by_local(&self, path: &Path) -> fsync::Result<()> {
+        let node = self.check_node(path)?;
+        match node.entry() {
+            tree::Entry::Both { local, .. } => {
+                let data = self.local().read_file(path.to_path_buf()).await?;
+                let remote = self.remote().write_file(local, data).await?;
+                self.tree.add_remote(path, remote).unwrap();
+                Ok(())
+            }
+            tree::Entry::Local(local) => Err(PathError::Unexpected(
+                local.path().to_owned(),
                 Location::Local,
+            ))?,
+            tree::Entry::Remote(remote) => Err(PathError::Unexpected(
+                remote.path().to_owned(),
+                Location::Remote,
             ))?,
         }
     }
@@ -147,7 +168,12 @@ where
         match operation {
             Operation::CopyRemoteToLocal(path) => self.copy_remote_to_local(path.as_ref()).await,
             Operation::CopyLocalToRemote(path) => self.copy_local_to_remote(path.as_ref()).await,
-            Operation::ReplaceLocalByRemote(path) => self.replace_local_by_remote(path.as_ref()).await,
+            Operation::ReplaceLocalByRemote(path) => {
+                self.replace_local_by_remote(path.as_ref()).await
+            }
+            Operation::ReplaceRemoteByLocal(path) => {
+                self.replace_remote_by_local(path.as_ref()).await
+            }
             _ => Err(fsync::other_error!("unimplemented")),
         }
     }

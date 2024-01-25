@@ -46,6 +46,6 @@ pub trait WriteFile {
 
 /// A trait for path-based storage
 pub trait Storage:
-    Clone + DirEntries + ReadFile + MkDir + CreateFile  + WriteFile + Shutdown + Send + Sync + 'static
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + WriteFile + Shutdown + Send + Sync + 'static
 {
 }

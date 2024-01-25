@@ -178,7 +178,9 @@ where
                 next_page_token = file_list.next_page_token;
                 if let Some(files) = file_list.files {
                     for f in files {
-                        yield map_file(parent_path.to_owned(), f)?;
+                        let id = f.id.clone().unwrap_or_default();
+                        let metadata = map_file(parent_path.to_owned(), f)?;
+                        yield (id, metadata);
                     }
                 }
                 if next_page_token.is_none() {
@@ -243,9 +245,11 @@ where
         );
         let file = map_metadata(parent_id, None, metadata);
         let file = self
-            .files_create_upload(&file, metadata.size().unwrap(), data)
+            .files_upload(reqwest::Method::POST, &file, metadata.size().unwrap(), data)
             .await?;
-        map_file(metadata.path().parent().unwrap().to_owned(), file)
+        let id = file.id.clone().unwrap_or_default();
+        let metadata = map_file(metadata.path().parent().unwrap().to_owned(), file)?;
+        Ok((id, metadata))
     }
 }
 
@@ -255,12 +259,27 @@ where
 {
     async fn write_file(
         &self,
-        _id: &Id,
+        id: &Id,
+        parent_id: Option<&Id>,
         metadata: &fsync::Metadata,
-        _data: impl io::AsyncRead,
+        data: impl io::AsyncRead,
     ) -> fsync::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
-        unimplemented!()
+        log::info!(
+            "creating file {} ({} bytes)",
+            metadata.path(),
+            metadata.size().unwrap()
+        );
+        let file = map_metadata(parent_id, Some(id), metadata);
+        let file = self
+            .files_upload(
+                reqwest::Method::PATCH,
+                &file,
+                metadata.size().unwrap(),
+                data,
+            )
+            .await?;
+        map_file(metadata.path().parent().unwrap().to_owned(), file)
     }
 }
 
@@ -286,8 +305,7 @@ impl<A> super::id::Storage for GoogleDrive<A> where A: Clone + GetToken + Persis
 
 const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 
-fn map_file(parent_path: PathBuf, f: api::File) -> fsync::Result<(IdBuf, fsync::Metadata)> {
-    let id = f.id.unwrap_or_default();
+fn map_file(parent_path: PathBuf, f: api::File) -> fsync::Result<fsync::Metadata> {
     let path = parent_path.join(f.name.as_deref().unwrap());
     let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
         fsync::Metadata::Directory { path }
@@ -301,7 +319,7 @@ fn map_file(parent_path: PathBuf, f: api::File) -> fsync::Result<(IdBuf, fsync::
             as _;
         fsync::Metadata::Regular { path, size, mtime }
     };
-    Ok((id, metadata))
+    Ok(metadata)
 }
 
 fn map_metadata(parent_id: Option<&Id>, id: Option<&Id>, metadata: &fsync::Metadata) -> api::File {
@@ -572,8 +590,9 @@ mod api {
             Ok(file)
         }
 
-        pub async fn files_create_upload<D>(
+        pub async fn files_upload<D>(
             &self,
+            method: reqwest::Method,
             file: &File,
             data_len: u64,
             data: D,
@@ -592,7 +611,7 @@ mod api {
                 supports_all_drives: self.shared,
             };
             let upload_url = self
-                .upload_request(reqwest::Method::POST, scopes, "/files", &upload_params, Some(file))
+                .upload_request(method.clone(), scopes, "/files", &upload_params, Some(file))
                 .await?;
 
             tokio::pin!(data);
@@ -605,9 +624,16 @@ mod api {
                     .take(UPLOAD_CHUNK_SZ)
                     .read_to_end(&mut buf)
                     .await?;
-                println!("uploading {sz} bytes");
+                log::trace!("uploading {sz} bytes");
                 let res = self
-                    .put_upload_range(scopes, upload_url.clone(), buf, sent, data_len)
+                    .upload_range(
+                        method.clone(),
+                        scopes,
+                        upload_url.clone(),
+                        buf,
+                        sent,
+                        data_len,
+                    )
                     .await?;
                 sent += sz as u64;
                 let status = res.status();
@@ -616,8 +642,8 @@ mod api {
                 } else if status.is_server_error() {
                     fsync::api_bail!("Upload failed ({status}). No support yet to resume upload");
                 } else if res.status().is_client_error() {
-                    panic!(
-                        "bad request ({status}): {}",
+                    fsync::other_bail!(
+                        "fsyncd bug!! Bad request ({status}): {}",
                         String::from_utf8_lossy(&res.bytes().await.unwrap())
                     );
                 }
@@ -788,8 +814,9 @@ mod utils {
             Ok(Url::parse(location.to_str().unwrap())?)
         }
 
-        pub async fn put_upload_range(
+        pub async fn upload_range(
             &self,
+            method: reqwest::Method,
             scopes: &[api::Scope],
             url: Url,
             data: Vec<u8>,
@@ -803,7 +830,7 @@ mod utils {
 
             let mut req = self
                 .client
-                .put(url)
+                .request(method, url)
                 .bearer_auth(token.secret())
                 .header(header::USER_AGENT, &self.user_agent)
                 .header(header::CONTENT_LENGTH, data_len);

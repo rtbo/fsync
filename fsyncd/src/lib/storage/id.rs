@@ -165,6 +165,7 @@ pub trait WriteFile {
     fn write_file(
         &self,
         id: &Id,
+        parent_id: Option<&Id>,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;

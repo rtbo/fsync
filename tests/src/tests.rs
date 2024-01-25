@@ -89,3 +89,17 @@ async fn replace_local_by_remote() {
     assert_eq!(&local_content, "/both.txt - remote");
     assert_eq!(&remote_content, "/both.txt - remote");
 }
+
+#[tokio::test]
+async fn replace_remote_by_local() {
+    let h = harness().await;
+    let path = PathBuf::from("/both.txt");
+    h.service
+        .operate(&Operation::ReplaceRemoteByLocal(path.clone()))
+        .await
+        .unwrap();
+    let local_content = h.local_file_content(&path).await.unwrap();
+    let remote_content = h.remote_file_content(&path).await.unwrap();
+    assert_eq!(&local_content, "/both.txt - local");
+    assert_eq!(&remote_content, "/both.txt - local");
+}
