@@ -770,7 +770,7 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
-            let operation = fsync::Operation::DeleteLocal(local.path().to_owned());
+            let operation = fsync::Operation::Delete(local.path().to_owned(), fsync::Location::Local);
             self.client.operate(context::current(), operation).await??;
         }
         Ok(())

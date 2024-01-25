@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::path::{Path, PathBuf};
+use crate::{path::{Path, PathBuf}, Location};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Metadata {
@@ -200,7 +200,7 @@ pub enum Operation {
     CopyLocalToRemote(PathBuf),
     ReplaceLocalByRemote(PathBuf),
     ReplaceRemoteByLocal(PathBuf),
-    DeleteLocal(PathBuf),
+    Delete(PathBuf, Location),
 }
 
 #[tarpc::service]

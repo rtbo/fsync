@@ -21,6 +21,23 @@ pub use crate::{
 
 pub mod path;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Location {
+    Local,
+    Remote,
+    Both,
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Location::Local => f.write_str("local drive"),
+            Location::Remote => f.write_str("remote drive"),
+            Location::Both => f.write_str("both drives"),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Provider {
     GoogleDrive,

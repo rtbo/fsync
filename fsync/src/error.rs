@@ -3,24 +3,7 @@ use std::{error, fmt, io, string::FromUtf8Error};
 use camino::FromPathBufError;
 use serde::{Deserialize, Serialize};
 
-use crate::path::PathBuf;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Location {
-    Local,
-    Remote,
-    Both,
-}
-
-impl fmt::Display for Location {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Location::Local => f.write_str("local drive"),
-            Location::Remote => f.write_str("remote drive"),
-            Location::Both => f.write_str("both drives"),
-        }
-    }
-}
+use crate::{path::PathBuf, Location};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum PathError {
