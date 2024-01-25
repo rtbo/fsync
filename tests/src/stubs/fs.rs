@@ -1,4 +1,4 @@
-use fsync::path::{Path, FsPath};
+use fsync::path::{FsPath, Path};
 use fsyncd::{storage, storage::fs::FileSystem};
 use futures::{Future, Stream};
 use tokio::{fs, io};
@@ -64,6 +64,16 @@ impl storage::CreateFile for Stub {
         data: impl io::AsyncRead + Send,
     ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
         self.inner.create_file(metadata, data)
+    }
+}
+
+impl storage::WriteFile for Stub {
+    fn write_file(
+        &self,
+        metadata: &fsync::Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
+        self.inner.write_file(metadata, data)
     }
 }
 

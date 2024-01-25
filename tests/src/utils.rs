@@ -4,6 +4,30 @@ use fsyncd::storage::Storage;
 use futures::future::BoxFuture;
 use tokio::{fs, io};
 
+/// A trait to add `unwrap_display` method to `Result`.
+pub trait UnwrapDisplay {
+    type Inner;
+
+    /// Unwrap the result but panics with message formatted with fmt::Display
+    /// in case of error
+    #[track_caller]
+    fn unwrap_display(self) -> Self::Inner;
+}
+
+impl<T, E> UnwrapDisplay for std::result::Result<T, E>
+where
+    E: std::error::Error,
+{
+    type Inner = T;
+
+    fn unwrap_display(self) -> Self::Inner {
+        match self {
+            Ok(inner) => inner,
+            Err(err) => panic!("{err}"),
+        }
+    }
+}
+
 pub fn temp_path(prefix: Option<&str>, ext: Option<&str>) -> FsPathBuf {
     use rand::{distributions::Alphanumeric, Rng};
 

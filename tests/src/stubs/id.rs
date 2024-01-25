@@ -3,7 +3,7 @@ use fsyncd::{
     storage::{
         fs::FileSystem,
         id::{self, IdBuf},
-        CreateFile, DirEntries, MkDir, ReadFile,
+        CreateFile, DirEntries, MkDir, ReadFile, WriteFile,
     },
     Shutdown,
 };
@@ -74,6 +74,18 @@ impl id::CreateFile for Stub {
         let metadata = self.inner.create_file(metadata, data).await?;
         let id = IdBuf::from(metadata.path());
         Ok((id, metadata))
+    }
+}
+
+impl id::WriteFile for Stub {
+    async fn write_file(
+        &self,
+        _id: &id::Id,
+        metadata: &fsync::Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> fsync::Result<fsync::Metadata> {
+        let metadata = self.inner.write_file(metadata, data).await?;
+        Ok(metadata)
     }
 }
 

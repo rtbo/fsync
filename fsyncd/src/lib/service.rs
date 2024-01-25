@@ -7,7 +7,7 @@ use fsync::{
     self,
     loc::inst,
     path::{Path, PathBuf},
-    Error, Fsync, Location, PathError,
+    Error, Fsync, Location, Operation, PathError,
 };
 use futures::{
     future,
@@ -59,14 +59,27 @@ where
     }
 }
 
-fn check_path(path: &Path) -> Result<(), PathError> {
-    if path.is_relative() {
-        Err(PathError::Illegal(
-            path.to_owned(),
-            Some("Expected an absolute path".to_string()),
-        ))
-    } else {
-        Ok(())
+impl<L, R> Service<L, R>
+where
+    L: storage::Storage,
+    R: storage::Storage,
+{
+    fn check_path(path: &Path) -> Result<(), PathError> {
+        if path.is_relative() {
+            Err(PathError::Illegal(
+                path.to_owned(),
+                Some("Expected an absolute path".to_string()),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn check_node(&self, path: &Path) -> fsync::Result<tree::Node> {
+        Self::check_path(path)?;
+        let node = self.tree.entry(path);
+        let node = node.ok_or_else(|| fsync::PathError::NotFound(path.to_owned(), None))?;
+        Ok(node)
     }
 }
 
@@ -76,24 +89,18 @@ where
     R: storage::Storage,
 {
     pub async fn entry(&self, path: &Path) -> Result<Option<fsync::tree::Node>, Error> {
-        check_path(path)?;
-        Ok(self.tree.entry(&path).map(Into::into))
+        Self::check_path(path)?;
+        Ok(self.tree.entry(path).map(Into::into))
     }
 
     pub async fn copy_remote_to_local(&self, path: &Path) -> Result<(), Error> {
-        check_path(path)?;
-        let entry = self.tree.entry(&path);
-        if entry.is_none() {
-            Err(PathError::NotFound(path.to_owned(), None))?;
-        }
-        let node = entry.unwrap();
-
+        let node = self.check_node(path)?;
         match node.entry() {
             tree::Entry::Local(..) => Err(PathError::Only(path.to_owned(), Location::Local))?,
             tree::Entry::Remote(remote) => {
                 let read = self.remote.read_file(remote.path().to_owned()).await?;
                 let local = self.local.create_file(remote, read).await?;
-                self.tree.add_local(&path, local).unwrap();
+                self.tree.add_local(path, local).unwrap();
                 Ok(())
             }
             _ => Err(PathError::Unexpected(path.to_owned(), Location::Both))?,
@@ -101,24 +108,47 @@ where
     }
 
     pub async fn copy_local_to_remote(&self, path: &Path) -> Result<(), fsync::Error> {
-        check_path(path)?;
-        let entry = self.tree.entry(&path);
-        if entry.is_none() {
-            Err(PathError::NotFound(path.to_owned(), None))?;
-        }
-        let node = entry.unwrap();
-
+        let node = self.check_node(path)?;
         match node.entry() {
             tree::Entry::Local(local) => {
                 let read = self.local.read_file(local.path().to_owned()).await?;
 
                 let remote = self.remote.create_file(local, read).await.unwrap();
 
-                self.tree.add_remote(&path, remote).unwrap();
+                self.tree.add_remote(path, remote).unwrap();
                 Ok(())
             }
             tree::Entry::Remote(..) => Err(PathError::Only(path.to_owned(), Location::Remote))?,
             _ => Err(PathError::Unexpected(path.to_owned(), Location::Both))?,
+        }
+    }
+
+    pub async fn replace_local_by_remote(&self, path: &Path) -> fsync::Result<()> {
+        let node = self.check_node(path)?;
+        match node.entry() {
+            tree::Entry::Both { remote, .. } => {
+                let data = self.remote().read_file(path.to_path_buf()).await?;
+                let local = self.local().write_file(remote, data).await?;
+                self.tree.add_local(path, local).unwrap();
+                Ok(())
+            }
+            tree::Entry::Local(local) => Err(PathError::Unexpected(
+                local.path().to_owned(),
+                Location::Local,
+            ))?,
+            tree::Entry::Remote(remote) => Err(PathError::Unexpected(
+                remote.path().to_owned(),
+                Location::Local,
+            ))?,
+        }
+    }
+
+    pub async fn operate(&self, operation: &Operation) -> fsync::Result<()> {
+        match operation {
+            Operation::CopyRemoteToLocal(path) => self.copy_remote_to_local(path.as_ref()).await,
+            Operation::CopyLocalToRemote(path) => self.copy_local_to_remote(path.as_ref()).await,
+            Operation::ReplaceLocalByRemote(path) => self.replace_local_by_remote(path.as_ref()).await,
+            _ => Err(fsync::other_error!("unimplemented")),
         }
     }
 }
@@ -218,15 +248,9 @@ where
         res
     }
 
-    async fn copy_remote_to_local(self, _: Context, path: PathBuf) -> fsync::Result<()> {
-        let res = self.inner.copy_remote_to_local(&path).await;
-        log::trace!(target: "RPC", "Fsync::copy_remote_to_local(path: {path:?}) -> {res:#?}");
-        res
-    }
-
-    async fn copy_local_to_remote(self, _: Context, path: PathBuf) -> fsync::Result<()> {
-        let res = self.inner.copy_local_to_remote(&path).await;
-        log::trace!(target: "RPC", "Fsync::copy_local_to_remote(path: {path:?}) -> {res:#?}");
+    async fn operate(self, _: Context, action: fsync::Operation) -> fsync::Result<()> {
+        let res = self.inner.operate(&action).await;
+        log::trace!(target: "RPC", "{action:#?} -> {res:#?}");
         res
     }
 }

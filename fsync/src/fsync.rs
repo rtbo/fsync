@@ -124,6 +124,22 @@ pub mod tree {
             }
         }
 
+        pub fn into_local_metadata(self) -> Option<super::Metadata> {
+            match self {
+                Self::Local(metadata) => Some(metadata),
+                Self::Remote(..) => None,
+                Self::Both { local, .. } => Some(local),
+            }
+        }
+
+        pub fn into_remote_metadata(self) -> Option<super::Metadata> {
+            match self {
+                Self::Local(..) => None,
+                Self::Remote(metadata) => Some(metadata),
+                Self::Both { remote, .. } => Some(remote),
+            }
+        }
+
         pub fn is_local_only(&self) -> bool {
             matches!(self, Entry::Local(..))
         }
@@ -152,6 +168,10 @@ pub mod tree {
             &self.entry
         }
 
+        pub fn into_entry(self) -> Entry {
+            self.entry
+        }
+
         pub fn children(&self) -> &[String] {
             &self.children
         }
@@ -174,9 +194,17 @@ pub mod tree {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Operation {
+    CopyRemoteToLocal(PathBuf),
+    CopyLocalToRemote(PathBuf),
+    ReplaceLocalByRemote(PathBuf),
+    ReplaceRemoteByLocal(PathBuf),
+    DeleteLocal(PathBuf),
+}
+
 #[tarpc::service]
 pub trait Fsync {
     async fn entry(path: PathBuf) -> crate::Result<Option<tree::Node>>;
-    async fn copy_remote_to_local(path: PathBuf) -> crate::Result<()>;
-    async fn copy_local_to_remote(path: PathBuf) -> crate::Result<()>;
+    async fn operate(operation: Operation) -> crate::Result<()>;
 }

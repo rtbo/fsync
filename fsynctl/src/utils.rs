@@ -7,14 +7,15 @@ pub fn single_instance_name() -> anyhow::Result<Option<String>> {
     if !config_dir.exists() {
         return Ok(None);
     }
-    let dirent: Vec<_> = config_dir.read_dir_utf8()?.try_collect()?;
+    let dirent = config_dir.read_dir_utf8()?.collect::<Vec<_>>();
 
     if dirent.len() != 1 {
         return Ok(None);
     }
-    let entry = &dirent[0];
+    let entry = dirent.into_iter().next().unwrap()?;
     if entry.file_type()?.is_dir() {
-        Ok(Some(entry.file_name().to_owned()))
+        let filename = entry.file_name().to_owned();
+        Ok(Some(filename))
     } else {
         Ok(None)
     }
