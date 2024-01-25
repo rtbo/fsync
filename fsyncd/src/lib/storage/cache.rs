@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use anyhow::Context;
 use async_stream::try_stream;
@@ -61,6 +61,16 @@ where
             storage,
             persist,
         })
+    }
+}
+
+impl<S> CacheStorage<S> {
+    fn check_path(path: &Path) -> fsync::Result<PathBuf> {
+        debug_assert!(path.is_absolute());
+        let path = path
+            .normalize()
+            .map_err(|err| fsync::PathError::Illegal(path.to_path_buf(), Some(err.to_string())))?;
+        Ok(path)
     }
 }
 
@@ -260,12 +270,16 @@ where
             .storage
             .create_file(parent.id.as_deref(), metadata, data)
             .await?;
+        mem::drop(parent);
+
         let node = CacheNode {
             id: Some(id),
             metadata: metadata.clone(),
             children: Vec::new(),
         };
+        log::debug!("will insert new node {}", metadata.path());
         self.entries.insert(metadata.path().to_owned(), node);
+        log::debug!("done inserting new node {}", metadata.path());
         Ok(metadata)
     }
 }
@@ -277,10 +291,30 @@ where
     async fn write_file(
         &self,
         metadata: &fsync::Metadata,
-        _data: impl io::AsyncRead + Send,
+        data: impl io::AsyncRead + Send,
     ) -> fsync::Result<fsync::Metadata> {
         log::info!("creating file {}", metadata.path());
-        unimplemented!()
+        debug_assert!(!metadata.path().is_root());
+        let path = Self::check_path(metadata.path())?;
+        let parent_id = {
+            let parent = self
+                .entries
+                .get(path.parent().expect("non-root path should have parent"))
+                .expect("Parent node should be defined");
+            parent.id.clone()
+        };
+        let mut node = self.entries.get_mut(&path).expect("Path should be present");
+        let metadata = {
+            let id = node
+                .id
+                .as_deref()
+                .expect("Id should be set for non-root path");
+            self.storage
+                .write_file(id, parent_id.as_deref(), metadata, data)
+                .await?
+        };
+        node.metadata = metadata.clone();
+        Ok(metadata)
     }
 }
 
