@@ -28,6 +28,14 @@ impl Entry {
         }
     }
 
+    fn with_local(self, local: fsync::Metadata) -> Self {
+        match self {
+            Entry::Remote(remote) => Entry::Both { local, remote },
+            Entry::Local(..) => Entry::Local(local),
+            Entry::Both { remote, .. } => Entry::Both { local, remote },
+        }
+    }
+
     fn with_remote(self, remote: fsync::Metadata) -> Self {
         match self {
             Entry::Local(local) => Entry::Both { local, remote },
@@ -36,11 +44,19 @@ impl Entry {
         }
     }
 
-    fn with_local(self, local: fsync::Metadata) -> Self {
+    fn without_local(self) -> Self {
         match self {
-            Entry::Remote(remote) => Entry::Both { local, remote },
-            Entry::Local(..) => Entry::Local(local),
-            Entry::Both { remote, .. } => Entry::Both { local, remote },
+            Entry::Local(..) => unreachable!(),
+            Entry::Remote(..) => unreachable!(),
+            Entry::Both { remote, .. } => Entry::Remote(remote),
+        }
+    }
+
+    fn without_remote(self) -> Self {
+        match self {
+            Entry::Local(..) => unreachable!(),
+            Entry::Remote(..) => unreachable!(),
+            Entry::Both { local, .. } => Entry::Local(local),
         }
     }
 }
@@ -99,6 +115,20 @@ impl Node {
         let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
         let valid = mem::replace(&mut self.entry, invalid);
         self.entry = valid.with_remote(remote);
+    }
+
+    pub fn remove_local(&mut self) {
+        use std::mem;
+        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+        let valid = mem::replace(&mut self.entry, invalid);
+        self.entry = valid.without_local();
+    }
+
+    pub fn remove_remote(&mut self) {
+        use std::mem;
+        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+        let valid = mem::replace(&mut self.entry, invalid);
+        self.entry = valid.without_remote();
     }
 }
 
@@ -173,6 +203,24 @@ impl DiffTree {
         let mut node = node.unwrap();
         node.add_remote(remote);
         Ok(())
+    }
+
+    pub fn remove_local(&self, path: &Path) {
+        let node = self.nodes.get_mut(path);
+        let mut node = node.expect("remove_local should be called with a valid path");
+        assert!(node.is_both());
+        node.remove_local();
+    }
+
+    pub fn remove_remote(&self, path: &Path) {
+        let node = self.nodes.get_mut(path);
+        let mut node = node.expect("remove_remote should be called with a valid path");
+        assert!(node.is_both());
+        node.remove_remote();
+    }
+
+    pub fn remove(&self, path: &Path) {
+        self.nodes.remove(path);
     }
 
     pub fn print_out<W>(&self, w: &mut W)

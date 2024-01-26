@@ -293,7 +293,7 @@ where
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
     ) -> fsync::Result<fsync::Metadata> {
-        log::info!("creating file {}", metadata.path());
+        log::info!("writing file {}", metadata.path());
         debug_assert!(!metadata.path().is_root());
         let path = Self::check_path(metadata.path())?;
         let parent_id = {
@@ -315,6 +315,31 @@ where
         };
         node.metadata = metadata.clone();
         Ok(metadata)
+    }
+}
+
+impl<S> super::Delete for CacheStorage<S>
+where
+    S: super::id::Storage,
+{
+    async fn delete(&self, path: &Path) -> fsync::Result<()> {
+        debug_assert!(!path.is_root());
+        log::info!("deleting file {}", path);
+        let path = Self::check_path(path)?;
+        let id = {
+            let node = self.entries.get(&path);
+            if node.is_none() {
+                fsync::io_bail!("No such entry: {path}");
+            }
+            let node = node.unwrap();
+            if !node.children.is_empty() {
+                fsync::io_bail!("{path} is not a file or an empty folder");
+            }
+            node.id.clone().expect("Non-root entry should have Id")
+        };
+        self.storage.delete(&id).await?;
+        self.entries.remove(&path);
+        Ok(())
     }
 }
 

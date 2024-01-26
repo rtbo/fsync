@@ -171,8 +171,15 @@ pub trait WriteFile {
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
+/// A trait to delete files or folders
+pub trait Delete {
+    /// Deletes the file or folder referred to by `id`.
+    /// If `id` refers to a non-empty folder, all the folder content is also deleted.
+    fn delete(&self, id: &Id)-> impl Future<Output = fsync::Result<()>> + Send;
+}
+
 /// A trait for an ID-based storage
 pub trait Storage:
-    Clone + DirEntries + ReadFile + MkDir + CreateFile + WriteFile + Shutdown + Send + Sync + 'static
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + WriteFile + Delete + Shutdown + Send + Sync + 'static
 {
 }

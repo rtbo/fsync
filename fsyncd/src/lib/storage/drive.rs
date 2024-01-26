@@ -283,6 +283,15 @@ where
     }
 }
 
+impl<A> super::id::Delete for GoogleDrive<A>
+where
+    A: GetToken
+{
+    async fn delete(&self, id: &Id) -> fsync::Result<()> {
+        self.files_delete(id).await
+    }
+}
+
 impl<A> PersistCache for GoogleDrive<A>
 where
     A: PersistCache + Send + Sync,

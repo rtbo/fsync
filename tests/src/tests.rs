@@ -1,6 +1,5 @@
 use fsync::{
-    path::{Path, PathBuf},
-    Operation,
+    path::{Path, PathBuf}, Location, Operation
 };
 
 use crate::{harness, utils::UnwrapDisplay};
@@ -102,4 +101,40 @@ async fn replace_remote_by_local() {
     let remote_content = h.remote_file_content(&path).await.unwrap();
     assert_eq!(&local_content, "/both.txt - local");
     assert_eq!(&remote_content, "/both.txt - local");
+}
+
+#[tokio::test]
+async fn delete_local() {
+    let h = harness().await;
+    let path = PathBuf::from("/both.txt");
+    h.service
+        .operate(&Operation::Delete(path.clone(), Location::Local))
+        .await
+        .unwrap();
+    let node = h.service.entry(&path).await.unwrap();
+    assert!(node.unwrap().is_remote_only());
+}
+
+#[tokio::test]
+async fn delete_remote() {
+    let h = harness().await;
+    let path = PathBuf::from("/both.txt");
+    h.service
+        .operate(&Operation::Delete(path.clone(), Location::Remote))
+        .await
+        .unwrap();
+    let node = h.service.entry(&path).await.unwrap();
+    assert!(node.unwrap().is_local_only());
+}
+
+#[tokio::test]
+async fn delete_both() {
+    let h = harness().await;
+    let path = PathBuf::from("/both.txt");
+    h.service
+        .operate(&Operation::Delete(path.clone(), Location::Both))
+        .await
+        .unwrap();
+    let node = h.service.entry(&path).await.unwrap();
+    assert!(node.is_none());
 }
