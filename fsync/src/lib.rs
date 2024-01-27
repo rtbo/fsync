@@ -21,7 +21,7 @@ pub use crate::{
 
 pub mod path;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Location {
     Local,
     Remote,

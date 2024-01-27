@@ -194,6 +194,31 @@ impl super::WriteFile for FileSystem {
     }
 }
 
+impl super::Delete for FileSystem {
+    async fn delete(&self, path: &Path)-> fsync::Result<()> {
+        debug_assert!(path.is_absolute());
+        let fs_path = self.root.join(path.without_root().as_str());
+        log::info!("deleting {fs_path}");
+        let md = fs::metadata(&fs_path).await;
+        if md.is_err() {
+            return Ok(());
+        }
+        let md = md.unwrap();
+        if md.is_dir() {
+            let mut entries = fs::read_dir(&fs_path).await?;
+            let entry = entries.next_entry().await?;
+            if entry.is_some() {
+                fsync::io_bail!("{path} is a non-empty folder");
+            }
+            fs::remove_dir(&fs_path).await?;
+        }
+        else {
+            fs::remove_file(&fs_path).await?;
+        }
+        Ok(())
+    }
+}
+
 impl Shutdown for FileSystem {}
 
 impl super::Storage for FileSystem {}

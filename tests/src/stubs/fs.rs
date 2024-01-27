@@ -77,6 +77,15 @@ impl storage::WriteFile for Stub {
     }
 }
 
+impl storage::Delete for Stub {
+    fn delete(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = fsync::Result<()>> + Send {
+        self.inner.delete(path)
+    }
+}
+
 impl fsyncd::Shutdown for Stub {
     async fn shutdown(&self) -> anyhow::Result<()> {
         let _ = fs::remove_dir_all(self.root()).await;

@@ -111,7 +111,6 @@ where
         let node = self.check_node(path)?;
         match node.entry() {
             tree::Entry::Local(local) => {
-
                 let read = self.local.read_file(local.path().to_owned()).await?;
 
                 let remote = self.remote.create_file(local, read).await.unwrap();
@@ -164,6 +163,38 @@ where
         }
     }
 
+    pub async fn delete(&self, path: &Path, location: Location) -> fsync::Result<()> {
+        let node = self.check_node(path)?;
+        match (node.entry(), location) {
+            (tree::Entry::Local(..), Location::Local) => {
+                self.local().delete(path).await?;
+                self.tree.remove(path);
+            }
+            (tree::Entry::Remote(..), Location::Remote) => {
+                self.remote().delete(path).await?;
+                self.tree.remove(path);
+            }
+            (tree::Entry::Both { .. }, Location::Local) => {
+                self.local().delete(path).await?;
+                self.tree.remove_local(path);
+            }
+            (tree::Entry::Both { .. }, Location::Remote) => {
+                self.remote().delete(path).await?;
+                self.tree.remove_remote(path);
+            }
+            (tree::Entry::Both { .. }, Location::Both) => {
+                self.local().delete(path).await?;
+                self.remote().delete(path).await?;
+                self.tree.remove(path);
+            }
+            _ => Err(fsync::PathError::NotFound(
+                path.to_path_buf(),
+                Some(location),
+            ))?,
+        }
+        Ok(())
+    }
+
     pub async fn operate(&self, operation: &Operation) -> fsync::Result<()> {
         match operation {
             Operation::CopyRemoteToLocal(path) => self.copy_remote_to_local(path.as_ref()).await,
@@ -174,7 +205,7 @@ where
             Operation::ReplaceRemoteByLocal(path) => {
                 self.replace_remote_by_local(path.as_ref()).await
             }
-            _ => Err(fsync::other_error!("unimplemented")),
+            Operation::Delete(path, location) => self.delete(path.as_ref(), *location).await,
         }
     }
 }

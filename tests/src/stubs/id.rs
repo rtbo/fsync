@@ -3,7 +3,7 @@ use fsyncd::{
     storage::{
         fs::FileSystem,
         id::{self, IdBuf},
-        CreateFile, DirEntries, MkDir, ReadFile, WriteFile,
+        CreateFile, Delete, DirEntries, MkDir, ReadFile, WriteFile,
     },
     Shutdown,
 };
@@ -87,6 +87,13 @@ impl id::WriteFile for Stub {
     ) -> fsync::Result<fsync::Metadata> {
         let metadata = self.inner.write_file(metadata, data).await?;
         Ok(metadata)
+    }
+}
+
+impl id::Delete for Stub {
+    async fn delete(&self, id: &id::Id) -> fsync::Result<()> {
+        let path = PathBuf::from(id.as_str());
+        self.inner.delete(&path).await
     }
 }
 

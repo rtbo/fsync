@@ -44,8 +44,15 @@ pub trait WriteFile {
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
+/// A trait to delete files or folders
+pub trait Delete {
+    /// Deletes the file or folder pointed to by `path`.
+    /// Only empty folders can be deleted.
+    fn delete(&self, path: &Path)-> impl Future<Output = fsync::Result<()>> + Send;
+}
+
 /// A trait for path-based storage
 pub trait Storage:
-    Clone + DirEntries + ReadFile + MkDir + CreateFile + WriteFile + Shutdown + Send + Sync + 'static
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + WriteFile + Delete + Shutdown + Send + Sync + 'static
 {
 }
