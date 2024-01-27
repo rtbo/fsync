@@ -52,7 +52,11 @@ where
     pub async fn new(storage: S, persist: CachePersist) -> anyhow::Result<Self> {
         let storage = Arc::new(storage);
         let entries = if let Some(path) = persist.try_path() {
-            load_from_disk(path).await?
+            match load_from_disk(path).await {
+                Ok(entries) => entries,
+                Err(LoadError::Io(_)) => populate_from_storage(storage.clone()).await?,
+                Err(LoadError::Bincode(err)) => Err(err)?,
+            }
         } else {
             populate_from_storage(storage.clone()).await?
         };
@@ -93,7 +97,24 @@ where
     Ok(entries)
 }
 
-async fn load_from_disk(path: &FsPath) -> anyhow::Result<Arc<DashMap<PathBuf, CacheNode>>> {
+enum LoadError {
+    Io(io::Error),
+    Bincode(bincode::Error),
+}
+
+impl From<io::Error> for LoadError {
+    fn from(value: io::Error) -> Self {
+        LoadError::Io(value)
+    }
+}
+
+impl From<bincode::Error> for LoadError {
+    fn from(value: bincode::Error) -> Self {
+        LoadError::Bincode(value)
+    }
+}
+
+async fn load_from_disk(path: &FsPath) -> Result<Arc<DashMap<PathBuf, CacheNode>>, LoadError> {
     log::trace!("loading cached entries from {path}");
 
     let path2 = path.to_owned();
@@ -105,7 +126,7 @@ async fn load_from_disk(path: &FsPath) -> anyhow::Result<Arc<DashMap<PathBuf, Ca
         let reader = BufReader::new(reader);
         let opts = bincode_options();
         let entries: DashMap<PathBuf, CacheNode> = opts.deserialize_from(reader)?;
-        Ok::<_, anyhow::Error>(entries)
+        Ok::<_, LoadError>(entries)
     });
 
     let entries = handle.await.unwrap()?;
