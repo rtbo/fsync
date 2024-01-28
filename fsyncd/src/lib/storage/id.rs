@@ -7,6 +7,61 @@ use tokio::io;
 
 use crate::Shutdown;
 
+pub trait DirEntries {
+    fn dir_entries(
+        &self,
+        parent_id: Option<&Id>,
+        parent_path: &Path,
+    ) -> impl Stream<Item = fsync::Result<(IdBuf, Metadata)>> + Send;
+}
+
+pub trait ReadFile {
+    fn read_file(
+        &self,
+        id: IdBuf,
+    ) -> impl Future<Output = fsync::Result<impl io::AsyncRead + Send>> + Send;
+}
+
+pub trait MkDir {
+    fn mkdir(
+        &self,
+        parent_id: Option<&Id>,
+        name: &str,
+    ) -> impl Future<Output = fsync::Result<IdBuf>> + Send;
+}
+
+pub trait CreateFile {
+    fn create_file(
+        &self,
+        parent_id: Option<&Id>,
+        metadata: &Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> impl Future<Output = fsync::Result<(IdBuf, Metadata)>> + Send;
+}
+
+pub trait WriteFile {
+    fn write_file(
+        &self,
+        id: &Id,
+        parent_id: Option<&Id>,
+        metadata: &Metadata,
+        data: impl io::AsyncRead + Send,
+    ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
+}
+
+/// A trait to delete files or folders
+pub trait Delete {
+    /// Deletes the file or folder referred to by `id`.
+    /// If `id` refers to a non-empty folder, all the folder content is also deleted.
+    fn delete(&self, id: &Id)-> impl Future<Output = fsync::Result<()>> + Send;
+}
+
+/// A trait for an ID-based storage
+pub trait Storage:
+    Clone + DirEntries + ReadFile + MkDir + CreateFile + WriteFile + Delete + Shutdown + Send + Sync + 'static
+{
+}
+
 #[repr(transparent)]
 pub struct Id {
     inner: str,
@@ -127,59 +182,4 @@ impl ToOwned for Id {
     fn to_owned(&self) -> IdBuf {
         self.to_id_buf()
     }
-}
-
-pub trait DirEntries {
-    fn dir_entries(
-        &self,
-        parent_id: Option<&Id>,
-        parent_path: &Path,
-    ) -> impl Stream<Item = fsync::Result<(IdBuf, Metadata)>> + Send;
-}
-
-pub trait ReadFile {
-    fn read_file(
-        &self,
-        id: IdBuf,
-    ) -> impl Future<Output = fsync::Result<impl io::AsyncRead + Send>> + Send;
-}
-
-pub trait MkDir {
-    fn mkdir(
-        &self,
-        parent_id: Option<&Id>,
-        name: &str,
-    ) -> impl Future<Output = fsync::Result<IdBuf>> + Send;
-}
-
-pub trait CreateFile {
-    fn create_file(
-        &self,
-        parent_id: Option<&Id>,
-        metadata: &Metadata,
-        data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = fsync::Result<(IdBuf, Metadata)>> + Send;
-}
-
-pub trait WriteFile {
-    fn write_file(
-        &self,
-        id: &Id,
-        parent_id: Option<&Id>,
-        metadata: &Metadata,
-        data: impl io::AsyncRead + Send,
-    ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
-}
-
-/// A trait to delete files or folders
-pub trait Delete {
-    /// Deletes the file or folder referred to by `id`.
-    /// If `id` refers to a non-empty folder, all the folder content is also deleted.
-    fn delete(&self, id: &Id)-> impl Future<Output = fsync::Result<()>> + Send;
-}
-
-/// A trait for an ID-based storage
-pub trait Storage:
-    Clone + DirEntries + ReadFile + MkDir + CreateFile + WriteFile + Delete + Shutdown + Send + Sync + 'static
-{
 }

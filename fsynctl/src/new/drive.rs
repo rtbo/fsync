@@ -7,14 +7,14 @@ use fsync::{
 use inquire::{Editor, Select, Text};
 
 pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
-    let root = Text::new("Choose a root (\"/\" for the entire drive)")
+    let root = Text::new("Choose a root in your Google Drive (\"/\" for the entire drive)")
         .with_default("/")
         .prompt_skippable()?;
 
     let root = root.map(PathBuf::from);
 
     let options = &[
-        "Use built-in application secret",
+        "Use fsync built-in application secret",
         "Provide path to client_secret.json",
         "Paste content of client_secret.json",
         "Enter Google Drive application credentials",

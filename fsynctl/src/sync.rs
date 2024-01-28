@@ -3,19 +3,26 @@ use std::{
     fmt,
     net::{IpAddr, Ipv6Addr},
     sync::Arc,
+    time::Duration,
 };
 
-use byte_unit::AdjustedByte;
+use byte_unit::{AdjustedByte, Byte, UnitType};
 use fsync::{
     path::{Path, PathBuf},
     tree, FsyncClient,
 };
 use futures::future::BoxFuture;
 use inquire::Select;
-use tarpc::{client, context, tokio_serde::formats::Bincode};
+use tarpc::{client, tokio_serde::formats::Bincode};
 use tokio::sync::RwLock;
 
 use crate::utils;
+
+fn tarpc_context() -> tarpc::context::Context {
+    let mut ctx = tarpc::context::Context::current();
+    ctx.deadline += Duration::from_secs(110);
+    ctx
+}
 
 #[derive(clap::Args, Debug)]
 pub struct Args {
@@ -58,10 +65,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     let client = Arc::new(FsyncClient::new(client::Config::default(), transport.await?).spawn());
 
     let path = args.path.clone().unwrap_or_else(PathBuf::root);
-    let node = client
-        .entry(context::current(), path.clone())
-        .await?
-        .unwrap();
+    let node = client.entry(tarpc_context(), path.clone()).await?.unwrap();
     if node.is_none() {
         anyhow::bail!("No such entry: {path}",);
     }
@@ -342,7 +346,7 @@ impl SyncCommand {
                 let path = node.path();
                 for c in node.children() {
                     let path = path.join(c);
-                    let node = self.client.entry(context::current(), path).await?.unwrap();
+                    let node = self.client.entry(tarpc_context(), path).await?.unwrap();
                     self.node(node.as_ref().unwrap()).await?;
                 }
             }
@@ -691,6 +695,20 @@ impl SyncCommand {
     }
 
     async fn copy_remote_to_local(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
+        match entry {
+            fsync::Metadata::Directory { path } => {
+                println!("creating local directory `{path}`");
+            }
+            fsync::Metadata::Regular { path, size, .. } => {
+                let byte = Byte::from(*size).get_appropriate_unit(UnitType::Binary);
+                println!(
+                    "downloading `{}` in `{}` ({byte:#.2})",
+                    path.file_name().unwrap(),
+                    path.parent().unwrap(),
+                );
+            }
+            _ => panic!("Unsupported {entry:?}"),
+        }
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::CopyRemoteToLocal(entry.clone()));
@@ -698,12 +716,26 @@ impl SyncCommand {
 
         if !self.args.dry_run {
             let operation = fsync::Operation::CopyRemoteToLocal(entry.path().to_owned());
-            self.client.operate(context::current(), operation).await??;
+            self.client.operate(tarpc_context(), operation).await??;
         }
         Ok(())
     }
 
     async fn copy_local_to_remote(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
+        match entry {
+            fsync::Metadata::Directory { path } => {
+                println!("creating remote directory `{path}`");
+            }
+            fsync::Metadata::Regular { path, size, .. } => {
+                let byte = Byte::from(*size).get_appropriate_unit(UnitType::Binary);
+                println!(
+                    "uploading `{}` in `{}` ({byte:#.2})",
+                    path.file_name().unwrap(),
+                    path.parent().unwrap(),
+                );
+            }
+            _ => panic!("Unsupported {entry:?}"),
+        }
         {
             let mut stats = self.stats.write().await;
             stats.push(Stat::CopyLocalToRemote(entry.clone()));
@@ -711,7 +743,7 @@ impl SyncCommand {
 
         if !self.args.dry_run {
             let operation = fsync::Operation::CopyLocalToRemote(entry.path().to_owned());
-            self.client.operate(context::current(), operation).await??;
+            self.client.operate(tarpc_context(), operation).await??;
         }
         Ok(())
     }
@@ -737,7 +769,7 @@ impl SyncCommand {
 
         if !self.args.dry_run {
             let operation = fsync::Operation::ReplaceLocalByRemote(local.path().to_owned());
-            self.client.operate(context::current(), operation).await??;
+            self.client.operate(tarpc_context(), operation).await??;
         }
         Ok(())
     }
@@ -758,7 +790,7 @@ impl SyncCommand {
 
         if !self.args.dry_run {
             let operation = fsync::Operation::ReplaceRemoteByLocal(local.path().to_owned());
-            self.client.operate(context::current(), operation).await??;
+            self.client.operate(tarpc_context(), operation).await??;
         }
         Ok(())
     }
@@ -770,8 +802,9 @@ impl SyncCommand {
         }
 
         if !self.args.dry_run {
-            let operation = fsync::Operation::Delete(local.path().to_owned(), fsync::Location::Local);
-            self.client.operate(context::current(), operation).await??;
+            let operation =
+                fsync::Operation::Delete(local.path().to_owned(), fsync::Location::Local);
+            self.client.operate(tarpc_context(), operation).await??;
         }
         Ok(())
     }

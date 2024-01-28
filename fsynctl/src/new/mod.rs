@@ -30,6 +30,8 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
             .prompt()?
     };
 
+    println!("Creating new synchronized file service: `{name}`");
+
     let config_dir = inst::config_dir(&name)?;
     if config_dir.exists() {
         anyhow::bail!("Configuration already exists: {config_dir}");
@@ -49,7 +51,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 
     let providers = vec![fsync::Provider::GoogleDrive];
     let provider = tokio::task::spawn_blocking(move || {
-        Select::new("Select drive provider", providers).prompt()
+        Select::new("Select remote service provider", providers).prompt()
     });
     let provider = provider.await.unwrap()?;
 

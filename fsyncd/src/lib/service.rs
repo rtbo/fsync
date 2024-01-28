@@ -4,10 +4,7 @@ use std::{
 };
 
 use fsync::{
-    self,
-    loc::inst,
-    path::{Path, PathBuf},
-    Error, Fsync, Location, Operation, PathError,
+    self, loc::inst, path::{Path, PathBuf}, Error, Fsync, Location, Metadata, Operation, PathError
 };
 use futures::{
     future,
@@ -97,10 +94,15 @@ where
         let node = self.check_node(path)?;
         match node.entry() {
             tree::Entry::Local(..) => Err(PathError::Only(path.to_owned(), Location::Local))?,
-            tree::Entry::Remote(remote) => {
+            tree::Entry::Remote(remote) if remote.is_file() => {
                 let read = self.remote.read_file(remote.path().to_owned()).await?;
                 let local = self.local.create_file(remote, read).await?;
                 self.tree.add_local(path, local).unwrap();
+                Ok(())
+            }
+            tree::Entry::Remote(remote) if remote.is_dir() => {
+                self.local.mkdir(path, false).await?;
+                self.tree.add_local(path, Metadata::Directory { path: path.to_path_buf() }).unwrap();
                 Ok(())
             }
             _ => Err(PathError::Unexpected(path.to_owned(), Location::Both))?,
@@ -110,12 +112,17 @@ where
     pub async fn copy_local_to_remote(&self, path: &Path) -> Result<(), fsync::Error> {
         let node = self.check_node(path)?;
         match node.entry() {
-            tree::Entry::Local(local) => {
+            tree::Entry::Local(local) if local.is_file() => {
                 let read = self.local.read_file(local.path().to_owned()).await?;
 
                 let remote = self.remote.create_file(local, read).await.unwrap();
 
                 self.tree.add_remote(path, remote).unwrap();
+                Ok(())
+            }
+            tree::Entry::Local(local) if local.is_dir() => {
+                self.remote.mkdir(path, false).await?;
+                self.tree.add_remote(path, Metadata::Directory { path: path.to_path_buf() }).unwrap();
                 Ok(())
             }
             tree::Entry::Remote(..) => Err(PathError::Only(path.to_owned(), Location::Remote))?,
