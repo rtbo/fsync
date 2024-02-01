@@ -1,5 +1,6 @@
 use fsync::{
-    path::{Path, PathBuf}, Location, Operation
+    path::{Path, PathBuf},
+    Location, Operation,
 };
 
 use crate::{harness, utils::UnwrapDisplay};

@@ -1,7 +1,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::{path::{Path, PathBuf}, Location};
+use crate::{
+    conflict::Conflict,
+    path::{Path, PathBuf},
+    Location,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Metadata {
@@ -205,6 +209,8 @@ pub enum Operation {
 
 #[tarpc::service]
 pub trait Fsync {
+    async fn conflict(path: PathBuf) -> crate::Result<Option<Conflict>>;
+    async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<Conflict>>;
     async fn entry(path: PathBuf) -> crate::Result<Option<tree::Node>>;
     async fn operate(operation: Operation) -> crate::Result<()>;
 }
