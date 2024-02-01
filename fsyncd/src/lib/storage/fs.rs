@@ -195,7 +195,7 @@ impl super::WriteFile for FileSystem {
 }
 
 impl super::Delete for FileSystem {
-    async fn delete(&self, path: &Path)-> fsync::Result<()> {
+    async fn delete(&self, path: &Path) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
         log::info!("deleting {fs_path}");
@@ -211,8 +211,7 @@ impl super::Delete for FileSystem {
                 fsync::io_bail!("{path} is a non-empty folder");
             }
             fs::remove_dir(&fs_path).await?;
-        }
-        else {
+        } else {
             fs::remove_file(&fs_path).await?;
         }
         Ok(())

@@ -78,10 +78,7 @@ impl storage::WriteFile for Stub {
 }
 
 impl storage::Delete for Stub {
-    fn delete(
-        &self,
-        path: &Path,
-    ) -> impl Future<Output = fsync::Result<()>> + Send {
+    fn delete(&self, path: &Path) -> impl Future<Output = fsync::Result<()>> + Send {
         self.inner.delete(path)
     }
 }

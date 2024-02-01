@@ -285,7 +285,7 @@ where
 
 impl<A> super::id::Delete for GoogleDrive<A>
 where
-    A: GetToken
+    A: GetToken,
 {
     async fn delete(&self, id: &Id) -> fsync::Result<()> {
         self.files_delete(id).await
