@@ -1,7 +1,6 @@
 use std::{
     cmp::Ordering,
     fmt,
-    net::{IpAddr, Ipv6Addr},
     sync::Arc,
     time::Duration,
 };
@@ -13,7 +12,6 @@ use fsync::{
 };
 use futures::future::BoxFuture;
 use inquire::Select;
-use tarpc::{client, tokio_serde::formats::Bincode};
 use tokio::sync::RwLock;
 
 use crate::utils;
@@ -56,13 +54,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
         }
     };
 
-    let port = utils::instance_port(&instance_name)?;
-
-    let addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), port);
-    let mut transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default);
-    transport.config_mut().max_frame_length(usize::MAX);
-
-    let client = Arc::new(FsyncClient::new(client::Config::default(), transport.await?).spawn());
+    let client = utils::instance_client(&instance_name).await?;
 
     let path = args.path.clone().unwrap_or_else(PathBuf::root);
     let node = client.entry(tarpc_context(), path.clone()).await?.unwrap();
