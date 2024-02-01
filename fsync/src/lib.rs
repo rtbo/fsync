@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod cipher;
 pub mod config;
+pub mod conflict;
 pub mod loc;
 pub mod oauth2;
 
@@ -15,6 +16,7 @@ mod fsync;
 
 pub use crate::{
     config::{Config, ProviderConfig},
+    conflict::Conflict,
     error::*,
     fsync::*,
 };
