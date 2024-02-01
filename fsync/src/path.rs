@@ -8,6 +8,18 @@ use std::{borrow, cmp, fmt, hash, iter::FusedIterator, ops, str};
 pub use camino::{Utf8Path as FsPath, Utf8PathBuf as FsPathBuf};
 use serde::{Deserialize, Serialize};
 
+/// Error of normalization
+#[derive(Clone, Debug)]
+pub struct NormalizeError(pub PathBuf);
+
+impl fmt::Display for NormalizeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Path can't be normalized: `{}`", self.0)
+    }
+}
+
+impl std::error::Error for NormalizeError {}
+
 #[must_use]
 pub fn is_separator(c: char) -> bool {
     c.is_ascii() && is_sep_byte(c as u8)
@@ -705,7 +717,7 @@ impl Path {
     /// assert_eq!(Path::new("/some//other/../path").normalize().unwrap(), Path::new("/some/path"));
     /// assert!(Path::new("/../path").normalize().is_err());
     /// ```
-    pub fn normalize(&self) -> anyhow::Result<PathBuf> {
+    pub fn normalize(&self) -> Result<PathBuf, NormalizeError> {
         let mut res = PathBuf::new();
         for c in self.components() {
             match c {
@@ -713,7 +725,7 @@ impl Path {
                 Component::CurDir => (),
                 Component::ParentDir => {
                     if !res.pop() {
-                        anyhow::bail!("{self} can't be normalized");
+                        return Err(NormalizeError(self.to_owned()));
                     }
                 }
             }

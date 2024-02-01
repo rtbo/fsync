@@ -3,7 +3,10 @@ use std::{error, fmt, io, string::FromUtf8Error};
 use camino::FromPathBufError;
 use serde::{Deserialize, Serialize};
 
-use crate::{path::PathBuf, Location};
+use crate::{
+    path::{NormalizeError, PathBuf},
+    Location,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum PathError {
@@ -11,6 +14,12 @@ pub enum PathError {
     Only(PathBuf, Location),
     Unexpected(PathBuf, Location),
     Illegal(PathBuf, Option<String>),
+}
+
+impl From<NormalizeError> for PathError {
+    fn from(value: NormalizeError) -> Self {
+        Self::Illegal(value.0, Some("Path can't be normalized".to_string()))
+    }
 }
 
 impl fmt::Display for PathError {
@@ -68,6 +77,12 @@ impl error::Error for Error {
 impl From<PathError> for Error {
     fn from(value: PathError) -> Self {
         Self::Path(value)
+    }
+}
+
+impl From<NormalizeError> for Error {
+    fn from(value: NormalizeError) -> Self {
+        Self::Path(value.into())
     }
 }
 

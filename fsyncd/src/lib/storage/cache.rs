@@ -71,9 +71,7 @@ where
 impl<S> CacheStorage<S> {
     fn check_path(path: &Path) -> fsync::Result<PathBuf> {
         debug_assert!(path.is_absolute());
-        let path = path
-            .normalize()
-            .map_err(|err| fsync::PathError::Illegal(path.to_path_buf(), Some(err.to_string())))?;
+        let path = path.normalize()?;
         Ok(path)
     }
 }
