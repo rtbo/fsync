@@ -177,6 +177,12 @@ impl DiffTree {
         self.nodes.get(path).map(|node| node.clone())
     }
 
+    pub fn entries<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMulti<'a, PathBuf, Node>> {
+        self.nodes.iter()
+    }
+
     pub fn add_local(
         &self,
         path: &Path,
