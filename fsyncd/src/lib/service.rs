@@ -395,3 +395,63 @@ where
         res
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeSet, ops::Bound};
+
+    use fsync::path::{Path, PathBuf};
+
+
+    fn build_test_conflicts() -> BTreeSet<PathBuf> {
+        let mut set = BTreeSet::new();
+
+        set.insert(PathBuf::from("/a/a/a"));
+        set.insert(PathBuf::from("/a/a/b"));
+        set.insert(PathBuf::from("/a/b/a"));
+        set.insert(PathBuf::from("/a/b/b"));
+
+        set.insert(PathBuf::from("/b/a/a"));
+        set.insert(PathBuf::from("/b/a/b"));
+        set.insert(PathBuf::from("/b/b/a"));
+        set.insert(PathBuf::from("/b/b/b"));
+
+        set.insert(PathBuf::from("/c/a/a"));
+        set.insert(PathBuf::from("/c/a/b"));
+        set.insert(PathBuf::from("/c/b/a"));
+        set.insert(PathBuf::from("/c/b/b"));
+
+        set
+    }
+
+    fn conflicts_of(conflicts: &BTreeSet<PathBuf>, path: &Path) -> Vec<PathBuf> {
+        let mut res = Vec::new();
+
+        let start = Bound::Included(path.to_owned());
+        let end = Bound::Unbounded;
+
+        let mut conf = conflicts.range((start, end));
+        while let Some(entry) = conf.next() {
+            if entry.as_str().starts_with(path.as_str()) {
+                res.push(entry.clone());
+            } else {
+                break;
+            }
+        }
+
+        res
+    }
+
+    #[test]
+    fn test_dir_contain_conflict() {
+        let conflicts = build_test_conflicts();
+
+        let bs = conflicts_of(&conflicts, Path::new("/b"));
+
+        assert_eq!(bs.len(), 4);
+        assert_eq!(bs[0], PathBuf::from("/b/a/a"));
+        assert_eq!(bs[1], PathBuf::from("/b/a/b"));
+        assert_eq!(bs[2], PathBuf::from("/b/b/a"));
+        assert_eq!(bs[3], PathBuf::from("/b/b/b"));
+    }
+}
