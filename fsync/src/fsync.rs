@@ -172,6 +172,10 @@ pub mod tree {
             &self.entry
         }
 
+        pub fn entry_mut(&mut self) -> &mut Entry {
+            &mut self.entry
+        }
+
         pub fn into_entry(self) -> Entry {
             self.entry
         }

@@ -107,7 +107,7 @@ where
 {
     pub async fn entry(&self, path: &Path) -> Result<Option<fsync::tree::Node>, Error> {
         let path = Self::check_path(path)?;
-        Ok(self.tree.entry(&path).map(Into::into))
+        Ok(self.tree.entry(&path))
     }
 
     pub async fn conflict(&self, path: &Path) -> fsync::Result<Option<fsync::Conflict>> {

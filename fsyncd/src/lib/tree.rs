@@ -1,33 +1,30 @@
 use std::cmp::Ordering;
 
+use crate::storage;
 use dashmap::DashMap;
 use fsync::path::{Path, PathBuf};
 use futures::{
     future::{self, BoxFuture},
     StreamExt, TryStreamExt,
 };
-use serde::{Deserialize, Serialize};
 
-use crate::storage;
+pub use fsync::tree::{Entry, Node};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Entry {
-    Local(fsync::Metadata),
-    Remote(fsync::Metadata),
-    Both {
-        local: fsync::Metadata,
-        remote: fsync::Metadata,
-    },
+trait EntryExt {
+    fn with_local(self, local: fsync::Metadata) -> Self;
+    fn with_remote(self, remote: fsync::Metadata) -> Self;
+    fn without_local(self) -> Self;
+    fn without_remote(self) -> Self;
 }
 
-impl Entry {
-    pub fn root() -> Self {
-        Self::Both {
-            local: fsync::Metadata::root(),
-            remote: fsync::Metadata::root(),
-        }
-    }
+trait NodeExt {
+    fn add_local(&mut self, local: fsync::Metadata);
+    fn add_remote(&mut self, remote: fsync::Metadata);
+    fn remove_local(&mut self);
+    fn remove_remote(&mut self);
+}
 
+impl EntryExt for Entry {
     fn with_local(self, local: fsync::Metadata) -> Self {
         match self {
             Entry::Remote(remote) => Entry::Both { local, remote },
@@ -61,90 +58,33 @@ impl Entry {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Node {
-    entry: Entry,
-    children: Vec<String>,
-}
-
-impl Node {
-    pub fn new(entry: Entry, children: Vec<String>) -> Self {
-        Self { entry, children }
-    }
-
-    pub fn entry(&self) -> &Entry {
-        &self.entry
-    }
-
-    pub fn children(&self) -> &[String] {
-        &self.children
-    }
-
-    pub fn path(&self) -> &Path {
-        match &self.entry {
-            Entry::Both { local, remote } => {
-                debug_assert_eq!(local.path(), remote.path());
-                local.path()
-            }
-            Entry::Local(entry) => entry.path(),
-            Entry::Remote(entry) => entry.path(),
-        }
-    }
-
-    pub fn is_local_only(&self) -> bool {
-        matches!(self.entry, Entry::Local(..))
-    }
-
-    pub fn is_remote_only(&self) -> bool {
-        matches!(self.entry, Entry::Remote(..))
-    }
-
-    pub fn is_both(&self) -> bool {
-        matches!(self.entry, Entry::Both { .. })
-    }
-
-    pub fn add_local(&mut self, local: fsync::Metadata) {
+impl NodeExt for fsync::tree::Node {
+    fn add_local(&mut self, local: fsync::Metadata) {
         use std::mem;
         let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.with_local(local);
+        let valid = mem::replace(self.entry_mut(), invalid);
+        *self.entry_mut() = valid.with_local(local);
     }
 
-    pub fn add_remote(&mut self, remote: fsync::Metadata) {
+    fn add_remote(&mut self, remote: fsync::Metadata) {
         use std::mem;
         let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.with_remote(remote);
+        let valid = mem::replace(self.entry_mut(), invalid);
+        *self.entry_mut() = valid.with_remote(remote);
     }
 
-    pub fn remove_local(&mut self) {
+    fn remove_local(&mut self) {
         use std::mem;
         let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.without_local();
+        let valid = mem::replace(self.entry_mut(), invalid);
+        *self.entry_mut() = valid.without_local();
     }
 
-    pub fn remove_remote(&mut self) {
+    fn remove_remote(&mut self) {
         use std::mem;
         let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.without_remote();
-    }
-}
-
-impl From<Entry> for fsync::tree::Entry {
-    fn from(value: Entry) -> Self {
-        match value {
-            Entry::Local(metadata) => fsync::tree::Entry::Local(metadata),
-            Entry::Remote(metadata) => fsync::tree::Entry::Remote(metadata),
-            Entry::Both { local, remote } => fsync::tree::Entry::Both { local, remote },
-        }
-    }
-}
-
-impl From<Node> for fsync::tree::Node {
-    fn from(value: Node) -> Self {
-        fsync::tree::Node::new(value.entry.into(), value.children)
+        let valid = mem::replace(self.entry_mut(), invalid);
+        *self.entry_mut() = valid.without_remote();
     }
 }
 
