@@ -5,6 +5,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+pub enum ConflictTy {
+    LocalNewer,
+    LocalOlder,
+    LocalBigger,
+    LocalSmaller,
+    LocalFileRemoteDir,
+    LocalDirRemoteFile,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Metadata {
     mtime: DateTime<Utc>,
@@ -132,6 +142,17 @@ impl Conflict {
                     Ordering::Equal => None,
                 }
             }
+        }
+    }
+
+    pub fn ty(&self) -> ConflictTy {
+        match self {
+            Self::LocalBigger { .. } => ConflictTy::LocalBigger,
+            Self::LocalSmaller { .. } => ConflictTy::LocalSmaller,
+            Self::LocalNewer { .. } => ConflictTy::LocalNewer,
+            Self::LocalOlder { .. } => ConflictTy::LocalOlder,
+            Self::LocalFileRemoteDir { .. } => ConflictTy::LocalFileRemoteDir,
+            Self::LocalDirRemoteFile { .. } => ConflictTy::LocalDirRemoteFile,
         }
     }
 

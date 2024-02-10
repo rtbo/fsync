@@ -2,7 +2,10 @@ use std::cmp::Ordering;
 
 use crate::storage;
 use dashmap::DashMap;
-use fsync::path::{Path, PathBuf};
+use fsync::{
+    path::{Path, PathBuf},
+    ConflictTy,
+};
 use futures::{
     future::{self, BoxFuture},
     StreamExt, TryStreamExt,
@@ -123,6 +126,12 @@ impl DiffTree {
         self.nodes.iter()
     }
 
+    pub fn entries_mut<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMutMulti<'a, PathBuf, Node>> {
+        self.nodes.iter_mut()
+    }
+
     pub fn add_local(
         &self,
         path: &Path,
@@ -163,6 +172,36 @@ impl DiffTree {
         let mut node = node.expect("remove_remote should be called with a valid path");
         assert!(node.is_both());
         node.remove_remote();
+    }
+
+    pub fn set_conflict(&self, path: &Path, conflict: Option<ConflictTy>) {
+        let count_to_add = {
+            let node = self.nodes.get_mut(path);
+            let mut node = node.expect("add_conflict should be called with a valid path");
+            assert!(
+                node.is_both(),
+                "only nodes of type 'both' can have conflict"
+            );
+            let to_rem = if node.has_conflict() { 1 } else { 0 };
+            let to_add = if conflict.is_some() { 1 } else { 0 };
+            node.set_conflict(conflict);
+            to_add - to_rem
+        };
+        if count_to_add != 0 {
+            self.add_conflicts_to_ancestors(&path, count_to_add);
+        }
+    }
+
+    fn add_conflicts_to_ancestors(&self, path: &Path, count: isize) {
+        let mut parent = path.parent();
+        while let Some(path) = parent {
+            let mut node = self
+                .nodes
+                .get_mut(path)
+                .expect("parent of valid path should be valid as well");
+            node.add_children_conflicts(count);
+            parent = path.parent();
+        }
     }
 
     pub fn remove(&self, path: &Path) {

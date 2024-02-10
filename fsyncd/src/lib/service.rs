@@ -6,10 +6,7 @@ use std::{
 };
 
 use fsync::{
-    self,
-    loc::inst,
-    path::{Path, PathBuf},
-    Error, Fsync, Location, Metadata, Operation, PathError,
+    self, loc::inst, path::{Path, PathBuf}, Error, Fsync, Location, Metadata, Operation, PathError
 };
 use futures::{
     future,
@@ -46,16 +43,23 @@ where
         let tree = DiffTree::build(&local, &remote).await?;
 
         let mut conflicts = BTreeMap::new();
+        let mut conf_vec = Vec::new();
 
-        for entry in tree.entries() {
+        for entry in tree.entries_mut() {
             match entry.entry() {
                 tree::Entry::Both { local, remote } => {
                     if let Some(conflict) = fsync::Conflict::check(local, remote) {
-                        conflicts.insert(entry.key().to_path_buf(), conflict);
+                        let path = entry.key().to_path_buf();
+                        conf_vec.push((path.clone(), conflict.ty()));
+                        conflicts.insert(path, conflict);
                     }
                 }
                 _ => (),
             }
+        }
+
+        for (path, conf) in conf_vec {
+            tree.set_conflict(&path, Some(conf));
         }
 
         Ok(Self {
@@ -97,6 +101,18 @@ where
         let node = self.tree.entry(&path);
         let node = node.ok_or_else(|| fsync::PathError::NotFound(path, None))?;
         Ok(node)
+    }
+
+    // async fn add_conflict(&self, path: &Path, conflict: Conflict) {
+    //     self.tree.set_conflict(path, Some(conflict.ty())); 
+    //     let mut conflicts = self.conflicts.write().await;
+    //     conflicts.insert(path.to_owned(), conflict);
+    // }
+
+    async fn rem_conflict(&self, path: &Path) {
+        self.tree.set_conflict(path, None);
+        let mut conflicts = self.conflicts.write().await;
+        conflicts.remove(path);
     }
 }
 
@@ -194,8 +210,7 @@ where
                 let data = self.remote().read_file(path.to_path_buf()).await?;
                 let local = self.local().write_file(remote, data).await?;
                 self.tree.add_local(path, local).unwrap();
-                let mut conflicts = self.conflicts.write().await;
-                conflicts.remove(path);
+                self.rem_conflict(path).await;
                 Ok(())
             }
             tree::Entry::Local(local) => Err(PathError::Unexpected(
@@ -216,6 +231,7 @@ where
                 let data = self.local().read_file(path.to_path_buf()).await?;
                 let remote = self.remote().write_file(local, data).await?;
                 self.tree.add_remote(path, remote).unwrap();
+                self.rem_conflict(path).await;
                 Ok(())
             }
             tree::Entry::Local(local) => Err(PathError::Unexpected(
@@ -258,6 +274,7 @@ where
                 Some(location),
             ))?,
         }
+        self.rem_conflict(path).await;
         Ok(())
     }
 

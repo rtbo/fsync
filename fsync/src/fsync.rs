@@ -97,7 +97,7 @@ impl Default for Metadata {
 pub mod tree {
     use serde::{Deserialize, Serialize};
 
-    use crate::path::Path;
+    use crate::{conflict::ConflictTy, path::Path};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Entry {
@@ -161,11 +161,18 @@ pub mod tree {
     pub struct Node {
         entry: Entry,
         children: Vec<String>,
+        conflict: Option<ConflictTy>,
+        children_conflict_count: usize,
     }
 
     impl Node {
         pub fn new(entry: Entry, children: Vec<String>) -> Self {
-            Self { entry, children }
+            Self {
+                entry,
+                children,
+                conflict: None,
+                children_conflict_count: 0,
+            }
         }
 
         pub fn entry(&self) -> &Entry {
@@ -198,6 +205,32 @@ pub mod tree {
 
         pub fn is_both(&self) -> bool {
             self.entry.is_both()
+        }
+
+        pub fn conflict(&self) -> Option<ConflictTy> {
+            self.conflict
+        }
+
+        pub fn set_conflict(&mut self, conflict: Option<ConflictTy>) {
+            self.conflict = conflict;
+        }
+
+        pub fn has_conflict(&self) -> bool {
+            self.conflict.is_some()
+        }
+
+        pub fn children_conflict_count(&self) -> usize {
+            self.children_conflict_count
+        }
+
+        pub fn children_have_conflicts(&self) -> bool {
+            self.children_conflict_count > 0
+        }
+
+        pub fn add_children_conflicts(&mut self, cc: isize) {
+            let new_count = self.children_conflict_count as isize + cc;
+            assert!(new_count >= 0);
+            self.children_conflict_count = new_count as usize;
         }
     }
 }
