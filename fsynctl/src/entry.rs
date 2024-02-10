@@ -37,7 +37,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     let client = FsyncClient::new(client::Config::default(), transport.await?).spawn();
     let path = args.path.unwrap_or_else(PathBuf::root);
     let entry = client
-        .entry(context::current(), path.clone())
+        .entry_node(context::current(), path.clone())
         .await
         .unwrap()
         .unwrap();

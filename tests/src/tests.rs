@@ -8,9 +8,9 @@ use crate::{harness, utils::UnwrapDisplay};
 #[tokio::test]
 async fn entry() {
     let h = harness().await;
-    let notexist = h.service.entry(Path::new("/not-exists")).await.unwrap();
+    let notexist = h.service.entry_node(Path::new("/not-exists")).await.unwrap();
     assert!(notexist.is_none());
-    let exist = h.service.entry(Path::new("/both.txt")).await.unwrap();
+    let exist = h.service.entry_node(Path::new("/both.txt")).await.unwrap();
     match exist {
         None => unreachable!(),
         Some(exist) => {
@@ -112,7 +112,7 @@ async fn delete_local() {
         .operate(&Operation::Delete(path.clone(), Location::Local))
         .await
         .unwrap();
-    let node = h.service.entry(&path).await.unwrap();
+    let node = h.service.entry_node(&path).await.unwrap();
     assert!(node.unwrap().is_remote_only());
 }
 
@@ -124,7 +124,7 @@ async fn delete_remote() {
         .operate(&Operation::Delete(path.clone(), Location::Remote))
         .await
         .unwrap();
-    let node = h.service.entry(&path).await.unwrap();
+    let node = h.service.entry_node(&path).await.unwrap();
     assert!(node.unwrap().is_local_only());
 }
 
@@ -136,6 +136,6 @@ async fn delete_both() {
         .operate(&Operation::Delete(path.clone(), Location::Both))
         .await
         .unwrap();
-    let node = h.service.entry(&path).await.unwrap();
+    let node = h.service.entry_node(&path).await.unwrap();
     assert!(node.is_none());
 }

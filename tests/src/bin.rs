@@ -43,13 +43,13 @@ where
     }
 
     pub async fn local_metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>> {
-        let e = self.service.entry(path).await?;
+        let e = self.service.entry_node(path).await?;
         Ok(e.map(|node| node.into_entry().into_local_metadata())
             .flatten())
     }
 
     pub async fn remote_metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>> {
-        let e = self.service.entry(path).await?;
+        let e = self.service.entry_node(path).await?;
         Ok(e.map(|node| node.into_entry().into_remote_metadata())
             .flatten())
     }

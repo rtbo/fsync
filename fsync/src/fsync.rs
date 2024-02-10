@@ -196,13 +196,13 @@ pub mod tree {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct Node {
+    pub struct EntryNode {
         entry: Entry,
         children: Vec<String>,
         children_conflict_count: usize,
     }
 
-    impl Node {
+    impl EntryNode {
         pub fn new(entry: Entry, children: Vec<String>, children_conflict_count: usize) -> Self {
             Self {
                 entry,
@@ -273,6 +273,6 @@ pub enum Operation {
 #[tarpc::service]
 pub trait Fsync {
     async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<tree::Entry>>;
-    async fn entry(path: PathBuf) -> crate::Result<Option<tree::Node>>;
+    async fn entry_node(path: PathBuf) -> crate::Result<Option<tree::EntryNode>>;
     async fn operate(operation: Operation) -> crate::Result<()>;
 }

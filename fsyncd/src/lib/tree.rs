@@ -8,7 +8,7 @@ use futures::{
     StreamExt, TryStreamExt,
 };
 
-pub use fsync::tree::{Entry, Node};
+pub use fsync::tree::{Entry, EntryNode};
 
 trait EntryExt {
     fn with_local(self, local: fsync::Metadata) -> Self;
@@ -53,7 +53,7 @@ impl EntryExt for Entry {
 
 #[derive(Debug)]
 pub struct DiffTree {
-    nodes: DashMap<PathBuf, Node>,
+    nodes: DashMap<PathBuf, EntryNode>,
 }
 
 impl DiffTree {
@@ -76,13 +76,13 @@ impl DiffTree {
         Ok(Self { nodes })
     }
 
-    pub fn entry(&self, path: &Path) -> Option<Node> {
+    pub fn entry(&self, path: &Path) -> Option<EntryNode> {
         self.nodes.get(path).map(|node| node.clone())
     }
 
     pub fn entries<'a>(
         &'a self,
-    ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMulti<'a, PathBuf, Node>> {
+    ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMulti<'a, PathBuf, EntryNode>> {
         self.nodes.iter()
     }
 
@@ -179,7 +179,7 @@ impl DiffTree {
 struct DiffTreeBuild<'a, L, R> {
     local: &'a L,
     remote: &'a R,
-    nodes: &'a DashMap<PathBuf, Node>,
+    nodes: &'a DashMap<PathBuf, EntryNode>,
 }
 
 impl<'a, L, R> DiffTreeBuild<'a, L, R>
@@ -249,7 +249,7 @@ where
             let entry = Entry::new_sync(local, remote);
             let res = conflicts + if entry.is_conflict() { 1 } else { 0 };
 
-            let node = Node::new(entry, children, conflicts);
+            let node = EntryNode::new(entry, children, conflicts);
             self.nodes.insert(path, node);
 
             Ok(res)
@@ -277,7 +277,7 @@ where
 
             let path = entry.path().to_owned();
             let entry = Entry::Local(entry);
-            let node = Node::new(entry, child_names, conflicts);
+            let node = EntryNode::new(entry, child_names, conflicts);
             self.nodes.insert(path, node);
             Ok(conflicts)
         })
@@ -304,7 +304,7 @@ where
 
             let path = entry.path().to_owned();
             let entry = Entry::Remote(entry);
-            let node = Node::new(entry, child_names, conflicts);
+            let node = EntryNode::new(entry, child_names, conflicts);
             self.nodes.insert(path, node);
             Ok(conflicts)
         })

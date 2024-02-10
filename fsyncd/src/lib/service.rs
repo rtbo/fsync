@@ -91,7 +91,7 @@ where
         }
     }
 
-    fn check_node(&self, path: &Path) -> fsync::Result<tree::Node> {
+    fn check_node(&self, path: &Path) -> fsync::Result<tree::EntryNode> {
         let path = Self::check_path(path)?;
         let node = self.tree.entry(&path);
         let node = node.ok_or_else(|| fsync::PathError::NotFound(path, None))?;
@@ -113,7 +113,7 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    pub async fn entry(&self, path: &Path) -> Result<Option<fsync::tree::Node>, Error> {
+    pub async fn entry_node(&self, path: &Path) -> Result<Option<fsync::tree::EntryNode>, Error> {
         let path = Self::check_path(path)?;
         Ok(self.tree.entry(&path))
     }
@@ -384,8 +384,8 @@ where
         res
     }
 
-    async fn entry(self, _: Context, path: PathBuf) -> fsync::Result<Option<fsync::tree::Node>> {
-        let res = self.inner.entry(&path).await;
+    async fn entry_node(self, _: Context, path: PathBuf) -> fsync::Result<Option<fsync::tree::EntryNode>> {
+        let res = self.inner.entry_node(&path).await;
         log::trace!(target: "RPC", "Fsync::entry(path: {path:?}) -> {res:#?}");
         res
     }

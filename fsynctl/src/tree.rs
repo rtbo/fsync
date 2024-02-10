@@ -41,7 +41,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     let client = Arc::new(FsyncClient::new(client::Config::default(), transport.await?).spawn());
     let path = args.path.unwrap_or_else(PathBuf::root);
     let node = client
-        .entry(context::current(), path.clone())
+        .entry_node(context::current(), path.clone())
         .await?
         .unwrap();
 
@@ -61,14 +61,14 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 fn walk(
     client: Arc<FsyncClient>,
     prefix: String,
-    node: tree::Node,
+    node: tree::EntryNode,
 ) -> BoxFuture<'static, anyhow::Result<()>> {
     Box::pin(async move {
         let dir = node.path();
         let joinvec: Vec<_> = node
             .children()
             .iter()
-            .map(|c| client.entry(context::current(), dir.join(c)))
+            .map(|c| client.entry_node(context::current(), dir.join(c)))
             .collect();
         let children = future::try_join_all(joinvec).await?;
         let mut len = children.len();
