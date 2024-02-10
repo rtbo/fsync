@@ -14,7 +14,7 @@ async fn entry() {
     match exist {
         None => unreachable!(),
         Some(exist) => {
-            assert!(exist.entry().is_both());
+            assert!(exist.entry().is_sync());
         }
     }
 }

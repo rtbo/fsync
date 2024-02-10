@@ -30,17 +30,17 @@ trait NodeExt {
 impl EntryExt for Entry {
     fn with_local(self, local: fsync::Metadata) -> Self {
         match self {
-            Entry::Remote(remote) => Entry::Both { local, remote },
+            Entry::Remote(remote) => Entry::Sync { local, remote },
             Entry::Local(..) => Entry::Local(local),
-            Entry::Both { remote, .. } => Entry::Both { local, remote },
+            Entry::Sync { remote, .. } => Entry::Sync { local, remote },
         }
     }
 
     fn with_remote(self, remote: fsync::Metadata) -> Self {
         match self {
-            Entry::Local(local) => Entry::Both { local, remote },
+            Entry::Local(local) => Entry::Sync { local, remote },
             Entry::Remote(..) => Entry::Remote(remote),
-            Entry::Both { local, .. } => Entry::Both { local, remote },
+            Entry::Sync { local, .. } => Entry::Sync { local, remote },
         }
     }
 
@@ -48,7 +48,7 @@ impl EntryExt for Entry {
         match self {
             Entry::Local(..) => unreachable!(),
             Entry::Remote(..) => unreachable!(),
-            Entry::Both { remote, .. } => Entry::Remote(remote),
+            Entry::Sync { remote, .. } => Entry::Remote(remote),
         }
     }
 
@@ -56,7 +56,7 @@ impl EntryExt for Entry {
         match self {
             Entry::Local(..) => unreachable!(),
             Entry::Remote(..) => unreachable!(),
-            Entry::Both { local, .. } => Entry::Local(local),
+            Entry::Sync { local, .. } => Entry::Local(local),
         }
     }
 }
@@ -110,7 +110,7 @@ impl DiffTree {
             nodes: &nodes,
         };
         build
-            .both(fsync::Metadata::root(), fsync::Metadata::root())
+            .sync(fsync::Metadata::root(), fsync::Metadata::root())
             .await?;
 
         Ok(Self { nodes })
@@ -163,14 +163,14 @@ impl DiffTree {
     pub fn remove_local(&self, path: &Path) {
         let node = self.nodes.get_mut(path);
         let mut node = node.expect("remove_local should be called with a valid path");
-        assert!(node.is_both());
+        assert!(node.is_sync());
         node.remove_local();
     }
 
     pub fn remove_remote(&self, path: &Path) {
         let node = self.nodes.get_mut(path);
         let mut node = node.expect("remove_remote should be called with a valid path");
-        assert!(node.is_both());
+        assert!(node.is_sync());
         node.remove_remote();
     }
 
@@ -179,8 +179,8 @@ impl DiffTree {
             let node = self.nodes.get_mut(path);
             let mut node = node.expect("add_conflict should be called with a valid path");
             assert!(
-                node.is_both(),
-                "only nodes of type 'both' can have conflict"
+                node.is_sync(),
+                "only entries of type 'sync' can have conflict"
             );
             let to_rem = if node.has_conflict() { 1 } else { 0 };
             let to_add = if conflict.is_some() { 1 } else { 0 };
@@ -228,7 +228,7 @@ impl DiffTree {
     {
         let node = self.nodes.get(path).unwrap();
         let marker = match node.entry() {
-            Entry::Both { .. } => "B",
+            Entry::Sync { .. } => "B",
             Entry::Local { .. } => "L",
             Entry::Remote { .. } => "R",
         };
@@ -259,7 +259,7 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    fn both(
+    fn sync(
         &self,
         local: fsync::Metadata,
         remote: fsync::Metadata,
@@ -285,7 +285,7 @@ where
                     (None, None) => break,
                     (Some(loc), Some(rem)) => match loc.name().cmp(rem.name()) {
                         Ordering::Equal => {
-                            joinvec.push(self.both(loc.clone(), rem.clone()));
+                            joinvec.push(self.sync(loc.clone(), rem.clone()));
                             children.push(loc.name().to_string());
                             loc_child = loc_children.next();
                             rem_child = rem_children.next();
@@ -318,7 +318,7 @@ where
 
             assert_eq!(local.path(), remote.path());
             let path = local.path().to_owned();
-            let entry = Entry::Both { local, remote };
+            let entry = Entry::Sync { local, remote };
 
             let node = Node::new(entry, children);
             self.nodes.insert(path, node);

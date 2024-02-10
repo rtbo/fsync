@@ -58,7 +58,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
         tree::Entry::Remote(entry) => {
             println!("R {}", entry.path());
         }
-        tree::Entry::Both { local, remote } => {
+        tree::Entry::Sync { local, remote } => {
             assert_eq!(local.path(), remote.path());
             let mtime_cmp = fsync::compare_mtime_opt(local.mtime(), remote.mtime());
             match mtime_cmp {

@@ -47,7 +47,7 @@ where
 
         for entry in tree.entries_mut() {
             match entry.entry() {
-                tree::Entry::Both { local, remote } => {
+                tree::Entry::Sync { local, remote } => {
                     if let Some(conflict) = fsync::Conflict::check(local, remote) {
                         let path = entry.key().to_path_buf();
                         conf_vec.push((path.clone(), conflict.ty()));
@@ -206,7 +206,7 @@ where
     pub async fn replace_local_by_remote(&self, path: &Path) -> fsync::Result<()> {
         let node = self.check_node(path)?;
         match node.entry() {
-            tree::Entry::Both { remote, .. } => {
+            tree::Entry::Sync { remote, .. } => {
                 let data = self.remote().read_file(path.to_path_buf()).await?;
                 let local = self.local().write_file(remote, data).await?;
                 self.tree.add_local(path, local).unwrap();
@@ -227,7 +227,7 @@ where
     pub async fn replace_remote_by_local(&self, path: &Path) -> fsync::Result<()> {
         let node = self.check_node(path)?;
         match node.entry() {
-            tree::Entry::Both { local, .. } => {
+            tree::Entry::Sync { local, .. } => {
                 let data = self.local().read_file(path.to_path_buf()).await?;
                 let remote = self.remote().write_file(local, data).await?;
                 self.tree.add_remote(path, remote).unwrap();
@@ -247,6 +247,7 @@ where
 
     pub async fn delete(&self, path: &Path, location: Location) -> fsync::Result<()> {
         let node = self.check_node(path)?;
+        self.rem_conflict(path).await;
         match (node.entry(), location) {
             (tree::Entry::Local(..), Location::Local) => {
                 self.local().delete(path).await?;
@@ -256,15 +257,15 @@ where
                 self.remote().delete(path).await?;
                 self.tree.remove(path);
             }
-            (tree::Entry::Both { .. }, Location::Local) => {
+            (tree::Entry::Sync { .. }, Location::Local) => {
                 self.local().delete(path).await?;
                 self.tree.remove_local(path);
             }
-            (tree::Entry::Both { .. }, Location::Remote) => {
+            (tree::Entry::Sync { .. }, Location::Remote) => {
                 self.remote().delete(path).await?;
                 self.tree.remove_remote(path);
             }
-            (tree::Entry::Both { .. }, Location::Both) => {
+            (tree::Entry::Sync { .. }, Location::Both) => {
                 self.local().delete(path).await?;
                 self.remote().delete(path).await?;
                 self.tree.remove(path);
@@ -274,7 +275,6 @@ where
                 Some(location),
             ))?,
         }
-        self.rem_conflict(path).await;
         Ok(())
     }
 

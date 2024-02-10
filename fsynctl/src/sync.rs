@@ -350,7 +350,7 @@ impl SyncCommand {
         match entry {
             tree::Entry::Local(entry) => self.local_to_remote(entry).await,
             tree::Entry::Remote(entry) => self.remote_to_local(entry).await,
-            tree::Entry::Both { local, remote } => self.both(local, remote).await,
+            tree::Entry::Sync { local, remote } => self.both(local, remote).await,
         }
     }
 

@@ -103,7 +103,7 @@ pub mod tree {
     pub enum Entry {
         Local(super::Metadata),
         Remote(super::Metadata),
-        Both {
+        Sync {
             local: super::Metadata,
             remote: super::Metadata,
         },
@@ -111,7 +111,7 @@ pub mod tree {
 
     impl Entry {
         pub fn root() -> Self {
-            Self::Both {
+            Self::Sync {
                 local: super::Metadata::root(),
                 remote: super::Metadata::root(),
             }
@@ -119,7 +119,7 @@ pub mod tree {
 
         pub fn path(&self) -> &Path {
             match self {
-                Entry::Both { local, remote } => {
+                Entry::Sync { local, remote } => {
                     debug_assert_eq!(local.path(), remote.path());
                     local.path()
                 }
@@ -132,7 +132,7 @@ pub mod tree {
             match self {
                 Self::Local(metadata) => Some(metadata),
                 Self::Remote(..) => None,
-                Self::Both { local, .. } => Some(local),
+                Self::Sync { local, .. } => Some(local),
             }
         }
 
@@ -140,7 +140,7 @@ pub mod tree {
             match self {
                 Self::Local(..) => None,
                 Self::Remote(metadata) => Some(metadata),
-                Self::Both { remote, .. } => Some(remote),
+                Self::Sync { remote, .. } => Some(remote),
             }
         }
 
@@ -152,8 +152,17 @@ pub mod tree {
             matches!(self, Entry::Remote(..))
         }
 
-        pub fn is_both(&self) -> bool {
-            matches!(self, Entry::Both { .. })
+        pub fn is_sync(&self) -> bool {
+            matches!(self, Entry::Sync { .. })
+        }
+
+        pub fn is_safe_dir(&self) -> bool {
+            match self {
+                Self::Local(md) if md.is_dir() => true,
+                Self::Remote(md) if md.is_dir() => true,
+                Self::Sync { local, remote } if local.is_dir() && remote.is_dir() => true,
+                _ => false,
+            }
         }
     }
 
@@ -203,8 +212,8 @@ pub mod tree {
             self.entry.is_remote_only()
         }
 
-        pub fn is_both(&self) -> bool {
-            self.entry.is_both()
+        pub fn is_sync(&self) -> bool {
+            self.entry.is_sync()
         }
 
         pub fn conflict(&self) -> Option<ConflictTy> {

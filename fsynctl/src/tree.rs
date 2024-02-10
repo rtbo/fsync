@@ -114,7 +114,7 @@ fn print_entry_status(first: bool, has_follower: bool, prefix_head: &str, entry:
         tree::Entry::Remote(..) => {
             println!("R {prefix_head}{prefix_tail}{name}");
         }
-        tree::Entry::Both { local, remote } => {
+        tree::Entry::Sync { local, remote } => {
             assert_eq!(local.path(), remote.path());
             let mtime_cmp = fsync::compare_mtime_opt(local.mtime(), remote.mtime());
 
