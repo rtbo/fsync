@@ -43,12 +43,14 @@ impl fmt::Display for Location {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Provider {
     GoogleDrive,
+    LocalFs,
 }
 
 impl fmt::Display for Provider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Provider::GoogleDrive => f.write_str("Google Drive"),
+            Provider::LocalFs => f.write_str("Local FileSystem"),
         }
     }
 }

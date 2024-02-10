@@ -95,12 +95,20 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
             let remote =
                 storage::drive::GoogleDrive::new(auth, client, config.root.as_deref().into())
                     .await?;
+            start_cache_service(cli, local, remote, shutdown_ref).await
+        }
+        fsync::ProviderConfig::LocalFs(path) => {
+            log::info!(
+                "Initializing Local File system storage in {path}",
+            );
+
+            let remote = storage::fs::FileSystem::new(path)?;
             start_service(cli, local, remote, shutdown_ref).await
         }
     }
 }
 
-async fn start_service<L, R>(
+async fn start_cache_service<L, R>(
     cli: Cli,
     local: L,
     remote: R,
@@ -118,6 +126,19 @@ where
     let persist = CachePersist::MemoryAndDisk(remote_cache_path);
     let remote = storage::cache::CacheStorage::new(remote, persist).await?;
 
+    start_service(cli, local, remote, shutdown_ref).await
+}
+
+async fn start_service<L, R>(
+    cli: Cli,
+    local: L,
+    remote: R,
+    shutdown_ref: ShutdownRef,
+) -> anyhow::Result<()>
+where
+    L: storage::Storage,
+    R: storage::Storage,
+{
     let service = Service::new(local, remote.clone()).await?;
     let service = Arc::new(service);
 
