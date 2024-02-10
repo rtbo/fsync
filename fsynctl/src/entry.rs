@@ -1,9 +1,6 @@
-use std::{
-    cmp::Ordering,
-    net::{IpAddr, Ipv6Addr},
-};
+use std::net::{IpAddr, Ipv6Addr};
 
-use fsync::{path::PathBuf, tree, FsyncClient};
+use fsync::{path::PathBuf, tree, Conflict, FsyncClient};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
 use crate::utils;
@@ -58,14 +55,30 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
         tree::Entry::Remote(entry) => {
             println!("R {}", entry.path());
         }
-        tree::Entry::Sync { local, remote } => {
+        tree::Entry::Sync {
+            local,
+            remote,
+            conflict,
+        } => {
             assert_eq!(local.path(), remote.path());
-            let mtime_cmp = fsync::compare_mtime_opt(local.mtime(), remote.mtime());
-            match mtime_cmp {
-                None | Some(Ordering::Equal) => println!("S {}", local.path()),
-                Some(Ordering::Less) => println!("C {:<40} local older than remote", local.path()),
-                Some(Ordering::Greater) => {
-                    println!("C {:<40} remote older than local", local.path())
+            let path = local.path();
+            match conflict {
+                None => {
+                    println!("S {path}")
+                }
+                Some(Conflict::LocalBigger) => {
+                    println!("C {path:<40} local is bigger than remote")
+                }
+                Some(Conflict::LocalSmaller) => {
+                    println!("C {path:<40} local is smaller than remote")
+                }
+                Some(Conflict::LocalNewer) => println!("C {path:<40} local is newer than remote"),
+                Some(Conflict::LocalOlder) => println!("C {path:<40} local is older than remote"),
+                Some(Conflict::LocalDirRemoteFile) => {
+                    println!("C {path:<40} local is a directory and remote a file")
+                }
+                Some(Conflict::LocalFileRemoteDir) => {
+                    println!("C {path:<40} local is a file and remote a directory")
                 }
             }
         }

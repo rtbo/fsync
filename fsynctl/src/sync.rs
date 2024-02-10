@@ -1,14 +1,9 @@
-use std::{
-    cmp::Ordering,
-    fmt,
-    sync::Arc,
-    time::Duration,
-};
+use std::{cmp::Ordering, fmt, sync::Arc, time::Duration};
 
 use byte_unit::{AdjustedByte, Byte, UnitType};
 use fsync::{
     path::{Path, PathBuf},
-    tree, FsyncClient,
+    tree, Conflict, FsyncClient,
 };
 use futures::future::BoxFuture;
 use inquire::Select;
@@ -350,7 +345,11 @@ impl SyncCommand {
         match entry {
             tree::Entry::Local(entry) => self.local_to_remote(entry).await,
             tree::Entry::Remote(entry) => self.remote_to_local(entry).await,
-            tree::Entry::Sync { local, remote } => self.both(local, remote).await,
+            tree::Entry::Sync {
+                local,
+                remote,
+                conflict,
+            } => self.both(local, remote, *conflict).await,
         }
     }
 
@@ -460,7 +459,12 @@ impl SyncCommand {
         }
     }
 
-    async fn both(&self, local: &fsync::Metadata, remote: &fsync::Metadata) -> anyhow::Result<()> {
+    async fn both(
+        &self,
+        local: &fsync::Metadata,
+        remote: &fsync::Metadata,
+        conflict: Option<Conflict>,
+    ) -> anyhow::Result<()> {
         assert_eq!(local.path(), remote.path());
         match (local, remote) {
             (fsync::Metadata::Special { path, .. }, _)
@@ -491,7 +495,7 @@ impl SyncCommand {
                 self.local_file_remote_dir(local, remote).await
             }
 
-            (_, _) => self.both_reg_files(local, remote).await,
+            (_, _) => self.both_reg_files(local, remote, conflict).await,
         }
     }
 
@@ -508,18 +512,26 @@ impl SyncCommand {
 
     async fn local_dir_remote_file(
         &self,
-        _local: &fsync::Metadata,
+        local: &fsync::Metadata,
         _remote: &fsync::Metadata,
     ) -> anyhow::Result<()> {
-        unimplemented!("local dir and remote file")
+        anyhow::bail!(
+            r#"{} isn't directory or file on both ends.
+    Unsupported situation. Aborting"#,
+            local.path()
+        );
     }
 
     async fn local_file_remote_dir(
         &self,
-        _local: &fsync::Metadata,
+        local: &fsync::Metadata,
         _remote: &fsync::Metadata,
     ) -> anyhow::Result<()> {
-        unimplemented!("local file and remote dir")
+        anyhow::bail!(
+            r#"{} isn't directory or file on both ends.
+    Unsupported situation. Aborting"#,
+            local.path()
+        );
     }
 
     fn conflict_choice_options(&self) -> Vec<SelectOption<ConflictChoice>> {
@@ -578,6 +590,40 @@ impl SyncCommand {
         &self,
         local: &fsync::Metadata,
         remote: &fsync::Metadata,
+        conflict: Option<Conflict>,
+    ) -> anyhow::Result<()> {
+        if conflict.is_none() {
+            println!("Up-to-date: {}", local.path());
+            self.good_to_go(local).await;
+            return Ok(());
+        }
+
+        match conflict {
+            None => {
+                println!("Up-to-date: {}", local.path());
+                self.good_to_go(local).await;
+                Ok(())
+            }
+            Some(Conflict::LocalBigger) | Some(Conflict::LocalSmaller) => {
+                anyhow::bail!(
+                    r#"{} has same modification time but different size.
+    Unsupported situation. Aborting"#,
+                    local.path()
+                );
+            }
+            Some(Conflict::LocalDirRemoteFile) | Some(Conflict::LocalFileRemoteDir) => {
+                unreachable!()
+            }
+            Some(Conflict::LocalNewer) | Some(Conflict::LocalOlder) => {
+                self.conflict(local, remote).await
+            }
+        }
+    }
+
+    async fn conflict(
+        &self,
+        local: &fsync::Metadata,
+        remote: &fsync::Metadata,
     ) -> anyhow::Result<()> {
         let loc_mtime = local.mtime().unwrap();
         let loc_size = local.size().unwrap();
@@ -585,21 +631,6 @@ impl SyncCommand {
         let rem_size = remote.size().unwrap();
 
         let mtime_cmp = fsync::compare_mtime(loc_mtime, rem_mtime);
-
-        if mtime_cmp == Ordering::Equal && loc_size == rem_size {
-            // storing remote because has specific id, but local would also be OK
-            println!("Up-to-date: {}", local.path());
-            self.good_to_go(remote).await;
-            return Ok(());
-        }
-
-        if mtime_cmp == Ordering::Equal && loc_size != rem_size {
-            anyhow::bail!(
-                r#"{} has same modification time but different size.
-Unsupported situation. Aborting"#,
-                local.path()
-            );
-        }
 
         let remember = {
             let rem = self.remember.read().await;

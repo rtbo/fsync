@@ -33,24 +33,26 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 
     println!("{} conflicts found!", conflicts.len());
 
-    for c in conflicts {
+    for entry in conflicts {
+        let path = entry.path();
+        let c = entry.conflict().unwrap();
         match c {
-            Conflict::LocalBigger { path, .. } => {
+            Conflict::LocalBigger => {
                 println!("C {path} local is bigger (but same mtime)");
             }
-            Conflict::LocalSmaller { path, .. } => {
+            Conflict::LocalSmaller => {
                 println!("C {path} local is smaller (but same mtime)");
             }
-            Conflict::LocalNewer { path, .. } => {
+            Conflict::LocalNewer => {
                 println!("C {path} local is newer");
             }
-            Conflict::LocalOlder { path, .. } => {
+            Conflict::LocalOlder => {
                 println!("C {path} local is older");
             }
-            Conflict::LocalFileRemoteDir { path, .. } => {
+            Conflict::LocalFileRemoteDir => {
                 println!("C {path} local is file, remote is dir");
             }
-            Conflict::LocalDirRemoteFile { path, .. } => {
+            Conflict::LocalDirRemoteFile => {
                 println!("C {path} local is dir, remote is file");
             }
         }

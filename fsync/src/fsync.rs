@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    conflict::Conflict,
     path::{Path, PathBuf},
     Location,
 };
@@ -95,9 +94,11 @@ impl Default for Metadata {
 }
 
 pub mod tree {
+    use std::mem;
+
     use serde::{Deserialize, Serialize};
 
-    use crate::{conflict::ConflictTy, path::Path};
+    use crate::{path::Path, Conflict};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Entry {
@@ -106,20 +107,31 @@ pub mod tree {
         Sync {
             local: super::Metadata,
             remote: super::Metadata,
+            conflict: Option<Conflict>,
         },
     }
 
     impl Entry {
+        pub fn new_sync(local: super::Metadata, remote: super::Metadata) -> Self {
+            let conflict = Conflict::check(&local, &remote);
+            Self::Sync {
+                local,
+                remote,
+                conflict,
+            }
+        }
+
         pub fn root() -> Self {
             Self::Sync {
                 local: super::Metadata::root(),
                 remote: super::Metadata::root(),
+                conflict: None,
             }
         }
 
         pub fn path(&self) -> &Path {
             match self {
-                Entry::Sync { local, remote } => {
+                Entry::Sync { local, remote, .. } => {
                     debug_assert_eq!(local.path(), remote.path());
                     local.path()
                 }
@@ -160,9 +172,26 @@ pub mod tree {
             match self {
                 Self::Local(md) if md.is_dir() => true,
                 Self::Remote(md) if md.is_dir() => true,
-                Self::Sync { local, remote } if local.is_dir() && remote.is_dir() => true,
+                Self::Sync { local, remote, .. } if local.is_dir() && remote.is_dir() => true,
                 _ => false,
             }
+        }
+
+        pub fn conflict(&self) -> Option<Conflict> {
+            match self {
+                Self::Sync { conflict, .. } => *conflict,
+                _ => None,
+            }
+        }
+
+        pub fn is_conflict(&self) -> bool {
+            matches!(
+                self,
+                Self::Sync {
+                    conflict: Some(_),
+                    ..
+                }
+            )
         }
     }
 
@@ -170,17 +199,15 @@ pub mod tree {
     pub struct Node {
         entry: Entry,
         children: Vec<String>,
-        conflict: Option<ConflictTy>,
         children_conflict_count: usize,
     }
 
     impl Node {
-        pub fn new(entry: Entry, children: Vec<String>) -> Self {
+        pub fn new(entry: Entry, children: Vec<String>, children_conflict_count: usize) -> Self {
             Self {
                 entry,
                 children,
-                conflict: None,
-                children_conflict_count: 0,
+                children_conflict_count,
             }
         }
 
@@ -188,8 +215,10 @@ pub mod tree {
             &self.entry
         }
 
-        pub fn entry_mut(&mut self) -> &mut Entry {
-            &mut self.entry
+        pub fn op_entry<F: FnOnce(Entry) -> Entry>(&mut self, op: F) {
+            let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+            let valid = mem::replace(&mut self.entry, invalid);
+            self.entry = op(valid);
         }
 
         pub fn into_entry(self) -> Entry {
@@ -214,18 +243,6 @@ pub mod tree {
 
         pub fn is_sync(&self) -> bool {
             self.entry.is_sync()
-        }
-
-        pub fn conflict(&self) -> Option<ConflictTy> {
-            self.conflict
-        }
-
-        pub fn set_conflict(&mut self, conflict: Option<ConflictTy>) {
-            self.conflict = conflict;
-        }
-
-        pub fn has_conflict(&self) -> bool {
-            self.conflict.is_some()
         }
 
         pub fn children_conflict_count(&self) -> usize {
@@ -255,8 +272,7 @@ pub enum Operation {
 
 #[tarpc::service]
 pub trait Fsync {
-    async fn conflict(path: PathBuf) -> crate::Result<Option<Conflict>>;
-    async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<Conflict>>;
+    async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<tree::Entry>>;
     async fn entry(path: PathBuf) -> crate::Result<Option<tree::Node>>;
     async fn operate(operation: Operation) -> crate::Result<()>;
 }

@@ -1,12 +1,15 @@
 use std::{
-    collections::BTreeMap,
+    collections::BTreeSet,
     net::{IpAddr, Ipv6Addr},
     ops::Bound,
     sync::Arc,
 };
 
 use fsync::{
-    self, loc::inst, path::{Path, PathBuf}, Error, Fsync, Location, Metadata, Operation, PathError
+    self,
+    loc::inst,
+    path::{Path, PathBuf},
+    Error, Fsync, Location, Metadata, Operation, PathError,
 };
 use futures::{
     future,
@@ -30,7 +33,7 @@ pub struct Service<L, R> {
     local: L,
     remote: R,
     tree: DiffTree,
-    conflicts: RwLock<BTreeMap<PathBuf, fsync::Conflict>>,
+    conflicts: RwLock<BTreeSet<PathBuf>>,
     abort_handle: RwLock<Option<AbortHandle>>,
 }
 
@@ -42,24 +45,16 @@ where
     pub async fn new(local: L, remote: R) -> anyhow::Result<Self> {
         let tree = DiffTree::build(&local, &remote).await?;
 
-        let mut conflicts = BTreeMap::new();
-        let mut conf_vec = Vec::new();
+        let mut conflicts = BTreeSet::new();
 
-        for entry in tree.entries_mut() {
-            match entry.entry() {
-                tree::Entry::Sync { local, remote } => {
-                    if let Some(conflict) = fsync::Conflict::check(local, remote) {
-                        let path = entry.key().to_path_buf();
-                        conf_vec.push((path.clone(), conflict.ty()));
-                        conflicts.insert(path, conflict);
-                    }
-                }
-                _ => (),
+        for node in tree.entries() {
+            if let tree::Entry::Sync {
+                conflict: Some(_), ..
+            } = node.entry()
+            {
+                let path = node.key().to_path_buf();
+                conflicts.insert(path);
             }
-        }
-
-        for (path, conf) in conf_vec {
-            tree.set_conflict(&path, Some(conf));
         }
 
         Ok(Self {
@@ -103,16 +98,13 @@ where
         Ok(node)
     }
 
-    // async fn add_conflict(&self, path: &Path, conflict: Conflict) {
-    //     self.tree.set_conflict(path, Some(conflict.ty())); 
-    //     let mut conflicts = self.conflicts.write().await;
-    //     conflicts.insert(path.to_owned(), conflict);
-    // }
-
-    async fn rem_conflict(&self, path: &Path) {
-        self.tree.set_conflict(path, None);
+    async fn check_conflict(&self, path: &Path, is_conflict: bool) {
         let mut conflicts = self.conflicts.write().await;
-        conflicts.remove(path);
+        if is_conflict {
+            conflicts.insert(path.to_owned());
+        } else {
+            conflicts.remove(path);
+        }
     }
 }
 
@@ -126,25 +118,23 @@ where
         Ok(self.tree.entry(&path))
     }
 
-    pub async fn conflict(&self, path: &Path) -> fsync::Result<Option<fsync::Conflict>> {
-        let path = Self::check_path(path)?;
-        let conflicts = self.conflicts.read().await;
-        let conflict = conflicts.get(&path);
-        Ok(conflict.cloned())
-    }
-
     pub async fn conflicts(
         &self,
         start: Option<&Path>,
         max_len: usize,
-    ) -> fsync::Result<Vec<fsync::Conflict>> {
+    ) -> fsync::Result<Vec<fsync::tree::Entry>> {
         let start = start.map(Self::check_path).transpose()?;
         let conflicts = self.conflicts.read().await;
         let start_bound = start.map(Bound::Included).unwrap_or(Bound::Unbounded);
         let conflicts = conflicts
             .range((start_bound, Bound::Unbounded))
             .take(max_len)
-            .map(|(_, v)| v.clone())
+            .map(|path| {
+                self.tree
+                    .entry(path)
+                    .expect("conflict path should point to valid entry")
+                    .into_entry()
+            })
             .collect();
         Ok(conflicts)
     }
@@ -156,19 +146,19 @@ where
             tree::Entry::Remote(remote) if remote.is_file() => {
                 let read = self.remote.read_file(remote.path().to_owned()).await?;
                 let local = self.local.create_file(remote, read).await?;
-                self.tree.add_local(path, local).unwrap();
+                let is_conflict = self.tree.add_local_is_conflict(path, local);
+                self.check_conflict(path, is_conflict).await;
                 Ok(())
             }
             tree::Entry::Remote(remote) if remote.is_dir() => {
                 self.local.mkdir(path, false).await?;
-                self.tree
-                    .add_local(
-                        path,
-                        Metadata::Directory {
-                            path: path.to_path_buf(),
-                        },
-                    )
-                    .unwrap();
+                let is_conflict = self.tree.add_local_is_conflict(
+                    path,
+                    Metadata::Directory {
+                        path: path.to_path_buf(),
+                    },
+                );
+                self.check_conflict(path, is_conflict).await;
                 Ok(())
             }
             _ => Err(PathError::Unexpected(path.to_owned(), Location::Both))?,
@@ -183,19 +173,19 @@ where
 
                 let remote = self.remote.create_file(local, read).await.unwrap();
 
-                self.tree.add_remote(path, remote).unwrap();
+                let is_conflict = self.tree.add_remote_is_conflict(path, remote);
+                self.check_conflict(path, is_conflict).await;
                 Ok(())
             }
             tree::Entry::Local(local) if local.is_dir() => {
                 self.remote.mkdir(path, false).await?;
-                self.tree
-                    .add_remote(
-                        path,
-                        Metadata::Directory {
-                            path: path.to_path_buf(),
-                        },
-                    )
-                    .unwrap();
+                let is_conflict = self.tree.add_remote_is_conflict(
+                    path,
+                    Metadata::Directory {
+                        path: path.to_path_buf(),
+                    },
+                );
+                self.check_conflict(path, is_conflict).await;
                 Ok(())
             }
             tree::Entry::Remote(..) => Err(PathError::Only(path.to_owned(), Location::Remote))?,
@@ -209,8 +199,8 @@ where
             tree::Entry::Sync { remote, .. } => {
                 let data = self.remote().read_file(path.to_path_buf()).await?;
                 let local = self.local().write_file(remote, data).await?;
-                self.tree.add_local(path, local).unwrap();
-                self.rem_conflict(path).await;
+                let is_conflict = self.tree.add_local_is_conflict(path, local);
+                self.check_conflict(path, is_conflict).await;
                 Ok(())
             }
             tree::Entry::Local(local) => Err(PathError::Unexpected(
@@ -230,8 +220,8 @@ where
             tree::Entry::Sync { local, .. } => {
                 let data = self.local().read_file(path.to_path_buf()).await?;
                 let remote = self.remote().write_file(local, data).await?;
-                self.tree.add_remote(path, remote).unwrap();
-                self.rem_conflict(path).await;
+                let is_conflict = self.tree.add_remote_is_conflict(path, remote);
+                self.check_conflict(path, is_conflict).await;
                 Ok(())
             }
             tree::Entry::Local(local) => Err(PathError::Unexpected(
@@ -247,7 +237,6 @@ where
 
     pub async fn delete(&self, path: &Path, location: Location) -> fsync::Result<()> {
         let node = self.check_node(path)?;
-        self.rem_conflict(path).await;
         match (node.entry(), location) {
             (tree::Entry::Local(..), Location::Local) => {
                 self.local().delete(path).await?;
@@ -275,6 +264,7 @@ where
                 Some(location),
             ))?,
         }
+        self.check_conflict(path, false).await;
         Ok(())
     }
 
@@ -382,18 +372,12 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    async fn conflict(self, _: Context, path: PathBuf) -> fsync::Result<Option<fsync::Conflict>> {
-        let res = self.inner.conflict(&path).await;
-        log::trace!(target: "RPC", "Fsync::conflict(path: {path:?}) -> {res:#?}");
-        res
-    }
-
     async fn conflicts(
         self,
         _: Context,
         start: Option<PathBuf>,
         max_len: u32,
-    ) -> fsync::Result<Vec<fsync::Conflict>> {
+    ) -> fsync::Result<Vec<fsync::tree::Entry>> {
         let max_len = max_len.min(100);
         let res = self.inner.conflicts(start.as_deref(), max_len as _).await;
         log::trace!(target: "RPC", "Fsync::conflicts({start:?}, {max_len}) -> {res:#?}");
@@ -418,7 +402,6 @@ mod tests {
     use std::{collections::BTreeSet, ops::Bound};
 
     use fsync::path::{Path, PathBuf};
-
 
     fn build_test_conflicts() -> BTreeSet<PathBuf> {
         let mut set = BTreeSet::new();

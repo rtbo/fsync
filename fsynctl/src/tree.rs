@@ -1,5 +1,4 @@
 use std::{
-    cmp::Ordering,
     net::{IpAddr, Ipv6Addr},
     sync::Arc,
 };
@@ -114,23 +113,10 @@ fn print_entry_status(first: bool, has_follower: bool, prefix_head: &str, entry:
         tree::Entry::Remote(..) => {
             println!("R {prefix_head}{prefix_tail}{name}");
         }
-        tree::Entry::Sync { local, remote } => {
+        tree::Entry::Sync { local, remote, conflict } => {
             assert_eq!(local.path(), remote.path());
-            let mtime_cmp = fsync::compare_mtime_opt(local.mtime(), remote.mtime());
 
-            let conflict = match (local.is_dir(), remote.is_dir()) {
-                (true, true) => None,
-                (false, false) => {
-                    match mtime_cmp.expect("Regular file entries should have modification time") {
-                        Ordering::Equal => None,
-                        Ordering::Less => Some("local is older than remote"),
-                        Ordering::Greater => Some("remote is older than local"),
-                    }
-                }
-                (true, false) => Some("local is a directory, remote a file"),
-                (false, true) => Some("local is a file, remote a directory"),
-            };
-
+            let conflict = conflict.map(|c| c.to_string());
             let status = if conflict.is_none() { "S" } else { "C" };
 
             println!("{status} {prefix_head}{prefix_tail}{name}");

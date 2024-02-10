@@ -16,7 +16,7 @@ mod fsync;
 
 pub use crate::{
     config::{Config, ProviderConfig},
-    conflict::{Conflict, ConflictTy},
+    conflict::Conflict,
     error::*,
     fsync::*,
 };
