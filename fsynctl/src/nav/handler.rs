@@ -27,52 +27,16 @@ pub enum HandlerResult {
 
 impl super::Navigator {
     pub async fn handle_event(&mut self, event: event::Event) -> anyhow::Result<HandlerResult> {
+        use HandlerResult::*;
+
         match event {
+            event::Event::Key(key) => return Ok(self.handle_key_event(key).await?),
             event::Event::Resize(width, height) => {
                 self.size = (width, height);
             }
-            event::Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => {
-                    return Ok(HandlerResult::Exit);
-                }
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    // faking ctrl-c, which won't work in raw mode otherwise
-                    return Ok(HandlerResult::Exit);
-                }
-
-                KeyCode::Down | KeyCode::Char('j') if self.is_enabled(Action::Down) => {
-                    self.cur_child = (self.cur_child + 1) % self.children.len();
-                    self.check_cur_child();
-                }
-
-                KeyCode::Up | KeyCode::Char('k') if self.is_enabled(Action::Up) => {
-                    if self.cur_child > 0 {
-                        self.cur_child -= 1;
-                    } else {
-                        self.cur_child = self.children.len() - 1;
-                    }
-                    self.check_cur_child();
-                }
-
-                KeyCode::Char(' ') if self.is_enabled(Action::Details) => {
-                    if self.detailed_child == Some(self.cur_child) {
-                        self.detailed_child = None;
-                    } else {
-                        self.detailed_child = Some(self.cur_child);
-                    }
-                }
-
-                KeyCode::Enter if self.is_enabled(Action::Enter) => {
-                    self.open_cur_child().await?;
-                }
-                KeyCode::Backspace if self.is_enabled(Action::Back) => {
-                    self.open_parent().await?;
-                }
-                _ => {}
-            },
             _ => {}
         }
-        Ok(HandlerResult::Continue)
+        Ok(Continue)
     }
 
     pub fn is_enabled(&self, action: Action) -> bool {
@@ -81,6 +45,54 @@ impl super::Navigator {
 }
 
 impl super::Navigator {
+    async fn handle_key_event(&mut self, key: event::KeyEvent) -> anyhow::Result<HandlerResult> {
+        use HandlerResult::*;
+
+        if key.kind == KeyEventKind::Release {
+            return Ok(Continue);
+        }
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => {
+                return Ok(Exit);
+            }
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // faking ctrl-c, which won't work in raw mode otherwise
+                return Ok(Exit);
+            }
+
+            KeyCode::Down | KeyCode::Char('j') if self.is_enabled(Action::Down) => {
+                self.cur_child = (self.cur_child + 1) % self.children.len();
+                self.check_cur_child();
+            }
+
+            KeyCode::Up | KeyCode::Char('k') if self.is_enabled(Action::Up) => {
+                if self.cur_child > 0 {
+                    self.cur_child -= 1;
+                } else {
+                    self.cur_child = self.children.len() - 1;
+                }
+                self.check_cur_child();
+            }
+
+            KeyCode::Char(' ') if self.is_enabled(Action::Details) => {
+                if self.detailed_child == Some(self.cur_child) {
+                    self.detailed_child = None;
+                } else {
+                    self.detailed_child = Some(self.cur_child);
+                }
+            }
+
+            KeyCode::Enter if self.is_enabled(Action::Enter) => {
+                self.open_cur_child().await?;
+            }
+            KeyCode::Backspace if self.is_enabled(Action::Back) => {
+                self.open_parent().await?;
+            }
+            _ => {}
+        }
+        Ok(Continue)
+    }
+
     async fn open_entry(&mut self, path: &Path) -> anyhow::Result<()> {
         let (node, children) = super::node_and_children(&self.client, &path).await?;
         self.node = node;
@@ -103,7 +115,7 @@ impl super::Navigator {
             .position(|n| n.name().unwrap() == &cur_name)
             .unwrap();
         self.check_cur_child();
-        
+
         Ok(())
     }
 
