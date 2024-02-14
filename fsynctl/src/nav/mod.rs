@@ -1,14 +1,15 @@
 use std::{io, panic, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use crossterm::{cursor, event, execute, terminal};
+use crossterm::{cursor, event::{self, EventStream}, execute, terminal};
 use fsync::{
     path::{Path, PathBuf},
     tree::EntryNode,
     FsyncClient,
 };
-use futures::{future, FutureExt};
+use futures::{future, FutureExt, StreamExt};
 use tarpc::context;
+use tokio::time;
 
 use crate::utils;
 
@@ -86,6 +87,8 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 }
 
 async fn navigate(client: Arc<FsyncClient>, path: PathBuf) -> anyhow::Result<()> {
+    use HandlerResult::*;
+
     // it is possible to receive start-up events, so we need to clear them.
     // It was observed to receive initial Key enter event (shell prompt entry)
     // and resize event on Windows.
@@ -98,13 +101,28 @@ async fn navigate(client: Arc<FsyncClient>, path: PathBuf) -> anyhow::Result<()>
 
     let mut nav = Navigator::new(client, &path).await?;
 
+    let mut reader = EventStream::new();
+
     loop {
         nav.render()?;
-        if event::poll(Duration::from_millis(500))? {
-            match nav.handle_event(event::read()?).await? {
-                HandlerResult::Exit => break,
-                HandlerResult::Continue => (),
+
+        let delay = time::sleep(Duration::from_millis(500));
+        let event = reader.next();
+
+        let res = tokio::select! {
+            _ = delay => Continue,
+            maybe_event = event => {
+                match maybe_event {
+                    Some(Ok(event)) => {
+                        nav.handle_event(event).await?
+                    }
+                    _ => Continue,
+                }
             }
+        };
+
+        if res == Exit {
+            break;
         }
     }
 

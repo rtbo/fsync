@@ -20,6 +20,7 @@ pub const ACTIONS: &[Action] = &[
     Action::Exit,
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandlerResult {
     Continue,
     Exit,
