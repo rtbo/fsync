@@ -80,6 +80,16 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 }
 
 async fn navigate(client: Arc<FsyncClient>, path: PathBuf) -> anyhow::Result<()> {
+    // it is possible to receive start-up events, so we need to clear them.
+    // Observation is to receive initial Key enter event (shell prompt entry)
+    // and resize event on Windows.
+    if event::poll(Duration::from_millis(10))? {
+        let _ = event::read();
+        while event::poll(Duration::from_millis(0))? {
+            let _ = event::read();
+        }
+    }
+
     let mut navigator = Some(Navigator::new(client, &path).await?);
     while let Some(nav) = navigator {
         navigator = nav.navigate().await?;
