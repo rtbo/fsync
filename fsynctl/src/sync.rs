@@ -651,7 +651,7 @@ impl SyncCommand {
         let head = format!("Conflict: {}", local.path());
         let (loc_adj, rem_adj) = match mtime_cmp {
             Ordering::Less => ("oldest", "most recent"),
-            Ordering::Greater => ("oldest", "most recent"),
+            Ordering::Greater => ("most recent", "oldest"),
             Ordering::Equal => unreachable!(),
         };
 
@@ -663,10 +663,10 @@ impl SyncCommand {
             match loc_size.cmp(&rem_size) {
                 Ordering::Equal => "Both have same size".into(),
                 Ordering::Less => {
-                    format!("Local is smaller ({loc_bytes:#}), remote is bigger ({rem_bytes:#.2})")
+                    format!("Local is smaller ({loc_bytes:#.2}), remote is bigger ({rem_bytes:#.2})")
                 }
                 Ordering::Greater => {
-                    format!("Local is bigger ({loc_bytes:#}), remote is smaller ({rem_bytes:#.2})")
+                    format!("Local is bigger ({loc_bytes:#.2}), remote is smaller ({rem_bytes:#.2})")
                 }
             }
         };
