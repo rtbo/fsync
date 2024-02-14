@@ -8,10 +8,10 @@ use std::{
 use anyhow::Context;
 use crossterm::{
     cursor::{self, MoveTo},
-    event::{self, KeyCode, KeyModifiers},
+    event::{self, KeyCode, KeyEventKind, KeyModifiers},
     execute, queue,
     style::{Color, Print, PrintStyledContent, Stylize},
-    terminal, ExecutableCommand,
+    terminal,
 };
 use fsync::{
     path::{Path, PathBuf},
@@ -156,7 +156,7 @@ impl Navigator {
                         self.size = (width, height);
                         self.render()?;
                     }
-                    event::Event::Key(key) => match key.code {
+                    event::Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => {
                             return Ok(None);
                         }
