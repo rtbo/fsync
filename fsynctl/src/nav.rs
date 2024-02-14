@@ -430,7 +430,7 @@ impl Navigator {
                 break;
             }
             if end > self.size.0 {
-                dd = &dd[0 .. dd.len() - (end - self.size.0) as usize]; 
+                dd = &dd[0..dd.len() - (end - self.size.0) as usize];
             }
 
             queue!(

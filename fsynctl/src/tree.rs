@@ -113,7 +113,11 @@ fn print_entry_status(first: bool, has_follower: bool, prefix_head: &str, entry:
         tree::Entry::Remote(..) => {
             println!("R {prefix_head}{prefix_tail}{name}");
         }
-        tree::Entry::Sync { local, remote, conflict } => {
+        tree::Entry::Sync {
+            local,
+            remote,
+            conflict,
+        } => {
             assert_eq!(local.path(), remote.path());
 
             let conflict = conflict.map(|c| c.to_string());

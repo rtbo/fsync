@@ -1,14 +1,14 @@
 use std::cmp::Ordering;
 
-use crate::storage;
 use dashmap::DashMap;
 use fsync::path::{Path, PathBuf};
+pub use fsync::tree::{Entry, EntryNode};
 use futures::{
     future::{self, BoxFuture},
     StreamExt, TryStreamExt,
 };
 
-pub use fsync::tree::{Entry, EntryNode};
+use crate::storage;
 
 trait EntryExt {
     fn with_local(self, local: fsync::Metadata) -> Self;

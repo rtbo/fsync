@@ -52,7 +52,10 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     let client = utils::instance_client(&instance_name).await?;
 
     let path = args.path.clone().unwrap_or_else(PathBuf::root);
-    let node = client.entry_node(tarpc_context(), path.clone()).await?.unwrap();
+    let node = client
+        .entry_node(tarpc_context(), path.clone())
+        .await?
+        .unwrap();
     if node.is_none() {
         anyhow::bail!("No such entry: {path}",);
     }
@@ -333,7 +336,11 @@ impl SyncCommand {
                 let path = node.path();
                 for c in node.children() {
                     let path = path.join(c);
-                    let node = self.client.entry_node(tarpc_context(), path).await?.unwrap();
+                    let node = self
+                        .client
+                        .entry_node(tarpc_context(), path)
+                        .await?
+                        .unwrap();
                     self.node(node.as_ref().unwrap()).await?;
                 }
             }

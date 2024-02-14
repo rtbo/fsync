@@ -8,7 +8,11 @@ use crate::{harness, utils::UnwrapDisplay};
 #[tokio::test]
 async fn entry() {
     let h = harness().await;
-    let notexist = h.service.entry_node(Path::new("/not-exists")).await.unwrap();
+    let notexist = h
+        .service
+        .entry_node(Path::new("/not-exists"))
+        .await
+        .unwrap();
     assert!(notexist.is_none());
     let exist = h.service.entry_node(Path::new("/both.txt")).await.unwrap();
     match exist {

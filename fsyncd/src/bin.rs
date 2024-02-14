@@ -98,9 +98,7 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
             start_cache_service(cli, local, remote, shutdown_ref).await
         }
         fsync::ProviderConfig::LocalFs(path) => {
-            log::info!(
-                "Initializing Local File system storage in {path}",
-            );
+            log::info!("Initializing Local File system storage in {path}",);
 
             let remote = storage::fs::FileSystem::new(path)?;
             start_service(cli, local, remote, shutdown_ref).await

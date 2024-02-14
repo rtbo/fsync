@@ -384,7 +384,11 @@ where
         res
     }
 
-    async fn entry_node(self, _: Context, path: PathBuf) -> fsync::Result<Option<fsync::tree::EntryNode>> {
+    async fn entry_node(
+        self,
+        _: Context,
+        path: PathBuf,
+    ) -> fsync::Result<Option<fsync::tree::EntryNode>> {
         let res = self.inner.entry_node(&path).await;
         log::trace!(target: "RPC", "Fsync::entry(path: {path:?}) -> {res:#?}");
         res
