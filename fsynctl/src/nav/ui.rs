@@ -1,6 +1,11 @@
 use std::io::{self, Write};
 
-use crossterm::{cursor::MoveTo, queue, style::{Color, Print, PrintStyledContent, Stylize}, terminal};
+use crossterm::{
+    cursor::MoveTo,
+    queue,
+    style::{Color, Print, PrintStyledContent, Stylize},
+    terminal,
+};
 use fsync::tree::{Entry, EntryNode};
 
 use super::handler::{Action, ACTIONS};
@@ -38,7 +43,6 @@ impl From<Action> for Menu {
                 desc: "exit",
             },
         }
-
     }
 }
 
@@ -175,12 +179,16 @@ impl super::Navigator {
         queue!(
             out,
             MoveTo(self.size.0 - menu_width / 2 - (title.len() as u16) / 2, 0),
-            PrintStyledContent(title.cyan()),
+            if self.focus {
+                PrintStyledContent(title.cyan())
+            } else {
+                PrintStyledContent(title.with(Color::Grey).dim())
+            },
         )?;
 
         // Render each menu item
         for (idx, (action, Menu { key, desc })) in menu.into_iter().enumerate() {
-            let enabled = self.is_enabled(action);
+            let enabled = self.is_enabled(action) && self.focus;
             let key_start = self.size.0 - desc_width - sep_count - key.chars().count() as u16;
             queue!(
                 out,
@@ -348,5 +356,4 @@ impl super::Navigator {
 
         Ok(())
     }
-
 }

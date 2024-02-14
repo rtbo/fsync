@@ -54,7 +54,12 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     // to ensure correct terminal config clean-up, we need to catch errors
     // and panic
 
-    execute!(out, terminal::EnterAlternateScreen, cursor::Hide)?;
+    execute!(
+        out,
+        terminal::EnterAlternateScreen,
+        cursor::Hide,
+        event::EnableFocusChange
+    )?;
     terminal::enable_raw_mode().expect("Should enable raw mode");
 
     let res = panic::AssertUnwindSafe(navigate(client, path))
@@ -62,7 +67,12 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
         .await;
 
     terminal::disable_raw_mode().expect("Should able raw mode");
-    execute!(out, cursor::Show, terminal::LeaveAlternateScreen)?;
+    execute!(
+        out,
+        event::DisableFocusChange,
+        cursor::Show,
+        terminal::LeaveAlternateScreen
+    )?;
 
     if let Err(err) = res {
         let desc = err.downcast_ref::<String>();
@@ -127,6 +137,7 @@ struct Navigator {
 
     size: (u16, u16),
     disabled_actions: Vec<Action>,
+    focus: bool,
 
     node: EntryNode,
     children: Vec<EntryNode>,
@@ -145,6 +156,7 @@ impl Navigator {
 
             size: terminal::size()?,
             disabled_actions,
+            focus: true,
 
             node,
             children,

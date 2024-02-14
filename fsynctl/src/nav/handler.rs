@@ -34,6 +34,8 @@ impl super::Navigator {
             event::Event::Resize(width, height) => {
                 self.size = (width, height);
             }
+            event::Event::FocusGained => self.focus = true,
+            event::Event::FocusLost => self.focus = false,
             _ => {}
         }
         Ok(Continue)
