@@ -229,7 +229,8 @@ impl Navigator {
 
     fn render(&self) -> anyhow::Result<()> {
         let mut out = io::stdout();
-        out.execute(terminal::Clear(terminal::ClearType::All))?;
+
+        queue!(out, terminal::Clear(terminal::ClearType::All))?;
 
         self.render_menu()?;
 
