@@ -140,6 +140,10 @@ pub mod tree {
             }
         }
 
+        pub fn name(&self) -> Option<&str> {
+            self.path().file_name()
+        }
+
         pub fn into_local_metadata(self) -> Option<super::Metadata> {
             match self {
                 Self::Local(metadata) => Some(metadata),
@@ -231,6 +235,10 @@ pub mod tree {
 
         pub fn path(&self) -> &Path {
             self.entry.path()
+        }
+
+        pub fn name(&self) -> Option<&str> {
+            self.path().file_name()
         }
 
         pub fn is_local_only(&self) -> bool {
