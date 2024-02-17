@@ -1,7 +1,7 @@
 use crossterm::event::{self, KeyCode, KeyEventKind, KeyModifiers};
 use fsync::path::Path;
 
-use super::ui;
+use super::render::Size;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -35,7 +35,7 @@ impl super::Navigator {
         match event {
             event::Event::Key(key) => return Ok(self.handle_key_event(key).await?),
             event::Event::Resize(width, height) => {
-                self.size = ui::Size{width, height};
+                self.size = Size{width, height};
             }
             event::Event::FocusGained => self.focus = true,
             event::Event::FocusLost => self.focus = false,

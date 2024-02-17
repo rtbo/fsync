@@ -13,11 +13,10 @@ use tarpc::context;
 use crate::utils;
 
 mod handler;
-mod ui;
+mod render;
 
-use handler::Action;
-
-use self::handler::HandlerResult;
+use handler::{Action, HandlerResult};
+use render::Size;
 
 #[derive(clap::Args, Debug)]
 pub struct Args {
@@ -152,7 +151,7 @@ async fn node_and_children(
 struct Navigator {
     client: Arc<FsyncClient>,
 
-    size: ui::Size,
+    size: Size,
     disabled_actions: Vec<Action>,
     focus: bool,
 
