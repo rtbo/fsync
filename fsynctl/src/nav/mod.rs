@@ -9,7 +9,6 @@ use fsync::{
 };
 use futures::{future, FutureExt, StreamExt};
 use tarpc::context;
-use tokio::time;
 
 use crate::utils;
 
@@ -106,11 +105,11 @@ async fn navigate(client: Arc<FsyncClient>, path: PathBuf) -> anyhow::Result<()>
     loop {
         nav.render()?;
 
-        let delay = time::sleep(Duration::from_millis(500));
+        // let delay = time::sleep(Duration::from_millis(500));
         let event = reader.next();
 
         let res = tokio::select! {
-            _ = delay => Continue,
+            // _ = delay => Continue,
             maybe_event = event => {
                 match maybe_event {
                     Some(Ok(event)) => {
@@ -153,7 +152,7 @@ async fn node_and_children(
 struct Navigator {
     client: Arc<FsyncClient>,
 
-    size: (u16, u16),
+    size: ui::Size,
     disabled_actions: Vec<Action>,
     focus: bool,
 
@@ -169,10 +168,10 @@ impl Navigator {
 
         let disabled_actions = vec![];
 
-        Ok(Self {
+        let mut nav = Self {
             client,
 
-            size: terminal::size()?,
+            size: terminal::size()?.into(),
             disabled_actions,
             focus: true,
 
@@ -180,6 +179,9 @@ impl Navigator {
             children,
             cur_child: 0,
             detailed_child: None,
-        })
+        };
+        nav.check_cur_node();
+        nav.check_cur_child();
+        Ok(nav)
     }
 }

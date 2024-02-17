@@ -1,6 +1,8 @@
 use crossterm::event::{self, KeyCode, KeyEventKind, KeyModifiers};
 use fsync::path::Path;
 
+use super::ui;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     Down,
@@ -33,7 +35,7 @@ impl super::Navigator {
         match event {
             event::Event::Key(key) => return Ok(self.handle_key_event(key).await?),
             event::Event::Resize(width, height) => {
-                self.size = (width, height);
+                self.size = ui::Size{width, height};
             }
             event::Event::FocusGained => self.focus = true,
             event::Event::FocusLost => self.focus = false,
@@ -100,7 +102,7 @@ impl super::Navigator {
         let (node, children) = super::node_and_children(&self.client, &path).await?;
         self.node = node;
         self.children = children;
-        self.enable(Action::Back, !self.node.path().is_root());
+        self.check_cur_node();
         Ok(())
     }
 
@@ -132,9 +134,13 @@ impl super::Navigator {
         Ok(())
     }
 
-    fn check_cur_child(&mut self) {
+    pub fn check_cur_child(&mut self) {
         let child = &self.children[self.cur_child];
         self.enable(Action::Enter, child.entry().is_safe_dir());
+    }
+
+    pub fn check_cur_node(&mut self) {
+        self.enable(Action::Back, !self.node.path().is_root());
     }
 
     fn enable(&mut self, action: Action, enabled: bool) {
