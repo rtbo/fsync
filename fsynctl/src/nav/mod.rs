@@ -1,7 +1,11 @@
 use std::{io, panic, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use crossterm::{cursor, event::{self, EventStream}, execute, terminal};
+use crossterm::{
+    cursor,
+    event::{self, EventStream},
+    execute, terminal,
+};
 use fsync::{
     path::{Path, PathBuf},
     tree::EntryNode,

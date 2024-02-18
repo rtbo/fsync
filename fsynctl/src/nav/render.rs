@@ -1,6 +1,6 @@
 //! Rendering module for the navigator.
 //! For each rendered frame, each character of the screen buffer is written
-//! once and only once. This is done without clearing the screen first 
+//! once and only once. This is done without clearing the screen first
 //! to avoid flickering.
 use std::io::{self, Write};
 

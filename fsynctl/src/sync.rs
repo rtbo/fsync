@@ -663,10 +663,14 @@ impl SyncCommand {
             match loc_size.cmp(&rem_size) {
                 Ordering::Equal => "Both have same size".into(),
                 Ordering::Less => {
-                    format!("Local is smaller ({loc_bytes:#.2}), remote is bigger ({rem_bytes:#.2})")
+                    format!(
+                        "Local is smaller ({loc_bytes:#.2}), remote is bigger ({rem_bytes:#.2})"
+                    )
                 }
                 Ordering::Greater => {
-                    format!("Local is bigger ({loc_bytes:#.2}), remote is smaller ({rem_bytes:#.2})")
+                    format!(
+                        "Local is bigger ({loc_bytes:#.2}), remote is smaller ({rem_bytes:#.2})"
+                    )
                 }
             }
         };

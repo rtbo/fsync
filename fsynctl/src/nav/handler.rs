@@ -35,7 +35,7 @@ impl super::Navigator {
         match event {
             event::Event::Key(key) => return Ok(self.handle_key_event(key).await?),
             event::Event::Resize(width, height) => {
-                self.size = Size{width, height};
+                self.size = Size { width, height };
             }
             event::Event::FocusGained => self.focus = true,
             event::Event::FocusLost => self.focus = false,
