@@ -148,6 +148,31 @@ async fn node_and_children(
     Ok((node, children?))
 }
 
+// use std::fs::{File, OpenOptions};
+// use std::io::Write;
+// use std::sync::Mutex;
+
+// static LOG_FILE: Mutex<Option<File>> = Mutex::new(None);
+
+// /// Logs a message to the "nav.log" file.
+// /// This function is only for debugging purposes,
+// /// because the raw terminal mode makes it difficult to
+// /// debug otherwise.
+// fn log_msg(message: &str) {
+//     let mut log_file = LOG_FILE.lock().unwrap();
+//     if log_file.is_none() {
+//         *log_file = Some(
+//             OpenOptions::new()
+//                 .create(true)
+//                 .append(true)
+//                 .open("nav.log").unwrap(),
+//         );
+//     }
+//     if let Some(file) = log_file.as_mut() {
+//         writeln!(file, "{}", message).unwrap();
+//     }
+// }
+
 struct Navigator {
     client: Arc<FsyncClient>,
 
