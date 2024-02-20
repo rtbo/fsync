@@ -1,6 +1,8 @@
 use crossterm::event;
 use fsync::path::Path;
 
+use crate::nav::ctx;
+
 use super::{menu::Action, render::Size};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +48,8 @@ impl super::Navigator {
     async fn execute_action(&mut self, action: Action) -> anyhow::Result<HandlerResult> {
         use HandlerResult::*;
 
+        let mut operated = false;
+
         match action {
             Action::Exit => return Ok(Exit),
             Action::Down => {
@@ -73,9 +77,29 @@ impl super::Navigator {
             Action::Back => {
                 self.open_parent().await?;
             }
-            Action::Sync => {}
+            Action::Sync => {
+                let child = self.cur_child_node();
+                if let Some(child) = child {
+                    let path = child.entry().path().to_owned();
+                    if child.is_local_only() {
+                        self.client.operate(ctx(), fsync::Operation::CopyLocalToRemote(path)).await.unwrap()?;
+                        operated = true;
+                    } else if child.is_remote_only() {
+                        self.client.operate(ctx(), fsync::Operation::CopyRemoteToLocal(path)).await.unwrap()?;
+                        operated = true;
+                    }
+                }
+            }
             Action::SyncAll => {}
         }
+
+        if operated {
+            let path = self.node.entry().path().to_owned();
+            let (node, children) = super::node_and_children(&self.client, &path).await?;
+            self.node = node;
+            self.children = children;
+        }
+
         Ok(Continue)
     }
 
