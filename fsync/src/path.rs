@@ -654,7 +654,7 @@ impl Path {
         }
     }
 
-    /// Produces an iterator over the path's components viewed as [`OsStr`]
+    /// Produces an iterator over the path's components viewed as [`str`]
     /// slices.
     ///
     /// For more information about the particulars of how the path is separated
