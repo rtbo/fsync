@@ -1,26 +1,7 @@
-use crossterm::event::{self, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event;
 use fsync::path::Path;
 
-use super::render::Size;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
-    Down,
-    Up,
-    Details,
-    Enter,
-    Back,
-    Exit,
-}
-
-pub const ACTIONS: &[Action] = &[
-    Action::Down,
-    Action::Up,
-    Action::Details,
-    Action::Enter,
-    Action::Back,
-    Action::Exit,
-];
+use super::{menu::Action, render::Size};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandlerResult {
@@ -32,8 +13,10 @@ impl super::Navigator {
     pub async fn handle_event(&mut self, event: event::Event) -> anyhow::Result<HandlerResult> {
         use HandlerResult::*;
 
+        // super::log_msg(&format!("{:?}", event));
+
         match event {
-            event::Event::Key(key) => return Ok(self.handle_key_event(key).await?),
+            event::Event::Key(key_event) => return Ok(self.handle_key_event(key_event).await?),
             event::Event::Resize(width, height) => {
                 self.size = Size { width, height };
             }
@@ -43,34 +26,33 @@ impl super::Navigator {
         }
         Ok(Continue)
     }
-
-    pub fn is_enabled(&self, action: Action) -> bool {
-        !self.disabled_actions.contains(&action)
-    }
 }
 
 impl super::Navigator {
-    async fn handle_key_event(&mut self, key: event::KeyEvent) -> anyhow::Result<HandlerResult> {
+    async fn handle_key_event(&mut self, key_event: event::KeyEvent) -> anyhow::Result<HandlerResult> {
         use HandlerResult::*;
 
-        if key.kind == KeyEventKind::Release {
-            return Ok(Continue);
-        }
-        match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => {
-                return Ok(Exit);
-            }
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                // faking ctrl-c, which won't work in raw mode otherwise
-                return Ok(Exit);
-            }
+        let action = self.menu.action(&key_event);
 
-            KeyCode::Down | KeyCode::Char('j') if self.is_enabled(Action::Down) => {
+        if let Some(action) = action {
+            if self.menu.is_enabled(action) {
+                return Ok(self.execute_action(action).await?);
+            }
+        }
+
+        Ok(Continue)
+    }
+
+    async fn execute_action(&mut self, action: Action) -> anyhow::Result<HandlerResult> {
+        use HandlerResult::*;
+
+        match action {
+            Action::Exit => return Ok(Exit),
+            Action::Down => {
                 self.cur_child = (self.cur_child + 1) % self.children.len();
                 self.check_cur_child();
             }
-
-            KeyCode::Up | KeyCode::Char('k') if self.is_enabled(Action::Up) => {
+            Action::Up => {
                 if self.cur_child > 0 {
                     self.cur_child -= 1;
                 } else {
@@ -78,22 +60,21 @@ impl super::Navigator {
                 }
                 self.check_cur_child();
             }
-
-            KeyCode::Char(' ') if self.is_enabled(Action::Details) => {
+            Action::Details => {
                 if self.detailed_child == Some(self.cur_child) {
                     self.detailed_child = None;
                 } else {
                     self.detailed_child = Some(self.cur_child);
                 }
             }
-
-            KeyCode::Enter if self.is_enabled(Action::Enter) => {
+            Action::Enter => {
                 self.open_cur_child().await?;
             }
-            KeyCode::Backspace if self.is_enabled(Action::Back) => {
+            Action::Back => {
                 self.open_parent().await?;
             }
-            _ => {}
+            Action::Sync => {}
+            Action::SyncAll => {}
         }
         Ok(Continue)
     }
@@ -135,21 +116,18 @@ impl super::Navigator {
     }
 
     pub fn check_cur_child(&mut self) {
-        let child = &self.children[self.cur_child];
-        self.enable(Action::Enter, child.entry().is_safe_dir());
+        let node = self.cur_child_node();
+
+        if let Some(node) = node {
+            let is_dir = node.entry().is_safe_dir();
+            let is_not_sync = node.entry().is_local_only() || node.entry().is_remote_only();
+            self.menu.enable(Action::Enter, is_dir);
+            self.menu.enable(Action::Sync, is_not_sync);
+            self.menu.enable(Action::SyncAll, is_not_sync && is_dir);
+        }
     }
 
     pub fn check_cur_node(&mut self) {
-        self.enable(Action::Back, !self.node.path().is_root());
-    }
-
-    fn enable(&mut self, action: Action, enabled: bool) {
-        if enabled {
-            // Remove the action from disabled_actions
-            self.disabled_actions.retain(|&x| x != action);
-        } else {
-            // Add the action to disabled_actions
-            self.disabled_actions.push(action);
-        }
+        self.menu.enable(Action::Back, !self.node.path().is_root());
     }
 }

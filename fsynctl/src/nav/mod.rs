@@ -17,9 +17,11 @@ use tarpc::context;
 use crate::utils;
 
 mod handler;
+mod menu;
 mod render;
 
-use handler::{Action, HandlerResult};
+use handler::HandlerResult;
+use menu::Menu;
 use render::Size;
 
 #[derive(clap::Args, Debug)]
@@ -169,7 +171,8 @@ async fn node_and_children(
 //             OpenOptions::new()
 //                 .create(true)
 //                 .append(true)
-//                 .open("nav.log").unwrap(),
+//                 .open("nav.log")
+//                 .unwrap(),
 //         );
 //     }
 //     if let Some(file) = log_file.as_mut() {
@@ -181,8 +184,8 @@ struct Navigator {
     client: Arc<FsyncClient>,
 
     size: Size,
-    disabled_actions: Vec<Action>,
     focus: bool,
+    menu: Menu,
 
     node: EntryNode,
     children: Vec<EntryNode>,
@@ -194,14 +197,12 @@ impl Navigator {
     async fn new(client: Arc<FsyncClient>, path: &Path) -> anyhow::Result<Self> {
         let (node, children) = node_and_children(&client, path).await?;
 
-        let disabled_actions = vec![];
-
         let mut nav = Self {
             client,
 
             size: terminal::size()?.into(),
-            disabled_actions,
             focus: true,
+            menu: Menu::new(),
 
             node,
             children,
@@ -211,5 +212,9 @@ impl Navigator {
         nav.check_cur_node();
         nav.check_cur_child();
         Ok(nav)
+    }
+
+    fn cur_child_node(&self) -> Option<&EntryNode> {
+        self.children.get(self.cur_child)
     }
 }

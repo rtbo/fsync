@@ -12,44 +12,6 @@ use crossterm::{
 };
 use fsync::tree::{Entry, EntryNode};
 
-use super::handler::{Action, ACTIONS};
-
-pub struct Menu {
-    pub key: &'static str,
-    pub desc: &'static str,
-}
-
-impl From<Action> for Menu {
-    fn from(action: Action) -> Self {
-        match action {
-            Action::Down => Menu {
-                key: "↓/j",
-                desc: "down",
-            },
-            Action::Up => Menu {
-                key: "↑/k",
-                desc: "up",
-            },
-            Action::Details => Menu {
-                key: "space",
-                desc: "details",
-            },
-            Action::Enter => Menu {
-                key: "enter",
-                desc: "select",
-            },
-            Action::Back => Menu {
-                key: "backspace",
-                desc: "go back",
-            },
-            Action::Exit => Menu {
-                key: "esc/q",
-                desc: "exit",
-            },
-        }
-    }
-}
-
 fn entry_print_path(entry: &Entry) -> String {
     let path = entry.path().to_string();
     if entry.is_safe_dir() && !entry.path().is_root() {
@@ -157,7 +119,7 @@ pub struct Pos {
 }
 
 impl Pos {
-    fn move_to(&self) -> MoveTo {
+    pub fn move_to(&self) -> MoveTo {
         MoveTo(self.x, self.y)
     }
 }
@@ -178,26 +140,26 @@ pub struct Rect {
 }
 
 impl Rect {
-    fn width(&self) -> u16 {
+    pub fn width(&self) -> u16 {
         self.size.width
     }
 
-    fn height(&self) -> u16 {
+    pub fn height(&self) -> u16 {
         self.size.height
     }
 
-    fn right(&self) -> u16 {
+    pub fn right(&self) -> u16 {
         self.top_left.x + self.width()
     }
 
-    fn abs_pos(&self, pos: Pos) -> Pos {
+    pub fn abs_pos(&self, pos: Pos) -> Pos {
         Pos {
             x: self.top_left.x + pos.x,
             y: self.top_left.y + pos.y,
         }
     }
 
-    fn crop_right(&self, w: u16) -> Rect {
+    pub fn crop_right(&self, w: u16) -> Rect {
         Rect {
             top_left: self.top_left,
             size: Size {
@@ -207,7 +169,7 @@ impl Rect {
         }
     }
 
-    fn crop_top(&self, h: u16) -> Rect {
+    pub fn crop_top(&self, h: u16) -> Rect {
         Rect {
             top_left: Pos {
                 x: self.top_left.x,
@@ -225,15 +187,25 @@ impl super::Navigator {
     pub fn render(&self) -> anyhow::Result<()> {
         let mut out = io::stdout();
 
-        let height = self.size.height - 1;
-
-        let menu_width = self.render_menu(height)?;
+        let max_menu_sz = self.menu.max_size();
+        let max_vp_height = self.size.height - 1;
+        let menu_viewport = Rect {
+            top_left: Pos {
+                x: self.size.width - max_menu_sz.width,
+                y: 0,
+            },
+            size: Size {
+                width: max_menu_sz.width,
+                height: max_vp_height.min(max_menu_sz.height),
+            }
+        };
+        self.menu.render(menu_viewport, self.focus)?;
 
         let viewport = Rect {
             top_left: Pos { x: 0, y: 0 },
             size: Size {
-                width: self.size.width - menu_width,
-                height,
+                width: self.size.width - menu_viewport.width(),
+                height: max_vp_height,
             },
         };
 
@@ -298,100 +270,6 @@ impl ChildrenScroll {
 }
 
 impl super::Navigator {
-    // renders the menu on the right, and clear the rest
-    // of the right side over given height
-    fn render_menu(&self, height: u16) -> anyhow::Result<u16> {
-        let mut out = io::stdout();
-
-        let sep = " : ";
-        let sep_count = 3;
-
-        let title = "FSYNC NAVIGATOR";
-
-        let menu: Vec<(Action, Menu)> = ACTIONS.iter().map(|a| (*a, Menu::from(*a))).collect();
-
-        // compute key width
-        let key_width = menu
-            .iter()
-            .map(|(_, m)| m.key.chars().count() as u16)
-            .max()
-            .unwrap_or(0);
-        // compute desc width
-        let desc_width = menu
-            .iter()
-            .map(|(_, m)| m.desc.chars().count() as u16)
-            .max()
-            .unwrap_or(0);
-        let menu_width = key_width + desc_width + sep_count;
-        let menu_width = menu_width.max(title.chars().count() as u16);
-
-        let vp = Rect {
-            top_left: Pos {
-                x: self.size.width - menu_width,
-                y: 0,
-            },
-            size: Size {
-                width: menu_width,
-                height,
-            },
-        };
-
-        let title_start = menu_width / 2 - (title.len() as u16) / 2;
-        let pos = vp.abs_pos(Pos { x: 0, y: 0 });
-        queue!(
-            out,
-            pos.move_to(),
-            Print(" ".repeat(title_start as usize)),
-            if self.focus {
-                PrintStyledContent(title.cyan())
-            } else {
-                PrintStyledContent(title.with(Color::Grey).dim())
-            },
-            terminal::Clear(terminal::ClearType::UntilNewLine),
-        )?;
-
-        let mut y = 1;
-
-        // Render each menu item
-        for (idx, (action, Menu { key, desc })) in menu.into_iter().enumerate() {
-            y = 1 + idx as u16;
-            if y >= height {
-                break;
-            }
-
-            let enabled = self.is_enabled(action) && self.focus;
-            let key_start = menu_width - desc_width - sep_count - key.chars().count() as u16;
-            let pos = vp.abs_pos(Pos { x: 0, y });
-            queue!(
-                out,
-                pos.move_to(),
-                Print(" ".repeat(key_start as usize)),
-                if enabled {
-                    PrintStyledContent(key.cyan())
-                } else {
-                    PrintStyledContent(key.with(Color::Grey).dim())
-                },
-                PrintStyledContent(sep.grey().dim()),
-                PrintStyledContent(desc.grey()),
-                terminal::Clear(terminal::ClearType::UntilNewLine),
-            )?;
-        }
-
-        // clear the rest until footer
-        if y < height - 1 {
-            for y in y + 1..height {
-                let pos = vp.abs_pos(Pos { x: 0, y });
-                queue!(
-                    out,
-                    pos.move_to(),
-                    terminal::Clear(terminal::ClearType::UntilNewLine),
-                )?;
-            }
-        }
-
-        Ok(menu_width)
-    }
-
     fn compute_children_scroll(&self) -> ChildrenScroll {
         let mut height = 0;
         let mut cur_child_pos = 0;
