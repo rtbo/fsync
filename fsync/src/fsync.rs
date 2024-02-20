@@ -6,6 +6,12 @@ use crate::{
     Location,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DirStat {
+    pub data: u64,
+    pub entries: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Metadata {
     Directory {
@@ -170,6 +176,18 @@ pub mod tree {
 
         pub fn is_sync(&self) -> bool {
             matches!(self, Entry::Sync { .. })
+        }
+
+        pub fn is_local_dir(&self) -> bool {
+            matches!(self, Entry::Local(md) if md.is_dir())
+        }
+
+        pub fn is_remote_dir(&self) -> bool {
+            matches!(self, Entry::Remote(md) if md.is_dir())
+        }
+
+        pub fn is_sync_dir(&self) -> bool {
+            matches!(self, Entry::Sync{local, remote, ..} if local.is_dir() && remote.is_dir())
         }
 
         pub fn is_safe_dir(&self) -> bool {
