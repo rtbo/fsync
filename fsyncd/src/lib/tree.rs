@@ -1,8 +1,11 @@
 use std::cmp::Ordering;
 
 use dashmap::DashMap;
-use fsync::path::{Path, PathBuf};
 pub use fsync::tree::{Entry, EntryNode};
+use fsync::{
+    path::{Component, Path, PathBuf},
+    Location,
+};
 use futures::{
     future::{self, BoxFuture},
     StreamExt, TryStreamExt,
@@ -131,6 +134,39 @@ impl DiffTree {
             node.add_children_conflicts(count);
             parent = path.parent();
         }
+    }
+
+    /// Ensure that parents of `path` are added in the tree for `location`.
+    /// Returns which of the parents are conflicts.
+    pub fn ensure_parents(&self, path: &Path, location: Location) -> Vec<(PathBuf, bool)> {
+        debug_assert!(path.is_absolute());
+        let mut conflicts = vec![];
+        if path.is_root() {
+            return conflicts;
+        }
+        let mut cur_path = PathBuf::root();
+        for p in path.parent().unwrap().components() {
+            match p {
+                Component::RootDir => continue,
+                Component::CurDir | Component::ParentDir => panic!("non-normalized path"),
+                Component::Normal(name) => {
+                    cur_path = cur_path.join(name);
+                }
+            }
+
+            let md = fsync::Metadata::Directory {
+                path: cur_path.clone(),
+            };
+            let is_conflict = match location {
+                Location::Local => self.add_local_is_conflict(&cur_path, md),
+                Location::Remote => self.add_remote_is_conflict(&cur_path, md),
+                Location::Both => {
+                    unreachable!("both location should be handled by caller");
+                }
+            };
+            conflicts.push((cur_path.clone(), is_conflict));
+        }
+        conflicts
     }
 
     pub fn remove(&self, path: &Path) {

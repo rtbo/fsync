@@ -1,5 +1,6 @@
 use fsync::{
     path::{Path, PathBuf},
+    tree::Entry,
     Location, Operation,
 };
 
@@ -36,6 +37,26 @@ async fn copy_remote_to_local() {
 }
 
 #[tokio::test]
+async fn copy_remote_to_local_deep() {
+    let h = harness().await;
+    let path = PathBuf::from("/only-remote/deep/file2.txt");
+    h.service
+        .operate(&Operation::CopyRemoteToLocal(path.clone()))
+        .await
+        .unwrap();
+    let content = h.local_file_content(&path).await.unwrap();
+    assert_eq!(&content, path.as_str());
+    let deep = PathBuf::from("/only-remote/deep");
+    let deep_node = h
+        .service
+        .entry_node(&deep)
+        .await
+        .unwrap()
+        .expect("should have the deep dir entry");
+    assert!(matches!(deep_node.entry(), Entry::Sync { .. }));
+}
+
+#[tokio::test]
 #[should_panic(expected = "No such entry: /not-a-file.txt")]
 async fn copy_remote_to_local_fail_missing() {
     let h = harness().await;
@@ -44,6 +65,26 @@ async fn copy_remote_to_local_fail_missing() {
         .operate(&Operation::CopyRemoteToLocal(path))
         .await
         .unwrap_display();
+}
+
+#[tokio::test]
+async fn copy_local_to_remote_deep() {
+    let h = harness().await;
+    let path = PathBuf::from("/only-local/deep/file2.txt");
+    h.service
+        .operate(&Operation::CopyLocalToRemote(path.clone()))
+        .await
+        .unwrap();
+    let content = h.remote_file_content(&path).await.unwrap();
+    assert_eq!(&content, path.as_str());
+    let deep = PathBuf::from("/only-local/deep");
+    let deep_node = h
+        .service
+        .entry_node(&deep)
+        .await
+        .unwrap()
+        .expect("should have the deep dir entry");
+    assert!(matches!(deep_node.entry(), Entry::Sync { .. }));
 }
 
 #[tokio::test]

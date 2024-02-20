@@ -145,6 +145,13 @@ where
             tree::Entry::Local(..) => Err(PathError::Only(path.to_owned(), Location::Local))?,
             tree::Entry::Remote(remote) if remote.is_file() => {
                 let read = self.remote.read_file(remote.path().to_owned()).await?;
+                if !path.is_root() {
+                    self.local.mkdir(path.parent().unwrap(), true).await?;
+                    let conflicts = self.tree.ensure_parents(path, Location::Local);
+                    for (path, is_conflict) in conflicts {
+                        self.check_conflict(&path, is_conflict).await;
+                    }
+                }
                 let local = self.local.create_file(remote, read).await?;
                 let is_conflict = self.tree.add_local_is_conflict(path, local);
                 self.check_conflict(path, is_conflict).await;
@@ -171,6 +178,13 @@ where
             tree::Entry::Local(local) if local.is_file() => {
                 let read = self.local.read_file(local.path().to_owned()).await?;
 
+                if !path.is_root() {
+                    self.remote.mkdir(path.parent().unwrap(), true).await?;
+                    let conflicts = self.tree.ensure_parents(path, Location::Remote);
+                    for (path, is_conflict) in conflicts {
+                        self.check_conflict(&path, is_conflict).await;
+                    }
+                }
                 let remote = self.remote.create_file(local, read).await.unwrap();
 
                 let is_conflict = self.tree.add_remote_is_conflict(path, remote);
