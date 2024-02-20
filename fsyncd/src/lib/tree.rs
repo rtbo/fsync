@@ -104,6 +104,7 @@ impl DiffTree {
         debug_assert!(!is_conflict);
     }
 
+    /// Apply `op` to entry and return whether it is a conflict
     fn op_entry_is_conflict<F: FnOnce(Entry) -> Entry>(&self, path: &Path, op: F) -> bool {
         let (add, rem) = {
             let mut node = self.nodes.get_mut(path).expect("this node should be valid");
@@ -156,7 +157,7 @@ impl DiffTree {
     {
         let node = self.nodes.get(path).unwrap();
         let marker = match node.entry() {
-            Entry::Sync { .. } => "B",
+            Entry::Sync { .. } => "S",
             Entry::Local { .. } => "L",
             Entry::Remote { .. } => "R",
         };
