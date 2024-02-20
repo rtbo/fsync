@@ -28,7 +28,7 @@ impl Action {
             Action::Down => "down",
             Action::Up => "up",
             Action::Details => "details",
-            Action::Enter => "select",
+            Action::Enter => "enter",
             Action::Back => "go back",
             Action::Exit => "exit",
             Action::Sync => "sync.",
@@ -54,8 +54,8 @@ struct KeyActionDesc(&'static [KeyCode]);
 impl KeyActionDesc {
     fn key_code_str(code: KeyCode) -> &'static str {
         match code {
-            KeyCode::Backspace => "backspace",
-            KeyCode::Enter => "enter",
+            KeyCode::Backspace => "⌫",
+            KeyCode::Enter => "⏎",
             KeyCode::Up => "↑",
             KeyCode::Down => "↓",
             KeyCode::Esc => "esc",
@@ -123,7 +123,7 @@ impl MenuItem {
     }
 
     const fn sep_str() -> &'static str {
-        " : "
+        " "
     }
 }
 
