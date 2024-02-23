@@ -252,7 +252,7 @@ async fn map_metadata(
             mtime: metadata.modified().map(|mt| mt.into())?,
         }
     } else if metadata.is_dir() {
-        fsync::Metadata::Directory { path }
+        fsync::Metadata::Directory { path, stat: None }
     } else {
         fsync::Metadata::Special { path }
     };

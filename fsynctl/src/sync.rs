@@ -730,7 +730,7 @@ impl SyncCommand {
 
     async fn copy_remote_to_local(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
         match entry {
-            fsync::Metadata::Directory { path } => {
+            fsync::Metadata::Directory { path, .. } => {
                 println!("creating local directory `{path}`");
             }
             fsync::Metadata::Regular { path, size, .. } => {
@@ -757,7 +757,7 @@ impl SyncCommand {
 
     async fn copy_local_to_remote(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
         match entry {
-            fsync::Metadata::Directory { path } => {
+            fsync::Metadata::Directory { path, .. } => {
                 println!("creating remote directory `{path}`");
             }
             fsync::Metadata::Regular { path, size, .. } => {

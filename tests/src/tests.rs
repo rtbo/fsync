@@ -2,9 +2,22 @@ use fsync::{
     path::{Path, PathBuf},
     tree::Entry,
     Location, Operation,
+    stat,
 };
 
 use crate::{harness, utils::UnwrapDisplay};
+
+const LOCAL_STAT: stat::Dir = stat::Dir {
+    data: 200,
+    dirs: 5,
+    files: 10,
+};
+
+// const REMOTE_STAT: stat::Storage = stat::Storage {
+//     data: 207,
+//     dirs: 5,
+//     files: 10,
+// };
 
 #[tokio::test]
 async fn entry() {
@@ -34,6 +47,16 @@ async fn copy_remote_to_local() {
         .unwrap();
     let content = h.local_file_content(&path).await.unwrap();
     assert_eq!(&content, path.as_str());
+    let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
+
+    let stat = root.stat();
+    let added_stat = stat::Dir {
+        data: 16,
+        dirs: 0,
+        files: 1,
+    };
+
+    assert_eq!(stat.local, LOCAL_STAT + added_stat);
 }
 
 #[tokio::test]

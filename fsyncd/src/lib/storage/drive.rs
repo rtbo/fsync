@@ -317,7 +317,7 @@ const FOLDER_MIMETYPE: &str = "application/vnd.google-apps.folder";
 fn map_file(parent_path: PathBuf, f: api::File) -> fsync::Result<fsync::Metadata> {
     let path = parent_path.join(f.name.as_deref().unwrap());
     let metadata = if f.mime_type.as_deref() == Some(FOLDER_MIMETYPE) {
-        fsync::Metadata::Directory { path }
+        fsync::Metadata::Directory { path, stat: None }
     } else {
         let mtime = f.modified_time.ok_or_else(|| {
             fsync::api_error!("Expected to receive modifiedTime from Google for {path}")

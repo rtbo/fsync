@@ -22,6 +22,22 @@ pub use crate::{
 };
 
 pub mod path;
+pub mod stat;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum SingleLoc {
+    Local,
+    Remote,
+}
+
+impl fmt::Display for SingleLoc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SingleLoc::Local => f.write_str("local drive"),
+            SingleLoc::Remote => f.write_str("remote drive"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Location {

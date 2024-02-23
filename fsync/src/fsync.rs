@@ -3,19 +3,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     path::{Path, PathBuf},
-    Location,
+    stat, Location,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DirStat {
-    pub data: u64,
-    pub entries: u32,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Metadata {
     Directory {
         path: PathBuf,
+        stat: Option<stat::Dir>,
     },
     Regular {
         path: PathBuf,
@@ -37,6 +32,7 @@ impl Metadata {
     pub fn root() -> Self {
         Self::Directory {
             path: PathBuf::root(),
+            stat: None,
         }
     }
 
@@ -46,6 +42,26 @@ impl Metadata {
             Self::Regular { path, .. } => path,
             Self::Symlink { path, .. } => path,
             Self::Special { path, .. } => path,
+        }
+    }
+
+    pub fn children_stat(&self) -> Option<stat::Dir> {
+        match self {
+            Self::Directory { stat, .. } => *stat,
+            _ => None,
+        }
+    }
+
+    pub fn stat(&self) -> Option<stat::Dir> {
+        match self {
+            Self::Directory { stat, .. } => stat.map(|s| s.with_dirs(s.dirs + 1)),
+            Self::Regular { size, .. } => Some(stat::Dir {
+                data: *size as _,
+                dirs: 0,
+                files: 1,
+            }),
+            Self::Symlink { .. } => None,
+            Self::Special { .. } => None,
         }
     }
 
@@ -104,7 +120,7 @@ pub mod tree {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::{path::Path, Conflict};
+    use crate::{path::Path, stat, Conflict, SingleLoc};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Entry {
@@ -113,6 +129,7 @@ pub mod tree {
         Sync {
             local: super::Metadata,
             remote: super::Metadata,
+            /// Conflict for this very entry
             conflict: Option<Conflict>,
         },
     }
@@ -215,17 +232,47 @@ pub mod tree {
                 }
             )
         }
+
+        pub fn has_by_loc(&self, loc: SingleLoc) -> bool {
+            match loc {
+                SingleLoc::Local => self.is_local_only() || self.is_sync(),
+                SingleLoc::Remote => self.is_remote_only() || self.is_sync(),
+            }
+        }
+
+        pub fn stat_by_loc(&self, loc: SingleLoc) -> Option<stat::Dir> {
+            match loc {
+                SingleLoc::Local => self.local_stat(),
+                SingleLoc::Remote => self.remote_stat(),
+            }
+        }
+
+        pub fn local_stat(&self) -> Option<stat::Dir> {
+            match self {
+                Self::Local(local) => local.stat(),
+                Self::Sync { local, .. } => local.stat(),
+                _ => None,
+            }
+        }
+
+        pub fn remote_stat(&self) -> Option<stat::Dir> {
+            match self {
+                Self::Remote(remote) => remote.stat(),
+                Self::Sync { remote, .. } => remote.stat(),
+                _ => None,
+            }
+        }
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EntryNode {
         entry: Entry,
         children: Vec<String>,
-        children_conflict_count: usize,
+        children_conflict_count: u32,
     }
 
     impl EntryNode {
-        pub fn new(entry: Entry, children: Vec<String>, children_conflict_count: usize) -> Self {
+        pub fn new(entry: Entry, children: Vec<String>, children_conflict_count: u32) -> Self {
             Self {
                 entry,
                 children,
@@ -235,6 +282,10 @@ pub mod tree {
 
         pub fn entry(&self) -> &Entry {
             &self.entry
+        }
+
+        pub fn entry_mut(&mut self) -> &mut Entry {
+            &mut self.entry
         }
 
         pub fn op_entry<F: FnOnce(Entry) -> Entry>(&mut self, op: F) {
@@ -271,7 +322,7 @@ pub mod tree {
             self.entry.is_sync()
         }
 
-        pub fn children_conflict_count(&self) -> usize {
+        pub fn children_conflict_count(&self) -> u32 {
             self.children_conflict_count
         }
 
@@ -279,10 +330,39 @@ pub mod tree {
             self.children_conflict_count > 0
         }
 
-        pub fn add_children_conflicts(&mut self, cc: isize) {
-            let new_count = self.children_conflict_count as isize + cc;
+        pub fn add_children_conflicts(&mut self, cc: i32) {
+            let new_count = self.children_conflict_count as i32 + cc;
             assert!(new_count >= 0);
-            self.children_conflict_count = new_count as usize;
+            self.children_conflict_count = new_count as u32;
+        }
+
+        /// Get the stat for this node.
+        ///
+        /// # Panics
+        /// Panics if either the local or remote stat (as relevant) is invalid.
+        pub fn stat(&self) -> stat::Tree {
+            match self.entry() {
+                Entry::Sync {
+                    local,
+                    remote,
+                    conflict,
+                } => stat::Tree {
+                    local: local.stat().expect("local stat should be valid"),
+                    remote: remote.stat().expect("remote stat should be valid"),
+                    conflicts: self.children_conflict_count as i32
+                        + if conflict.is_some() { 1 } else { 0 },
+                },
+                Entry::Local(entry) => stat::Tree {
+                    local: entry.stat().expect("local stat should be valid"),
+                    remote: stat::Dir::null(),
+                    conflicts: 0,
+                },
+                Entry::Remote(entry) => stat::Tree {
+                    local: stat::Dir::null(),
+                    remote: entry.stat().expect("remote stat should be valid"),
+                    conflicts: 0,
+                },
+            }
         }
     }
 }

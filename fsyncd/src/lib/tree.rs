@@ -3,8 +3,8 @@ use std::cmp::Ordering;
 use dashmap::DashMap;
 pub use fsync::tree::{Entry, EntryNode};
 use fsync::{
-    path::{Component, Path, PathBuf},
-    Location,
+    path::{Path, PathBuf},
+    stat, SingleLoc,
 };
 use futures::{
     future::{self, BoxFuture},
@@ -13,7 +13,43 @@ use futures::{
 
 use crate::storage;
 
+trait AddStat {
+    type Stat;
+    fn add_stat(&mut self, added: &Self::Stat);
+}
+
+impl AddStat for fsync::Metadata {
+    type Stat = stat::Dir;
+    fn add_stat(&mut self, added: &stat::Dir) {
+        match self {
+            fsync::Metadata::Directory { stat: Some(stat), .. } => *stat += *added,
+            fsync::Metadata::Directory { stat, .. } => *stat = Some(*added),
+            _ => panic!("Not a directory"),
+        }
+    }
+}
+
+impl AddStat for EntryNode {
+    type Stat = stat::Tree;
+    fn add_stat(&mut self, added: &stat::Tree) {
+        match self.entry_mut() {
+            Entry::Local(local) => {
+                local.add_stat(&added.local);
+            }
+            Entry::Remote(remote) => {
+                remote.add_stat(&added.remote);
+            }
+            Entry::Sync { local, remote, .. } => {
+                local.add_stat(&added.local);
+                remote.add_stat(&added.remote);
+            }
+        }
+        self.add_children_conflicts(added.conflicts);
+    }
+}
+
 trait EntryExt {
+    fn with(self, md: fsync::Metadata, loc: SingleLoc) -> Self;
     fn with_local(self, local: fsync::Metadata) -> Self;
     fn with_remote(self, remote: fsync::Metadata) -> Self;
     fn without_local(self) -> Self;
@@ -21,6 +57,13 @@ trait EntryExt {
 }
 
 impl EntryExt for Entry {
+    fn with(self, md: fsync::Metadata, loc: SingleLoc) -> Self {
+        match loc {
+            SingleLoc::Local => self.with_local(md),
+            SingleLoc::Remote => self.with_remote(md),
+        }
+    }
+
     fn with_local(self, local: fsync::Metadata) -> Self {
         match self {
             Entry::Remote(remote) => Entry::new_sync(local, remote),
@@ -109,62 +152,69 @@ impl DiffTree {
 
     /// Apply `op` to entry and return whether it is a conflict
     fn op_entry_is_conflict<F: FnOnce(Entry) -> Entry>(&self, path: &Path, op: F) -> bool {
-        let (add, rem) = {
+        let (stat_diff, is_conflict) = {
             let mut node = self.nodes.get_mut(path).expect("this node should be valid");
 
-            let rem = if node.entry().is_conflict() { 1 } else { 0 };
+            let rem = node.stat();
             node.op_entry(op);
-            let add = if node.entry().is_conflict() { 1 } else { 0 };
+            let add = node.stat();
 
-            (add, rem)
+            (add - rem, node.entry().is_conflict())
         };
-        if add != rem {
-            self.add_conflicts_to_ancestors(path, add - rem);
+        if !stat_diff.is_null() {
+            self.add_stat_to_ancestors(path, &stat_diff);
         }
-        add == 1
+        is_conflict
     }
 
-    fn add_conflicts_to_ancestors(&self, path: &Path, count: isize) {
+    fn add_stat_to_ancestors(&self, path: &Path, diff: &stat::Tree) {
         let mut parent = path.parent();
         while let Some(path) = parent {
             let mut node = self
                 .nodes
                 .get_mut(path)
                 .expect("parent of valid path should be valid as well");
-            node.add_children_conflicts(count);
+            node.add_stat(diff);
             parent = path.parent();
         }
     }
 
-    /// Ensure that parents of `path` are added in the tree for `location`.
+    /// Ensure that parents of `path` are added in the tree for `loc`.
+    /// Also perform stats calculation.
     /// Returns which of the parents are conflicts.
-    pub fn ensure_parents(&self, path: &Path, location: Location) -> Vec<(PathBuf, bool)> {
+    pub fn ensure_parents(&self, path: &Path, loc: SingleLoc) -> Vec<(PathBuf, bool)> {
         debug_assert!(path.is_absolute());
         let mut conflicts = vec![];
         if path.is_root() {
             return conflicts;
         }
-        let mut cur_path = PathBuf::root();
-        for p in path.parent().unwrap().components() {
-            match p {
-                Component::RootDir => continue,
-                Component::CurDir | Component::ParentDir => panic!("non-normalized path"),
-                Component::Normal(name) => {
-                    cur_path = cur_path.join(name);
-                }
-            }
 
-            let md = fsync::Metadata::Directory {
-                path: cur_path.clone(),
-            };
-            let is_conflict = match location {
-                Location::Local => self.add_local_is_conflict(&cur_path, md),
-                Location::Remote => self.add_remote_is_conflict(&cur_path, md),
-                Location::Both => {
-                    unreachable!("both location should be handled by caller");
-                }
-            };
-            conflicts.push((cur_path.clone(), is_conflict));
+        let mut dir_stat = stat::Dir::null();
+        let mut tree_stat = stat::Tree::null();
+
+        let mut parent = path.parent();
+        while let Some(path) = parent {
+            let mut node = self.nodes.get_mut(path).expect("this node should be valid");
+
+            if node.entry().has_by_loc(loc) {
+                node.add_stat(&tree_stat);
+            } else {
+                let md = fsync::Metadata::Directory {
+                    path: path.to_path_buf(),
+                    stat: Some(dir_stat),
+                };
+
+                let bef = node.stat();
+                node.op_entry(move |entry| entry.with(md, loc));
+                let aft = node.stat();
+
+                let is_conflict = node.entry().is_conflict();
+                conflicts.push((path.to_path_buf(), is_conflict));
+
+                tree_stat = aft - bef;
+                dir_stat += *tree_stat.by_loc(loc);
+            }
+            parent = path.parent();
         }
         conflicts
     }
@@ -226,9 +276,9 @@ where
 {
     fn sync(
         &self,
-        local: fsync::Metadata,
-        remote: fsync::Metadata,
-    ) -> BoxFuture<'_, anyhow::Result<usize>> {
+        mut local: fsync::Metadata,
+        mut remote: fsync::Metadata,
+    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let loc_children = entry_children_sorted(&*self.local, &local);
             let rem_children = entry_children_sorted(&*self.remote, &remote);
@@ -279,54 +329,79 @@ where
                 }
             }
 
-            let conflicts = future::try_join_all(joinvec).await?.into_iter().sum();
+            let mut children_stat = stat::Tree::null();
+            let stat_vec = future::try_join_all(joinvec).await?;
+            for stat in stat_vec {
+                children_stat = children_stat + stat;
+            }
+
+            if let fsync::Metadata::Directory { stat, .. } = &mut local {
+                *stat = Some(children_stat.local);
+            }
+            if let fsync::Metadata::Directory { stat, .. } = &mut remote {
+                *stat = Some(children_stat.remote);
+            }
 
             assert_eq!(local.path(), remote.path());
             let path = local.path().to_owned();
             let entry = Entry::new_sync(local, remote);
-            let res = conflicts + if entry.is_conflict() { 1 } else { 0 };
+            let node = EntryNode::new(entry, children, children_stat.conflicts as _);
+            let res = node.stat();
 
-            let node = EntryNode::new(entry, children, conflicts);
             self.nodes.insert(path, node);
 
             Ok(res)
         })
     }
 
-    fn local(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<usize>> {
+    fn local(
+        &self,
+        mut entry: fsync::Metadata,
+    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
-            let mut child_names = Vec::new();
+            let mut children_names = Vec::new();
+            let mut children_stat = stat::Tree::null();
 
-            let conflicts = if entry.is_dir() {
+            if let fsync::Metadata::Directory { path, stat } = &mut entry {
                 let mut joinvec = Vec::new();
-                let children = self.local.dir_entries(entry.path());
+                let children = self.local.dir_entries(&path);
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
                     let child = child?;
-                    child_names.push(child.name().to_owned());
+                    children_names.push(child.name().to_owned());
                     joinvec.push(self.local(child));
                 }
-                future::try_join_all(joinvec).await?.into_iter().sum()
-            } else {
-                0
-            };
+
+                let stat_vec = future::try_join_all(joinvec).await?;
+                for s in stat_vec {
+                    children_stat = children_stat + s;
+                }
+                *stat = Some(children_stat.local);
+            }
 
             let path = entry.path().to_owned();
             let entry = Entry::Local(entry);
-            let node = EntryNode::new(entry, child_names, conflicts);
+            let node = EntryNode::new(entry, children_names, children_stat.conflicts as _);
+            let res = node.stat();
+
             self.nodes.insert(path, node);
-            Ok(conflicts)
+
+            Ok(res)
         })
     }
 
-    fn remote(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<usize>> {
+    fn remote(
+        &self,
+        mut entry: fsync::Metadata,
+    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
+            let mut children_stat = stat::Tree::null();
 
-            let conflicts = if entry.is_dir() {
+            if let fsync::Metadata::Directory { path, stat } = &mut entry {
                 let mut joinvec = Vec::new();
-                let children = self.remote.dir_entries(entry.path());
+                let children = self.remote.dir_entries(path);
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -334,16 +409,22 @@ where
                     child_names.push(child.name().to_owned());
                     joinvec.push(self.remote(child));
                 }
-                future::try_join_all(joinvec).await?.into_iter().sum()
-            } else {
-                0
-            };
+
+                let stat_vec = future::try_join_all(joinvec).await?;
+                for s in stat_vec {
+                    children_stat = children_stat + s;
+                }
+                *stat = Some(children_stat.remote);
+            }
 
             let path = entry.path().to_owned();
             let entry = Entry::Remote(entry);
-            let node = EntryNode::new(entry, child_names, conflicts);
+            let node = EntryNode::new(entry, child_names, children_stat.conflicts as _);
+            let res = node.stat();
+
             self.nodes.insert(path, node);
-            Ok(conflicts)
+
+            Ok(res)
         })
     }
 }
