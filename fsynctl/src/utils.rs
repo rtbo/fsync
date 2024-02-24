@@ -55,7 +55,7 @@ pub async fn instance_client(instance_name: &str) -> anyhow::Result<Arc<FsyncCli
     ))
 }
 
-pub fn adjusted_byte(val: u64) -> AdjustedByte {
+pub fn _adjusted_byte(val: u64) -> AdjustedByte {
     use byte_unit::{Byte, UnitType};
 
     let byte = Byte::from(val);

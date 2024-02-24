@@ -7,7 +7,6 @@ mod entry;
 mod list;
 mod nav;
 mod new;
-mod sync;
 mod tree;
 mod utils;
 
@@ -31,8 +30,6 @@ enum Commands {
     Entry(entry::Args),
     /// Print the tree status
     Tree(tree::Args),
-    /// Synchronize local and remote
-    Sync(sync::Args),
     /// List conflicts
     Conflicts(conflicts::Args),
 }
@@ -56,7 +53,6 @@ async fn main2(cli: Cli) -> anyhow::Result<()> {
         Commands::New(args) => new::main(args).await,
         Commands::Entry(args) => entry::main(args).await,
         Commands::Tree(args) => tree::main(args).await,
-        Commands::Sync(args) => sync::main(args).await,
         Commands::Conflicts(args) => conflicts::main(args).await,
     }
 }
