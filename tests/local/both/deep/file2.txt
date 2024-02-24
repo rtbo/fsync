@@ -1,1 +1,0 @@
-/both/deep/file2.txt

@@ -4,18 +4,6 @@ use fsync::{
 
 use crate::{harness, utils::UnwrapDisplay};
 
-const LOCAL_STAT: stat::Dir = stat::Dir {
-    data: 200,
-    dirs: 5,
-    files: 10,
-};
-
-// const REMOTE_STAT: stat::Storage = stat::Storage {
-//     data: 207,
-//     dirs: 5,
-//     files: 10,
-// };
-
 #[tokio::test]
 async fn entry() {
     let h = harness().await;
@@ -37,23 +25,29 @@ async fn entry() {
 #[tokio::test]
 async fn copy_remote_to_local() {
     let h = harness().await;
+
+    let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
+    let orig_stat = root.stat();
+
     let path = PathBuf::from("/only-remote.txt");
     h.service
         .operate(&Operation::Copy(path.clone(), StorageDir::RemoteToLocal))
         .await
         .unwrap();
+
     let content = h.local_file_content(&path).await.unwrap();
     assert_eq!(&content, path.as_str());
-    let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
 
-    let stat = root.stat();
     let added_stat = stat::Dir {
-        data: 16,
+        data: content.len() as i64,
         dirs: 0,
         files: 1,
     };
 
-    assert_eq!(stat.local, LOCAL_STAT + added_stat);
+    let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
+    let new_stat = root.stat();
+
+    assert_eq!(new_stat.local, orig_stat.local + added_stat);
 }
 
 #[tokio::test]

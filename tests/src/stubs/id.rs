@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use fsync::path::{FsPath, Path, PathBuf};
 use fsyncd::{
     storage::{
@@ -10,7 +12,7 @@ use fsyncd::{
 use futures::prelude::*;
 use tokio::io;
 
-use crate::utils;
+use crate::dataset::{self, CreateDataset};
 
 /// Stub that fakes an Id based Storage with filesystem
 /// Ids are paths that are:
@@ -22,10 +24,15 @@ pub struct Stub {
 }
 
 impl Stub {
-    pub async fn new(src: &FsPath) -> anyhow::Result<Self> {
-        let dst = utils::temp_path(Some("fsync-id"), None);
-        utils::copy_dir_all(src, &dst).await?;
-        let inner = FileSystem::new(&dst)?;
+    pub async fn new(
+        root: &FsPath,
+        dataset: &[dataset::Entry],
+        now: Option<SystemTime>,
+    ) -> anyhow::Result<Self> {
+        tokio::fs::create_dir(&root).await.unwrap();
+        dataset.create_dataset(&root, now).await;
+
+        let inner = FileSystem::new(&root)?;
         Ok(Self { inner })
     }
 }

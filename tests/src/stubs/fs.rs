@@ -1,9 +1,11 @@
+use std::time::SystemTime;
+
 use fsync::path::{FsPath, Path};
 use fsyncd::{storage, storage::fs::FileSystem};
 use futures::{Future, Stream};
 use tokio::{fs, io};
 
-use crate::utils;
+use crate::dataset::{self, CreateDataset};
 
 #[derive(Debug, Clone)]
 pub struct Stub {
@@ -11,10 +13,15 @@ pub struct Stub {
 }
 
 impl Stub {
-    pub async fn new(src: &FsPath) -> anyhow::Result<Self> {
-        let dst = utils::temp_path(Some("fsync-fs"), None);
-        utils::copy_dir_all(src, &dst).await?;
-        let inner = FileSystem::new(&dst)?;
+    pub async fn new(
+        root: &FsPath,
+        dataset: &[dataset::Entry],
+        now: Option<SystemTime>,
+    ) -> anyhow::Result<Self> {
+        tokio::fs::create_dir(&root).await.unwrap();
+        dataset.create_dataset(&root, now).await;
+
+        let inner = FileSystem::new(&root)?;
         Ok(Self { inner })
     }
 
