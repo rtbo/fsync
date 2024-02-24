@@ -65,14 +65,6 @@ where
             abort_handle: RwLock::new(None),
         })
     }
-
-    pub fn local(&self) -> &L {
-        &self.local
-    }
-
-    pub fn remote(&self) -> &R {
-        &self.remote
-    }
 }
 
 impl<L, R> Service<L, R> {
@@ -168,10 +160,15 @@ impl<L, R> Service<L, R> {
 }
 
 impl<L, R> Service<L, R>
-where
-    L: storage::Storage,
-    R: storage::Storage,
 {
+    pub fn local(&self) -> &L {
+        &self.local
+    }
+
+    pub fn remote(&self) -> &R {
+        &self.remote
+    }
+
     pub async fn entry_node(&self, path: &Path) -> Result<Option<fsync::tree::EntryNode>, Error> {
         let path = Self::check_path(path)?;
         Ok(self.tree.entry(&path))
@@ -197,7 +194,13 @@ where
             .collect();
         Ok(conflicts)
     }
+}
 
+impl<L, R> Service<L, R>
+where
+    L: storage::Storage,
+    R: storage::Storage,
+{
     pub async fn copy_or_mkdir(&self, path: &Path, dir: StorageDir) -> Result<(), Error> {
         let node = self.check_node(path)?;
         match (node.entry(), dir) {
