@@ -1,5 +1,5 @@
 use async_stream::try_stream;
-use fsync::path::{self, FsPath, FsPathBuf, Path, PathBuf};
+use fsync::path::{FsPath, FsPathBuf, Path, PathBuf};
 use futures::Stream;
 use tokio::{
     fs::{self, DirEntry},
@@ -7,61 +7,6 @@ use tokio::{
 };
 
 use crate::Shutdown;
-
-fn check_symlink<P1, P2>(link: P1, target: P2) -> fsync::Result<()>
-where
-    P1: AsRef<Path>,
-    P2: AsRef<Path>,
-{
-    let link = link.as_ref();
-    let target = target.as_ref();
-
-    debug_assert!(
-        !link.is_absolute(),
-        "must be called with link relative to storage root"
-    );
-    if target.is_absolute() {
-        return Err(fsync::Error::IllegalSymlink {
-            path: link.to_owned(),
-            target: target.to_string(),
-        });
-    }
-
-    let mut num_comps = 0;
-
-    for comp in link
-        .parent()
-        .unwrap()
-        .components()
-        .chain(target.components())
-    {
-        match comp {
-            path::Component::RootDir => {
-                unreachable!("unexpected root component in {link:?} -> {target:?}")
-            }
-            path::Component::CurDir => (),
-            path::Component::ParentDir if num_comps <= 0 => {
-                return Err(fsync::Error::IllegalSymlink {
-                    path: link.to_owned(),
-                    target: target.to_string(),
-                });
-            }
-            path::Component::ParentDir => num_comps -= 1,
-            path::Component::Normal(_) => num_comps += 1,
-        }
-    }
-
-    Ok(())
-}
-
-#[test]
-fn test_check_symlink() {
-    check_symlink("dir/symlink", "actual_file").unwrap();
-    check_symlink("dir/symlink", "../actual_file").unwrap();
-    check_symlink("dir/symlink", "../other_dir/actual_file").unwrap();
-    check_symlink("dir/symlink", "../../actual_file").expect_err("");
-    check_symlink("dir/symlink", "/actual_file").expect_err("");
-}
 
 #[derive(Debug, Clone)]
 pub struct FileSystem {
@@ -233,9 +178,10 @@ async fn map_direntry(parent_path: &Path, direntry: &DirEntry) -> fsync::Result<
 async fn map_metadata(
     path: PathBuf,
     metadata: &std::fs::Metadata,
-    fs_path: &FsPath,
+    _fs_path: &FsPath,
 ) -> fsync::Result<fsync::Metadata> {
-    let metadata = if metadata.is_symlink() {
+    assert!(!metadata.is_symlink(), "symlinks are not supported");  
+    let metadata = /* if metadata.is_symlink() {
         let target = tokio::fs::read_link(fs_path).await?;
         let target = PathBuf::try_from(target)?;
         check_symlink(&path, &target)?;
@@ -245,17 +191,71 @@ async fn map_metadata(
             size: metadata.len(),
             mtime: metadata.modified().ok().map(|mt| mt.into()),
         }
-    } else if metadata.is_file() {
+    } else */ if metadata.is_file() {
         fsync::Metadata::Regular {
             path,
             size: metadata.len(),
             mtime: metadata.modified().map(|mt| mt.into())?,
         }
-    } else if metadata.is_dir() {
-        fsync::Metadata::Directory { path, stat: None }
     } else {
-        fsync::Metadata::Special { path }
+        assert!(metadata.is_dir());
+        fsync::Metadata::Directory { path, stat: None }
     };
 
     Ok(metadata)
 }
+
+// fn check_symlink<P1, P2>(link: P1, target: P2) -> fsync::Result<()>
+// where
+//     P1: AsRef<Path>,
+//     P2: AsRef<Path>,
+// {
+//     let link = link.as_ref();
+//     let target = target.as_ref();
+
+//     debug_assert!(
+//         !link.is_absolute(),
+//         "must be called with link relative to storage root"
+//     );
+//     if target.is_absolute() {
+//         return Err(fsync::Error::IllegalSymlink {
+//             path: link.to_owned(),
+//             target: target.to_string(),
+//         });
+//     }
+
+//     let mut num_comps = 0;
+
+//     for comp in link
+//         .parent()
+//         .unwrap()
+//         .components()
+//         .chain(target.components())
+//     {
+//         match comp {
+//             path::Component::RootDir => {
+//                 unreachable!("unexpected root component in {link:?} -> {target:?}")
+//             }
+//             path::Component::CurDir => (),
+//             path::Component::ParentDir if num_comps <= 0 => {
+//                 return Err(fsync::Error::IllegalSymlink {
+//                     path: link.to_owned(),
+//                     target: target.to_string(),
+//                 });
+//             }
+//             path::Component::ParentDir => num_comps -= 1,
+//             path::Component::Normal(_) => num_comps += 1,
+//         }
+//     }
+
+//     Ok(())
+// }
+
+// #[test]
+// fn test_check_symlink() {
+//     check_symlink("dir/symlink", "actual_file").unwrap();
+//     check_symlink("dir/symlink", "../actual_file").unwrap();
+//     check_symlink("dir/symlink", "../other_dir/actual_file").unwrap();
+//     check_symlink("dir/symlink", "../../actual_file").expect_err("");
+//     check_symlink("dir/symlink", "/actual_file").expect_err("");
+// }

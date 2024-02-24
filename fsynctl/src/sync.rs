@@ -1,10 +1,7 @@
 use std::{cmp::Ordering, fmt, sync::Arc, time::Duration};
 
 use byte_unit::{AdjustedByte, Byte, UnitType};
-use fsync::{
-    path::{Path, PathBuf},
-    tree, Conflict, FsyncClient, StorageDir,
-};
+use fsync::{path::PathBuf, tree, Conflict, FsyncClient, StorageDir};
 use futures::future::BoxFuture;
 use inquire::Select;
 use tokio::sync::RwLock;
@@ -474,13 +471,6 @@ impl SyncCommand {
     ) -> anyhow::Result<()> {
         assert_eq!(local.path(), remote.path());
         match (local, remote) {
-            (fsync::Metadata::Special { path, .. }, _)
-            | (_, fsync::Metadata::Special { path, .. }) => self.special_file(path).await,
-
-            (fsync::Metadata::Symlink { .. }, _) | (_, fsync::Metadata::Symlink { .. }) => {
-                unimplemented!("sync symlink")
-            }
-
             (fsync::Metadata::Directory { .. }, fsync::Metadata::Directory { .. }) => {
                 if !self.args.recurse {
                     println!(
@@ -504,17 +494,6 @@ impl SyncCommand {
 
             (_, _) => self.both_reg_files(local, remote, conflict).await,
         }
-    }
-
-    async fn special_file(&self, path: &Path) -> anyhow::Result<()> {
-        let message = format!("{path}: Unsupported special file (block, socket...).",);
-        let options = vec!["Interrupt", "Ignore"];
-        let ans = tokio::task::spawn_blocking(move || Select::new(&message, options).prompt());
-        let ans = ans.await.unwrap()?;
-        if ans == "Interrupt" {
-            anyhow::bail!("Interrupted");
-        }
-        Ok(())
     }
 
     async fn local_dir_remote_file(
@@ -694,10 +673,11 @@ impl SyncCommand {
         match choice {
             ConflictChoice::Ignore => self.ignore(local, remote).await,
             ConflictChoice::ReplaceOldestByMostRecent => {
-                let dir = match fsync::compare_mtime(local.mtime().unwrap(), remote.mtime().unwrap()) {
-                    Ordering::Less => StorageDir::RemoteToLocal,
-                    Ordering::Greater | Ordering::Equal => StorageDir::LocalToRemote,
-                };
+                let dir =
+                    match fsync::compare_mtime(local.mtime().unwrap(), remote.mtime().unwrap()) {
+                        Ordering::Less => StorageDir::RemoteToLocal,
+                        Ordering::Greater | Ordering::Equal => StorageDir::LocalToRemote,
+                    };
                 self.replace(local, remote, dir).await
             }
             ConflictChoice::ReplaceLocalByRemote => {
@@ -746,7 +726,6 @@ impl SyncCommand {
                     path.parent().unwrap(),
                 );
             }
-            _ => panic!("Unsupported {entry:?}"),
         }
         {
             let mut stats = self.stats.write().await;

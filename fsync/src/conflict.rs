@@ -14,12 +14,10 @@ pub enum Conflict {
 
 impl Conflict {
     pub fn check(local: &crate::Metadata, remote: &crate::Metadata) -> Option<Self> {
-        use crate::Metadata::{Directory, Regular, Special, Symlink};
+        use crate::Metadata::{Directory, Regular};
         debug_assert_eq!(local.path(), remote.path());
 
         match (local, remote) {
-            (Special { .. }, _) | (_, Special { .. }) => unimplemented!("special file conflicts"),
-            (Symlink { .. }, _) | (_, Symlink { .. }) => unimplemented!("symlink file conflicts"),
             (Directory { .. }, Directory { .. }) => None,
             (Regular { .. }, Directory { .. }) => Some(Self::LocalFileRemoteDir),
             (Directory { .. }, Regular { .. }) => Some(Self::LocalDirRemoteFile),

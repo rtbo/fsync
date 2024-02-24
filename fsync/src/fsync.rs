@@ -17,15 +17,6 @@ pub enum Metadata {
         size: u64,
         mtime: DateTime<Utc>,
     },
-    Symlink {
-        path: PathBuf,
-        target: String,
-        size: u64,
-        mtime: Option<DateTime<Utc>>,
-    },
-    Special {
-        path: PathBuf,
-    },
 }
 
 impl Metadata {
@@ -40,8 +31,6 @@ impl Metadata {
         match self {
             Self::Directory { path, .. } => path,
             Self::Regular { path, .. } => path,
-            Self::Symlink { path, .. } => path,
-            Self::Special { path, .. } => path,
         }
     }
 
@@ -60,8 +49,6 @@ impl Metadata {
                 dirs: 0,
                 files: 1,
             }),
-            Self::Symlink { .. } => None,
-            Self::Special { .. } => None,
         }
     }
 
@@ -77,18 +64,9 @@ impl Metadata {
         matches!(self, Self::Regular { .. })
     }
 
-    pub fn is_symlink(&self) -> bool {
-        matches!(self, Self::Symlink { .. })
-    }
-
-    pub fn is_special(&self) -> bool {
-        matches!(self, Self::Special { .. })
-    }
-
     pub fn size(&self) -> Option<u64> {
         match self {
             Self::Regular { size, .. } => Some(*size),
-            Self::Symlink { size, .. } => Some(*size),
             _ => None,
         }
     }
@@ -96,14 +74,6 @@ impl Metadata {
     pub fn mtime(&self) -> Option<DateTime<Utc>> {
         match self {
             Self::Regular { mtime, .. } => Some(*mtime),
-            Self::Symlink { mtime, .. } => *mtime,
-            _ => None,
-        }
-    }
-
-    pub fn symlink_target(&self) -> Option<&str> {
-        match &self {
-            Self::Symlink { target, .. } => Some(target),
             _ => None,
         }
     }
