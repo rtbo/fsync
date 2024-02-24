@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     path::{Path, PathBuf},
-    stat, Location,
+    stat, Location, StorageDir,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -369,8 +369,7 @@ pub mod tree {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Operation {
-    CopyRemoteToLocal(PathBuf),
-    CopyLocalToRemote(PathBuf),
+    Copy(PathBuf, StorageDir),
     ReplaceLocalByRemote(PathBuf),
     ReplaceRemoteByLocal(PathBuf),
     Delete(PathBuf, Location),

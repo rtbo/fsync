@@ -9,7 +9,7 @@ use fsync::{
     self,
     loc::inst,
     path::{Path, PathBuf},
-    Error, Fsync, Location, Metadata, Operation, PathError, StorageLoc,
+    Error, Fsync, Location, Metadata, Operation, PathError, StorageDir,
 };
 use futures::{
     future,
@@ -75,11 +75,7 @@ where
     }
 }
 
-impl<L, R> Service<L, R>
-where
-    L: storage::Storage,
-    R: storage::Storage,
-{
+impl<L, R> Service<L, R> {
     fn check_path(path: &Path) -> Result<PathBuf, PathError> {
         if path.is_relative() {
             Err(PathError::Illegal(
@@ -105,6 +101,47 @@ where
         } else {
             conflicts.remove(path);
         }
+    }
+
+    async fn do_copy_or_mkdir<S, D>(
+        &self,
+        metadata: &fsync::Metadata,
+        src: &S,
+        dest: &D,
+        dir: StorageDir,
+    ) -> fsync::Result<()>
+    where
+        S: storage::Storage,
+        D: storage::Storage,
+    {
+        let path = metadata.path();
+        debug_assert!(path.is_absolute() && !path.is_root());
+        let is_conflict = if metadata.is_file() {
+            let read = src.read_file(path.to_owned()).await?;
+
+            // create parents
+            dest.mkdir(path.parent().unwrap(), true).await?;
+            let conflicts = self.tree.ensure_parents(path, dir.dest());
+            for (path, is_conflict) in conflicts {
+                self.check_conflict(&path, is_conflict).await;
+            }
+
+            let metadata = dest.create_file(&metadata, read).await.unwrap();
+            self.tree
+                .add_to_storage_check_conflict(path, metadata, dir.dest())
+        } else {
+            assert!(metadata.is_dir());
+
+            dest.mkdir(path, false).await?;
+            let metadata = Metadata::Directory {
+                path: path.to_path_buf(),
+                stat: None,
+            };
+            self.tree
+                .add_to_storage_check_conflict(path, metadata, dir.dest())
+        };
+        self.check_conflict(path, is_conflict).await;
+        Ok(())
     }
 }
 
@@ -139,72 +176,26 @@ where
         Ok(conflicts)
     }
 
-    pub async fn copy_remote_to_local(&self, path: &Path) -> Result<(), Error> {
+    pub async fn copy_or_mkdir(&self, path: &Path, dir: StorageDir) -> Result<(), Error> {
         let node = self.check_node(path)?;
-        match node.entry() {
-            tree::Entry::Local(..) => Err(PathError::Only(path.to_owned(), Location::Local))?,
-            tree::Entry::Remote(remote) if remote.is_file() => {
-                let read = self.remote.read_file(remote.path().to_owned()).await?;
-                if !path.is_root() {
-                    self.local.mkdir(path.parent().unwrap(), true).await?;
-                    let conflicts = self.tree.ensure_parents(path, StorageLoc::Local);
-                    for (path, is_conflict) in conflicts {
-                        self.check_conflict(&path, is_conflict).await;
-                    }
-                }
-                let local = self.local.create_file(remote, read).await?;
-                let is_conflict = self.tree.add_local_is_conflict(path, local);
-                self.check_conflict(path, is_conflict).await;
-                Ok(())
+        match (node.entry(), dir) {
+            (tree::Entry::Local(..), StorageDir::RemoteToLocal) => {
+                Err(PathError::Only(path.to_owned(), Location::Local))?
             }
-            tree::Entry::Remote(remote) if remote.is_dir() => {
-                self.local.mkdir(path, false).await?;
-                let is_conflict = self.tree.add_local_is_conflict(
-                    path,
-                    Metadata::Directory {
-                        path: path.to_path_buf(),
-                        stat: None,
-                    },
-                );
-                self.check_conflict(path, is_conflict).await;
-                Ok(())
+            (tree::Entry::Remote(..), StorageDir::LocalToRemote) => {
+                Err(PathError::Only(path.to_owned(), Location::Remote))?
             }
-            _ => Err(PathError::Unexpected(path.to_owned(), Location::Both))?,
-        }
-    }
-
-    pub async fn copy_local_to_remote(&self, path: &Path) -> Result<(), fsync::Error> {
-        let node = self.check_node(path)?;
-        match node.entry() {
-            tree::Entry::Local(local) if local.is_file() => {
-                let read = self.local.read_file(local.path().to_owned()).await?;
-
-                if !path.is_root() {
-                    self.remote.mkdir(path.parent().unwrap(), true).await?;
-                    let conflicts = self.tree.ensure_parents(path, StorageLoc::Remote);
-                    for (path, is_conflict) in conflicts {
-                        self.check_conflict(&path, is_conflict).await;
-                    }
-                }
-                let remote = self.remote.create_file(local, read).await.unwrap();
-                let is_conflict = self.tree.add_remote_is_conflict(path, remote);
-                self.check_conflict(path, is_conflict).await;
-                Ok(())
+            (tree::Entry::Local(metadata), StorageDir::LocalToRemote) => {
+                self.do_copy_or_mkdir(metadata, &self.local, &self.remote, dir)
+                    .await
             }
-            tree::Entry::Local(local) if local.is_dir() => {
-                self.remote.mkdir(path, false).await?;
-                let is_conflict = self.tree.add_remote_is_conflict(
-                    path,
-                    Metadata::Directory {
-                        path: path.to_path_buf(),
-                        stat: None,
-                    },
-                );
-                self.check_conflict(path, is_conflict).await;
-                Ok(())
+            (tree::Entry::Remote(metadata), StorageDir::RemoteToLocal) => {
+                self.do_copy_or_mkdir(metadata, &self.remote, &self.local, dir)
+                    .await
             }
-            tree::Entry::Remote(..) => Err(PathError::Only(path.to_owned(), Location::Remote))?,
-            _ => Err(PathError::Unexpected(path.to_owned(), Location::Both))?,
+            (tree::Entry::Sync { .. }, _) => {
+                Err(PathError::Unexpected(path.to_owned(), Location::Both))?
+            }
         }
     }
 
@@ -285,8 +276,7 @@ where
 
     pub async fn operate(&self, operation: &Operation) -> fsync::Result<()> {
         match operation {
-            Operation::CopyRemoteToLocal(path) => self.copy_remote_to_local(path.as_ref()).await,
-            Operation::CopyLocalToRemote(path) => self.copy_local_to_remote(path.as_ref()).await,
+            Operation::Copy(path, dir) => self.copy_or_mkdir(path.as_ref(), *dir).await,
             Operation::ReplaceLocalByRemote(path) => {
                 self.replace_local_by_remote(path.as_ref()).await
             }

@@ -3,7 +3,7 @@ use std::{cmp::Ordering, fmt, sync::Arc, time::Duration};
 use byte_unit::{AdjustedByte, Byte, UnitType};
 use fsync::{
     path::{Path, PathBuf},
-    tree, Conflict, FsyncClient,
+    tree, Conflict, FsyncClient, StorageDir,
 };
 use futures::future::BoxFuture;
 use inquire::Select;
@@ -393,7 +393,7 @@ impl SyncCommand {
         };
         match remember {
             Some(CopyChoice::Yes) => {
-                return self.copy_local_to_remote(entry).await;
+                return self.copy(entry, StorageDir::LocalToRemote).await;
             }
             Some(CopyChoice::No) => {
                 return Ok(());
@@ -418,7 +418,7 @@ impl SyncCommand {
                     rem.copy_local_to_remote = Some(choice);
                 }
                 if choice == CopyChoice::Yes {
-                    self.copy_local_to_remote(entry).await
+                    self.copy(entry, StorageDir::LocalToRemote).await
                 } else {
                     Ok(())
                 }
@@ -433,7 +433,7 @@ impl SyncCommand {
         };
         match remember {
             Some(CopyChoice::Yes) => {
-                return self.copy_remote_to_local(entry).await;
+                return self.copy(entry, StorageDir::RemoteToLocal).await;
             }
             Some(CopyChoice::No) => {
                 return Ok(());
@@ -458,7 +458,7 @@ impl SyncCommand {
                     rem.copy_remote_to_local = Some(choice);
                 }
                 if choice == CopyChoice::Yes {
-                    self.copy_remote_to_local(entry).await
+                    self.copy(entry, StorageDir::RemoteToLocal).await
                 } else {
                     Ok(())
                 }
@@ -728,15 +728,20 @@ impl SyncCommand {
         Ok(())
     }
 
-    async fn copy_remote_to_local(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
+    async fn copy(&self, entry: &fsync::Metadata, dir: StorageDir) -> anyhow::Result<()> {
         match entry {
             fsync::Metadata::Directory { path, .. } => {
-                println!("creating local directory `{path}`");
+                let loc = dir.dest();
+                println!("creating directory `{path}` on {loc}");
             }
             fsync::Metadata::Regular { path, size, .. } => {
                 let byte = Byte::from(*size).get_appropriate_unit(UnitType::Binary);
+                let verb = match dir {
+                    StorageDir::LocalToRemote => "uploading",
+                    StorageDir::RemoteToLocal => "downloading",
+                };
                 println!(
-                    "downloading `{}` in `{}` ({byte:#.2})",
+                    "{verb} `{}` in `{}` ({byte:#.2})",
                     path.file_name().unwrap(),
                     path.parent().unwrap(),
                 );
@@ -745,38 +750,15 @@ impl SyncCommand {
         }
         {
             let mut stats = self.stats.write().await;
-            stats.push(Stat::CopyRemoteToLocal(entry.clone()));
+            let stat = match dir {
+                StorageDir::LocalToRemote => Stat::CopyLocalToRemote(entry.clone()),
+                StorageDir::RemoteToLocal => Stat::CopyRemoteToLocal(entry.clone()),
+            };
+            stats.push(stat);
         }
 
         if !self.args.dry_run {
-            let operation = fsync::Operation::CopyRemoteToLocal(entry.path().to_owned());
-            self.client.operate(tarpc_context(), operation).await??;
-        }
-        Ok(())
-    }
-
-    async fn copy_local_to_remote(&self, entry: &fsync::Metadata) -> anyhow::Result<()> {
-        match entry {
-            fsync::Metadata::Directory { path, .. } => {
-                println!("creating remote directory `{path}`");
-            }
-            fsync::Metadata::Regular { path, size, .. } => {
-                let byte = Byte::from(*size).get_appropriate_unit(UnitType::Binary);
-                println!(
-                    "uploading `{}` in `{}` ({byte:#.2})",
-                    path.file_name().unwrap(),
-                    path.parent().unwrap(),
-                );
-            }
-            _ => panic!("Unsupported {entry:?}"),
-        }
-        {
-            let mut stats = self.stats.write().await;
-            stats.push(Stat::CopyLocalToRemote(entry.clone()));
-        }
-
-        if !self.args.dry_run {
-            let operation = fsync::Operation::CopyLocalToRemote(entry.path().to_owned());
+            let operation = fsync::Operation::Copy(entry.path().to_owned(), dir);
             self.client.operate(tarpc_context(), operation).await??;
         }
         Ok(())

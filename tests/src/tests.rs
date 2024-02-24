@@ -1,8 +1,5 @@
 use fsync::{
-    path::{Path, PathBuf},
-    tree::Entry,
-    Location, Operation,
-    stat,
+    path::{Path, PathBuf}, stat, tree::Entry, Location, Operation, StorageDir
 };
 
 use crate::{harness, utils::UnwrapDisplay};
@@ -42,7 +39,7 @@ async fn copy_remote_to_local() {
     let h = harness().await;
     let path = PathBuf::from("/only-remote.txt");
     h.service
-        .operate(&Operation::CopyRemoteToLocal(path.clone()))
+        .operate(&Operation::Copy(path.clone(), StorageDir::RemoteToLocal))
         .await
         .unwrap();
     let content = h.local_file_content(&path).await.unwrap();
@@ -64,7 +61,7 @@ async fn copy_remote_to_local_deep() {
     let h = harness().await;
     let path = PathBuf::from("/only-remote/deep/file2.txt");
     h.service
-        .operate(&Operation::CopyRemoteToLocal(path.clone()))
+        .operate(&Operation::Copy(path.clone(), StorageDir::RemoteToLocal))
         .await
         .unwrap();
     let content = h.local_file_content(&path).await.unwrap();
@@ -85,7 +82,7 @@ async fn copy_remote_to_local_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
-        .operate(&Operation::CopyRemoteToLocal(path))
+        .operate(&Operation::Copy(path, StorageDir::RemoteToLocal))
         .await
         .unwrap_display();
 }
@@ -95,7 +92,7 @@ async fn copy_local_to_remote_deep() {
     let h = harness().await;
     let path = PathBuf::from("/only-local/deep/file2.txt");
     h.service
-        .operate(&Operation::CopyLocalToRemote(path.clone()))
+        .operate(&Operation::Copy(path.clone(), StorageDir::LocalToRemote))
         .await
         .unwrap();
     let content = h.remote_file_content(&path).await.unwrap();
@@ -116,7 +113,7 @@ async fn copy_remote_to_local_fail_relative() {
     let h = harness().await;
     let path = PathBuf::from("only-remote.txt");
     h.service
-        .operate(&Operation::CopyRemoteToLocal(path))
+        .operate(&Operation::Copy(path, StorageDir::RemoteToLocal))
         .await
         .unwrap_display();
 }
@@ -126,7 +123,7 @@ async fn copy_local_to_remote() {
     let h = harness().await;
     let path = PathBuf::from("/only-local.txt");
     h.service
-        .operate(&Operation::CopyLocalToRemote(path.clone()))
+        .operate(&Operation::Copy(path.clone(), StorageDir::LocalToRemote))
         .await
         .unwrap();
     let content = h.remote_file_content(&path).await.unwrap();
@@ -139,7 +136,7 @@ async fn copy_local_to_remote_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
-        .operate(&Operation::CopyLocalToRemote(path))
+        .operate(&Operation::Copy(path, StorageDir::LocalToRemote))
         .await
         .unwrap_display();
 }

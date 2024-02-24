@@ -132,6 +132,10 @@ impl DiffTree {
         self.nodes.iter()
     }
 
+    pub fn add_to_storage_check_conflict(&self, path: &Path, metadata: fsync::Metadata, loc: StorageLoc) ->bool{
+        self.op_entry_is_conflict(path, |entry| entry.with(metadata, loc))
+    }
+
     pub fn add_local_is_conflict(&self, path: &Path, local: fsync::Metadata) -> bool {
         self.op_entry_is_conflict(path, move |entry| entry.with_local(local))
     }

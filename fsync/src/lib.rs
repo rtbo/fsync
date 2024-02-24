@@ -30,11 +30,58 @@ pub enum StorageLoc {
     Remote,
 }
 
+impl StorageLoc {
+    pub fn opposite(self) -> Self {
+        match self {
+            StorageLoc::Local => StorageLoc::Remote,
+            StorageLoc::Remote => StorageLoc::Local,
+        } 
+    }
+}
+
 impl fmt::Display for StorageLoc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             StorageLoc::Local => f.write_str("local drive"),
             StorageLoc::Remote => f.write_str("remote drive"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum StorageDir {
+    LocalToRemote,
+    RemoteToLocal,
+}
+
+impl StorageDir {
+    pub fn opposite(self) -> Self {
+        match self {
+            StorageDir::LocalToRemote => StorageDir::RemoteToLocal,
+            StorageDir::RemoteToLocal => StorageDir::LocalToRemote,
+        } 
+    }
+
+    pub fn src(self) -> StorageLoc {
+        match self {
+            StorageDir::LocalToRemote => StorageLoc::Local,
+            StorageDir::RemoteToLocal => StorageLoc::Remote,
+        }
+    }
+
+    pub fn dest(self) -> StorageLoc {
+        match self {
+            StorageDir::LocalToRemote => StorageLoc::Remote,
+            StorageDir::RemoteToLocal => StorageLoc::Local,
+        }
+    }
+}
+
+impl fmt::Display for StorageDir {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StorageDir::LocalToRemote => f.write_str("local to remote drive"),
+            StorageDir::RemoteToLocal => f.write_str("remote to local drive"),
         }
     }
 }

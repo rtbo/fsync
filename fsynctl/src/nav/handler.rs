@@ -1,5 +1,5 @@
 use crossterm::event;
-use fsync::path::Path;
+use fsync::{path::Path, StorageDir};
 
 use crate::nav::ctx;
 
@@ -81,11 +81,16 @@ impl super::Navigator {
                 let child = self.cur_child_node();
                 if let Some(child) = child {
                     let path = child.entry().path().to_owned();
-                    if child.is_local_only() {
-                        self.client.operate(ctx(), fsync::Operation::CopyLocalToRemote(path)).await.unwrap()?;
-                        operated = true;
-                    } else if child.is_remote_only() {
-                        self.client.operate(ctx(), fsync::Operation::CopyRemoteToLocal(path)).await.unwrap()?;
+                    if !child.is_sync() {
+                        let dir = if child.is_local_only() {
+                            StorageDir::LocalToRemote
+                        } else {
+                            StorageDir::RemoteToLocal
+                        };
+                        self.client
+                            .operate(ctx(), fsync::Operation::Copy(path, dir))
+                            .await
+                            .unwrap()?;
                         operated = true;
                     }
                 }
