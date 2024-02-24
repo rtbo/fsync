@@ -120,7 +120,7 @@ pub mod tree {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::{path::Path, stat, Conflict, SingleLoc};
+    use crate::{path::Path, stat, Conflict, StorageLoc};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum Entry {
@@ -233,17 +233,17 @@ pub mod tree {
             )
         }
 
-        pub fn has_by_loc(&self, loc: SingleLoc) -> bool {
+        pub fn has_by_loc(&self, loc: StorageLoc) -> bool {
             match loc {
-                SingleLoc::Local => self.is_local_only() || self.is_sync(),
-                SingleLoc::Remote => self.is_remote_only() || self.is_sync(),
+                StorageLoc::Local => self.is_local_only() || self.is_sync(),
+                StorageLoc::Remote => self.is_remote_only() || self.is_sync(),
             }
         }
 
-        pub fn stat_by_loc(&self, loc: SingleLoc) -> Option<stat::Dir> {
+        pub fn stat_by_loc(&self, loc: StorageLoc) -> Option<stat::Dir> {
             match loc {
-                SingleLoc::Local => self.local_stat(),
-                SingleLoc::Remote => self.remote_stat(),
+                StorageLoc::Local => self.local_stat(),
+                StorageLoc::Remote => self.remote_stat(),
             }
         }
 

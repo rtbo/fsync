@@ -2,7 +2,7 @@ use std::ops;
 
 use serde::{Deserialize, Serialize};
 
-use crate::SingleLoc;
+use crate::StorageLoc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dir {
@@ -107,10 +107,10 @@ impl Tree {
         self.local.is_positive() && self.remote.is_positive() && self.conflicts >= 0
     }
 
-    pub fn by_loc(&self, loc: SingleLoc) -> &Dir {
+    pub fn by_loc(&self, loc: StorageLoc) -> &Dir {
         match loc {
-            SingleLoc::Local => &self.local,
-            SingleLoc::Remote => &self.remote,
+            StorageLoc::Local => &self.local,
+            StorageLoc::Remote => &self.remote,
         }
     }
 }

@@ -4,7 +4,7 @@ use dashmap::DashMap;
 pub use fsync::tree::{Entry, EntryNode};
 use fsync::{
     path::{Path, PathBuf},
-    stat, SingleLoc,
+    stat, StorageLoc,
 };
 use futures::{
     future::{self, BoxFuture},
@@ -49,7 +49,7 @@ impl AddStat for EntryNode {
 }
 
 trait EntryExt {
-    fn with(self, md: fsync::Metadata, loc: SingleLoc) -> Self;
+    fn with(self, md: fsync::Metadata, loc: StorageLoc) -> Self;
     fn with_local(self, local: fsync::Metadata) -> Self;
     fn with_remote(self, remote: fsync::Metadata) -> Self;
     fn without_local(self) -> Self;
@@ -57,10 +57,10 @@ trait EntryExt {
 }
 
 impl EntryExt for Entry {
-    fn with(self, md: fsync::Metadata, loc: SingleLoc) -> Self {
+    fn with(self, md: fsync::Metadata, loc: StorageLoc) -> Self {
         match loc {
-            SingleLoc::Local => self.with_local(md),
-            SingleLoc::Remote => self.with_remote(md),
+            StorageLoc::Local => self.with_local(md),
+            StorageLoc::Remote => self.with_remote(md),
         }
     }
 
@@ -182,7 +182,7 @@ impl DiffTree {
     /// Ensure that parents of `path` are added in the tree for `loc`.
     /// Also perform stats calculation.
     /// Returns which of the parents are conflicts.
-    pub fn ensure_parents(&self, path: &Path, loc: SingleLoc) -> Vec<(PathBuf, bool)> {
+    pub fn ensure_parents(&self, path: &Path, loc: StorageLoc) -> Vec<(PathBuf, bool)> {
         debug_assert!(path.is_absolute());
         let mut conflicts = vec![];
         if path.is_root() {

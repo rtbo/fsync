@@ -6,7 +6,10 @@ use std::{
 };
 
 use fsync::{
-    self, loc::inst, path::{Path, PathBuf}, Error, Fsync, Location, Metadata, Operation, PathError, SingleLoc,
+    self,
+    loc::inst,
+    path::{Path, PathBuf},
+    Error, Fsync, Location, Metadata, Operation, PathError, StorageLoc,
 };
 use futures::{
     future,
@@ -144,7 +147,7 @@ where
                 let read = self.remote.read_file(remote.path().to_owned()).await?;
                 if !path.is_root() {
                     self.local.mkdir(path.parent().unwrap(), true).await?;
-                    let conflicts = self.tree.ensure_parents(path, SingleLoc::Local);
+                    let conflicts = self.tree.ensure_parents(path, StorageLoc::Local);
                     for (path, is_conflict) in conflicts {
                         self.check_conflict(&path, is_conflict).await;
                     }
@@ -178,7 +181,7 @@ where
 
                 if !path.is_root() {
                     self.remote.mkdir(path.parent().unwrap(), true).await?;
-                    let conflicts = self.tree.ensure_parents(path, SingleLoc::Remote);
+                    let conflicts = self.tree.ensure_parents(path, StorageLoc::Remote);
                     for (path, is_conflict) in conflicts {
                         self.check_conflict(&path, is_conflict).await;
                     }

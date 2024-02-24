@@ -25,16 +25,16 @@ pub mod path;
 pub mod stat;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum SingleLoc {
+pub enum StorageLoc {
     Local,
     Remote,
 }
 
-impl fmt::Display for SingleLoc {
+impl fmt::Display for StorageLoc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SingleLoc::Local => f.write_str("local drive"),
-            SingleLoc::Remote => f.write_str("remote drive"),
+            StorageLoc::Local => f.write_str("local drive"),
+            StorageLoc::Remote => f.write_str("remote drive"),
         }
     }
 }
