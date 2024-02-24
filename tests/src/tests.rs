@@ -146,7 +146,7 @@ async fn replace_local_by_remote() {
     let h = harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
-        .operate(&Operation::ReplaceLocalByRemote(path.clone()))
+        .operate(&Operation::Replace(path.clone(), StorageDir::RemoteToLocal))
         .await
         .unwrap();
     let local_content = h.local_file_content(&path).await.unwrap();
@@ -160,7 +160,7 @@ async fn replace_remote_by_local() {
     let h = harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
-        .operate(&Operation::ReplaceRemoteByLocal(path.clone()))
+        .operate(&Operation::Replace(path.clone(), StorageDir::LocalToRemote))
         .await
         .unwrap();
     let local_content = h.local_file_content(&path).await.unwrap();

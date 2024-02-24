@@ -370,8 +370,7 @@ pub mod tree {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Operation {
     Copy(PathBuf, StorageDir),
-    ReplaceLocalByRemote(PathBuf),
-    ReplaceRemoteByLocal(PathBuf),
+    Replace(PathBuf, StorageDir),
     Delete(PathBuf, Location),
 }
 

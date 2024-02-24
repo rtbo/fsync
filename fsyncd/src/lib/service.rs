@@ -143,6 +143,28 @@ impl<L, R> Service<L, R> {
         self.check_conflict(path, is_conflict).await;
         Ok(())
     }
+
+    async fn do_replace<S, D>(
+        &self,
+        metadata: &fsync::Metadata,
+        src: &S,
+        dest: &D,
+        dir: StorageDir,
+    ) -> fsync::Result<()>
+    where
+        S: storage::Storage,
+        D: storage::Storage,
+    {
+        let path = metadata.path();
+
+        let data = src.read_file(path.to_path_buf()).await?;
+        let written = dest.write_file(metadata, data).await?;
+        let is_conflict = self
+            .tree
+            .add_to_storage_check_conflict(path, written, dir.dest());
+        self.check_conflict(path, is_conflict).await;
+        Ok(())
+    }
 }
 
 impl<L, R> Service<L, R>
@@ -199,42 +221,20 @@ where
         }
     }
 
-    pub async fn replace_local_by_remote(&self, path: &Path) -> fsync::Result<()> {
+    pub async fn replace(&self, path: &Path, dir: StorageDir) -> fsync::Result<()> {
         let node = self.check_node(path)?;
-        match node.entry() {
-            tree::Entry::Sync { remote, .. } => {
-                let data = self.remote().read_file(path.to_path_buf()).await?;
-                let local = self.local().write_file(remote, data).await?;
-                let is_conflict = self.tree.add_local_is_conflict(path, local);
-                self.check_conflict(path, is_conflict).await;
-                Ok(())
+        match (node.entry(), dir) {
+            (tree::Entry::Sync { remote, .. }, StorageDir::RemoteToLocal) => {
+                self.do_replace(remote, &self.remote, &self.local, dir).await 
             }
-            tree::Entry::Local(local) => Err(PathError::Unexpected(
+            (tree::Entry::Sync { local, .. }, StorageDir::LocalToRemote) => {
+                self.do_replace(local, &self.local, &self.remote, dir).await 
+            }
+            (tree::Entry::Local(local), _)=> Err(PathError::Unexpected(
                 local.path().to_owned(),
                 Location::Local,
             ))?,
-            tree::Entry::Remote(remote) => Err(PathError::Unexpected(
-                remote.path().to_owned(),
-                Location::Remote,
-            ))?,
-        }
-    }
-
-    pub async fn replace_remote_by_local(&self, path: &Path) -> fsync::Result<()> {
-        let node = self.check_node(path)?;
-        match node.entry() {
-            tree::Entry::Sync { local, .. } => {
-                let data = self.local().read_file(path.to_path_buf()).await?;
-                let remote = self.remote().write_file(local, data).await?;
-                let is_conflict = self.tree.add_remote_is_conflict(path, remote);
-                self.check_conflict(path, is_conflict).await;
-                Ok(())
-            }
-            tree::Entry::Local(local) => Err(PathError::Unexpected(
-                local.path().to_owned(),
-                Location::Local,
-            ))?,
-            tree::Entry::Remote(remote) => Err(PathError::Unexpected(
+            (tree::Entry::Remote(remote), _) => Err(PathError::Unexpected(
                 remote.path().to_owned(),
                 Location::Remote,
             ))?,
@@ -277,12 +277,7 @@ where
     pub async fn operate(&self, operation: &Operation) -> fsync::Result<()> {
         match operation {
             Operation::Copy(path, dir) => self.copy_or_mkdir(path.as_ref(), *dir).await,
-            Operation::ReplaceLocalByRemote(path) => {
-                self.replace_local_by_remote(path.as_ref()).await
-            }
-            Operation::ReplaceRemoteByLocal(path) => {
-                self.replace_remote_by_local(path.as_ref()).await
-            }
+            Operation::Replace(path, dir) => self.replace(path.as_ref(), *dir).await,
             Operation::Delete(path, location) => self.delete(path.as_ref(), *location).await,
         }
     }

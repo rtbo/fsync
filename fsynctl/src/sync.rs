@@ -694,17 +694,17 @@ impl SyncCommand {
         match choice {
             ConflictChoice::Ignore => self.ignore(local, remote).await,
             ConflictChoice::ReplaceOldestByMostRecent => {
-                if local.mtime().unwrap() < remote.mtime().unwrap() {
-                    self.replace_local_by_remote(local, remote).await
-                } else {
-                    self.replace_remote_by_local(local, remote).await
-                }
+                let dir = match fsync::compare_mtime(local.mtime().unwrap(), remote.mtime().unwrap()) {
+                    Ordering::Less => StorageDir::RemoteToLocal,
+                    Ordering::Greater | Ordering::Equal => StorageDir::LocalToRemote,
+                };
+                self.replace(local, remote, dir).await
             }
             ConflictChoice::ReplaceLocalByRemote => {
-                self.replace_local_by_remote(local, remote).await
+                self.replace(local, remote, StorageDir::RemoteToLocal).await
             }
             ConflictChoice::ReplaceRemoteByLocal => {
-                self.replace_remote_by_local(local, remote).await
+                self.replace(local, remote, StorageDir::LocalToRemote).await
             }
             ConflictChoice::DeleteLocal => self.delete_local(local).await,
         }
@@ -769,43 +769,30 @@ impl SyncCommand {
         stats.push(Stat::GoodToGo(entry.clone()));
     }
 
-    async fn replace_local_by_remote(
+    async fn replace(
         &self,
         local: &fsync::Metadata,
         remote: &fsync::Metadata,
+        dir: StorageDir,
     ) -> anyhow::Result<()> {
         assert_eq!(local.path(), remote.path());
         {
             let mut stats = self.stats.write().await;
-            stats.push(Stat::ReplaceLocalByRemote {
-                local: local.clone(),
-                remote: remote.clone(),
-            });
+            let stat = match dir {
+                StorageDir::LocalToRemote => Stat::ReplaceRemoteByLocal {
+                    local: local.clone(),
+                    remote: remote.clone(),
+                },
+                StorageDir::RemoteToLocal => Stat::ReplaceLocalByRemote {
+                    local: local.clone(),
+                    remote: remote.clone(),
+                },
+            };
+            stats.push(stat);
         }
 
         if !self.args.dry_run {
-            let operation = fsync::Operation::ReplaceLocalByRemote(local.path().to_owned());
-            self.client.operate(tarpc_context(), operation).await??;
-        }
-        Ok(())
-    }
-
-    async fn replace_remote_by_local(
-        &self,
-        local: &fsync::Metadata,
-        remote: &fsync::Metadata,
-    ) -> anyhow::Result<()> {
-        assert_eq!(local.path(), remote.path());
-        {
-            let mut stats = self.stats.write().await;
-            stats.push(Stat::ReplaceRemoteByLocal {
-                local: local.clone(),
-                remote: remote.clone(),
-            });
-        }
-
-        if !self.args.dry_run {
-            let operation = fsync::Operation::ReplaceRemoteByLocal(local.path().to_owned());
+            let operation = fsync::Operation::Replace(local.path().to_owned(), dir);
             self.client.operate(tarpc_context(), operation).await??;
         }
         Ok(())
