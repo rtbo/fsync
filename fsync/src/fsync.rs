@@ -79,12 +79,6 @@ impl Metadata {
     }
 }
 
-impl Default for Metadata {
-    fn default() -> Self {
-        Metadata::root()
-    }
-}
-
 pub mod tree {
     use std::mem;
 
