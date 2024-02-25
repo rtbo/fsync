@@ -24,6 +24,7 @@ impl AddStat for fsync::Metadata {
         match self {
             fsync::Metadata::Directory { stat: Some(stat), .. } => *stat += *added,
             fsync::Metadata::Directory { stat, .. } => *stat = Some(*added),
+            _ if added.is_null() => (),
             _ => panic!("Not a directory"),
         }
     }
@@ -45,6 +46,37 @@ impl AddStat for EntryNode {
             }
         }
         self.add_children_conflicts(added.conflicts);
+    }
+}
+
+trait NewWithStat {
+    type Stat;
+    fn new_with_children_stat(entry: Entry, children: Vec<String>, children_stat: Self::Stat) -> Self;
+}
+
+impl NewWithStat for EntryNode {
+    type Stat = stat::Tree;
+    fn new_with_children_stat(entry: Entry, children: Vec<String>, children_stat: Self::Stat) -> Self {
+        let mut entry = entry;
+        match &mut entry {
+            Entry::Local(local) => {
+                debug_assert!(children_stat.remote.is_null(), "Remote stat should be null for local entry");
+                debug_assert!(local.is_dir() || children_stat.local.is_null(), "Stat should be null for non-dir entry");
+                local.add_stat(&children_stat.local);
+            }
+            Entry::Remote(remote) => {
+                debug_assert!(children_stat.local.is_null(), "Local stat should be null for remote entry");
+                debug_assert!(remote.is_dir() || children_stat.remote.is_null(), "Stat should be null for non-dir entry");
+                remote.add_stat(&children_stat.remote);
+            }
+            Entry::Sync { local, remote, .. } => {
+                debug_assert!(local.is_dir() || children_stat.local.is_null(), "Stat should be null for non-dir entry");
+                debug_assert!(remote.is_dir() || children_stat.remote.is_null(), "Stat should be null for non-dir entry");
+                local.add_stat(&children_stat.local);
+                remote.add_stat(&children_stat.remote);
+            }
+        }
+        Self::new(entry, children, children_stat.conflicts as _) 
     }
 }
 
@@ -280,8 +312,8 @@ where
 {
     fn sync(
         &self,
-        mut local: fsync::Metadata,
-        mut remote: fsync::Metadata,
+        local: fsync::Metadata,
+        remote: fsync::Metadata,
     ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let loc_children = entry_children_sorted(&*self.local, &local);
@@ -339,17 +371,10 @@ where
                 children_stat = children_stat + stat;
             }
 
-            if let fsync::Metadata::Directory { stat, .. } = &mut local {
-                *stat = Some(children_stat.local);
-            }
-            if let fsync::Metadata::Directory { stat, .. } = &mut remote {
-                *stat = Some(children_stat.remote);
-            }
-
             assert_eq!(local.path(), remote.path());
             let path = local.path().to_owned();
             let entry = Entry::new_sync(local, remote);
-            let node = EntryNode::new(entry, children, children_stat.conflicts as _);
+            let node = EntryNode::new_with_children_stat(entry, children, children_stat);
             let res = node.stat();
 
             self.nodes.insert(path, node);
@@ -360,13 +385,13 @@ where
 
     fn local(
         &self,
-        mut entry: fsync::Metadata,
+        entry: fsync::Metadata,
     ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let mut children_names = Vec::new();
             let mut children_stat = stat::Tree::null();
 
-            if let fsync::Metadata::Directory { path, stat } = &mut entry {
+            if let fsync::Metadata::Directory { path, .. } = &entry {
                 let mut joinvec = Vec::new();
                 let children = self.local.dir_entries(&path);
                 tokio::pin!(children);
@@ -381,12 +406,11 @@ where
                 for s in stat_vec {
                     children_stat = children_stat + s;
                 }
-                *stat = Some(children_stat.local);
             }
 
             let path = entry.path().to_owned();
             let entry = Entry::Local(entry);
-            let node = EntryNode::new(entry, children_names, children_stat.conflicts as _);
+            let node = EntryNode::new_with_children_stat(entry, children_names, children_stat);
             let res = node.stat();
 
             self.nodes.insert(path, node);
@@ -397,13 +421,13 @@ where
 
     fn remote(
         &self,
-        mut entry: fsync::Metadata,
+        entry: fsync::Metadata,
     ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
             let mut children_stat = stat::Tree::null();
 
-            if let fsync::Metadata::Directory { path, stat } = &mut entry {
+            if let fsync::Metadata::Directory { path, .. } = &entry {
                 let mut joinvec = Vec::new();
                 let children = self.remote.dir_entries(path);
                 tokio::pin!(children);
@@ -418,12 +442,11 @@ where
                 for s in stat_vec {
                     children_stat = children_stat + s;
                 }
-                *stat = Some(children_stat.remote);
             }
 
             let path = entry.path().to_owned();
             let entry = Entry::Remote(entry);
-            let node = EntryNode::new(entry, child_names, children_stat.conflicts as _);
+            let node = EntryNode::new_with_children_stat(entry, child_names, children_stat);
             let res = node.stat();
 
             self.nodes.insert(path, node);
