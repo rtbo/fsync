@@ -154,7 +154,7 @@ async fn node_and_children(
     Ok((node, children?))
 }
 
-// use std::fs::{File, OpenOptions};
+// use std::fs::File;
 // use std::io::Write;
 // use std::sync::Mutex;
 
@@ -167,13 +167,7 @@ async fn node_and_children(
 // fn log_msg(message: &str) {
 //     let mut log_file = LOG_FILE.lock().unwrap();
 //     if log_file.is_none() {
-//         *log_file = Some(
-//             OpenOptions::new()
-//                 .create(true)
-//                 .append(true)
-//                 .open("nav.log")
-//                 .unwrap(),
-//         );
+//         *log_file = Some(File::create("nav.log").unwrap());
 //     }
 //     if let Some(file) = log_file.as_mut() {
 //         writeln!(file, "{}", message).unwrap();

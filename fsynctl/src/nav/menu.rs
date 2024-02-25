@@ -54,8 +54,8 @@ struct KeyActionDesc(&'static [KeyCode]);
 impl KeyActionDesc {
     fn key_code_str(code: KeyCode) -> &'static str {
         match code {
-            KeyCode::Backspace => "⌫",
-            KeyCode::Enter => "⏎",
+            KeyCode::Backspace => "⌫ ",
+            KeyCode::Enter => "⏎ ",
             KeyCode::Up => "↑",
             KeyCode::Down => "↓",
             KeyCode::Esc => "esc",
@@ -144,8 +144,8 @@ impl Menu {
             MenuItem::new_action(Action::Up, KeyAction(&[KeyCode::Up, KeyCode::Char('k')])),
             MenuItem::new_action(Action::Enter, KeyAction(&[KeyCode::Enter])),
             MenuItem::new_action(Action::Back, KeyAction(&[KeyCode::Backspace])),
-            MenuItem::new_sep(),
             MenuItem::new_action(Action::Details, KeyAction(&[KeyCode::Char(' ')])),
+            MenuItem::new_sep(),
             MenuItem::new_action(Action::Sync, KeyAction(&[KeyCode::Char('s')])),
             MenuItem::new_action(Action::SyncAll, KeyAction(&[KeyCode::Char('S')])),
             MenuItem::new_sep(),

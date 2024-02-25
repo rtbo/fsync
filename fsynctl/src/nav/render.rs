@@ -8,9 +8,16 @@ use crossterm::{
     cursor::MoveTo,
     queue,
     style::{Color, Print, PrintStyledContent, Stylize},
-    terminal,
 };
 use fsync::tree::{Entry, EntryNode};
+
+use crate::utils;
+
+const LOCAL_COLOR: Color = Color::Reset;
+const REMOTE_COLOR: Color = Color::Cyan;
+const NODE_COLOR: Color = Color::Magenta;
+const CONFLICT_COLOR: Color = Color::Red;
+const SYNC_COLOR: Color = Color::Green;
 
 fn entry_print_path(entry: &Entry) -> String {
     let path = entry.path().to_string();
@@ -42,7 +49,7 @@ impl Tag {
     // synchronized tag
     const fn sync() -> Self {
         Tag {
-            color: Color::Green,
+            color: SYNC_COLOR,
             tag: 'S',
             desc: "Synchronized",
             desc_short: "Sync",
@@ -52,7 +59,7 @@ impl Tag {
     // local only tag
     const fn local() -> Self {
         Tag {
-            color: Color::Reset,
+            color: LOCAL_COLOR,
             tag: 'L',
             desc: "Local only",
             desc_short: "Local",
@@ -62,7 +69,7 @@ impl Tag {
     // remote only tag
     const fn remote() -> Self {
         Tag {
-            color: Color::Cyan,
+            color: REMOTE_COLOR,
             tag: 'R',
             desc: "Remote only",
             desc_short: "Remote",
@@ -72,7 +79,7 @@ impl Tag {
     // conflict tag
     const fn conflict() -> Self {
         Tag {
-            color: Color::Red,
+            color: CONFLICT_COLOR,
             tag: 'C',
             desc: "Conflict",
             desc_short: "Conflict",
@@ -159,6 +166,10 @@ impl Rect {
         }
     }
 
+    pub fn move_to(&self, pos: Pos) -> MoveTo {
+        self.abs_pos(pos).move_to()
+    }
+
     pub fn crop_right(&self, w: u16) -> Rect {
         Rect {
             top_left: self.top_left,
@@ -183,23 +194,67 @@ impl Rect {
     }
 }
 
+trait Width {
+    fn width(&self) -> u16;
+}
+
+impl Width for Size {
+    fn width(&self) -> u16 {
+        self.width
+    }
+}
+
+impl Width for Rect {
+    fn width(&self) -> u16 {
+        self.size.width
+    }
+}
+
+impl Width for str {
+    fn width(&self) -> u16 {
+        self.chars().count() as u16
+    }
+}
+
+impl Width for String {
+    fn width(&self) -> u16 {
+        self.chars().count() as u16
+    }
+}
+
 impl super::Navigator {
     pub fn render(&self) -> anyhow::Result<()> {
         let mut out = io::stdout();
 
-        let max_menu_sz = self.menu.max_size();
         let max_vp_height = self.size.height - 1;
+
+        let menu_sz = self.menu.max_size();
+
+        let legend_sz = Size {
+            width: menu_sz.width,
+            height: 5.min(max_vp_height.max(menu_sz.height) - menu_sz.height),
+        };
+
         let menu_viewport = Rect {
             top_left: Pos {
-                x: self.size.width - max_menu_sz.width,
+                x: self.size.width - menu_sz.width,
                 y: 0,
             },
             size: Size {
-                width: max_menu_sz.width,
-                height: max_vp_height.min(max_menu_sz.height),
-            }
+                width: menu_sz.width,
+                height: (max_vp_height - legend_sz.height).min(menu_sz.height),
+            },
         };
         self.menu.render(menu_viewport, self.focus)?;
+
+        let legend_viewport = Rect {
+            top_left: Pos {
+                x: self.size.width - legend_sz.width,
+                y: max_vp_height - legend_sz.height,
+            },
+            size: legend_sz,
+        };
+        self.render_legend(legend_viewport)?;
 
         let viewport = Rect {
             top_left: Pos { x: 0, y: 0 },
@@ -215,7 +270,17 @@ impl super::Navigator {
             todo!()
         }
 
-        self.render_footer()?;
+        let footer_vp = Rect {
+            top_left: Pos {
+                x: 0,
+                y: self.size.height - 1,
+            },
+            size: Size {
+                width: self.size.width,
+                height: 1,
+            },
+        };
+        self.render_stats(&footer_vp, &self.node.stat())?;
 
         out.flush()?;
         Ok(())
@@ -270,6 +335,36 @@ impl ChildrenScroll {
 }
 
 impl super::Navigator {
+    fn render_legend(&self, viewport: Rect) -> anyhow::Result<()> {
+        let mut out = io::stdout();
+
+        let mut y = 0;
+
+        let mut remain = viewport.height();
+        while remain > 0 {
+            let (msg, col) = match remain {
+                5 => ("Local only", LOCAL_COLOR),
+                4 => ("Remote only", REMOTE_COLOR),
+                3 => ("Total nodes", NODE_COLOR),
+                2 => ("Synchronized", SYNC_COLOR),
+                1 => ("Conflicts", CONFLICT_COLOR),
+                _ => unreachable!(),
+            };
+
+            let x = viewport.width() - msg.width();
+            let pos = viewport.abs_pos(Pos { x: 0, y });
+            queue!(
+                out,
+                pos.move_to(),
+                Print(" ".repeat(x as usize).as_str()),
+                PrintStyledContent(msg.with(col)),
+            )?;
+            y += 1;
+            remain -= 1;
+        }
+        Ok(())
+    }
+
     fn compute_children_scroll(&self) -> ChildrenScroll {
         let mut height = 0;
         let mut cur_child_pos = 0;
@@ -302,7 +397,7 @@ impl super::Navigator {
         let mut w = path.len() as u16 + 2;
 
         if self.node.children_have_conflicts() {
-            let cf = format!(" [{}]", node.children_conflicts());
+            let cf = format!("    [{}]", node.children_conflicts());
             queue!(out, PrintStyledContent(cf.as_str().with(Color::Red)))?;
             w += cf.len() as u16;
         }
@@ -409,7 +504,7 @@ impl super::Navigator {
             w += name.len() as u16;
 
             if child.children_have_conflicts() {
-                let cf = format!(" [{}]", child.children_conflicts());
+                let cf = format!("   [{}]", child.children_conflicts());
                 queue!(out, PrintStyledContent(cf.as_str().with(Color::Red),))?;
                 w += cf.len() as u16;
             }
@@ -468,80 +563,170 @@ impl super::Navigator {
         Ok(2)
     }
 
-    // show the footer where each tag is explained
-    fn render_footer(&self) -> anyhow::Result<()> {
+    fn render_stats(&self, viewport: &Rect, stat: &fsync::stat::Tree) -> anyhow::Result<()> {
+        debug_assert!(
+            viewport.height() == 1 || viewport.height() == 3,
+            "only 1 or 3 lines are supported"
+        );
+
         let mut out = io::stdout();
-        let tags = [Tag::sync(), Tag::local(), Tag::remote(), Tag::conflict()];
-        let num_tags = tags.len() as u16;
-        let pad = 1;
-        let min_spacing = pad * (num_tags - 1);
 
-        queue!(out, MoveTo(0, self.size.height - 1))?;
+        const SHORT: u16 = 1;
+        const MEDIUM: u16 = 2;
+        const LONG: u16 = 3;
 
-        // 3 print modes depending on available width:
-        //  - long desc
-        //      width is divided in equal parts and printed in each tag long description
-        //  - short desc
-        //      width is divided in equal parts and printed in each tag short description
-        //  - compact
-        //      print each tag in a compact manner with short desc
-
-        let width_long_desc: u16 = tags
-            .iter()
-            .map(|t| 4 + t.desc.chars().count() as u16)
-            .max()
-            .unwrap_or(0);
-
-        let width_short_desc: u16 = tags
-            .iter()
-            .map(|t| 4 + t.desc_short.chars().count() as u16)
-            .max()
-            .unwrap_or(0);
-
-        let can_print_long = width_long_desc < (self.size.width - min_spacing) / num_tags;
-        let can_print_short = width_short_desc < (self.size.width - min_spacing) / num_tags;
-
-        if !can_print_long && !can_print_short {
-            for Tag {
-                tag,
-                color,
-                desc_short,
-                ..
-            } in tags
-            {
-                queue!(
-                    out,
-                    PrintStyledContent(format!("{tag} : {desc_short}").with(color)),
-                )?;
+        fn dir_stat(stat: &fsync::stat::Dir, len_tag: u16) -> String {
+            match len_tag {
+                SHORT => format!("{data:.1}", data = utils::adjusted_byte(stat.data as _),),
+                MEDIUM => format!(
+                    "d:{dirs} f:{files} {data:.1}",
+                    dirs = stat.dirs,
+                    files = stat.files,
+                    data = utils::adjusted_byte(stat.data as _),
+                ),
+                LONG => format!(
+                    "dirs:{dirs} files:{files} data:{data:.2}",
+                    dirs = stat.dirs,
+                    files = stat.files,
+                    data = utils::adjusted_byte(stat.data as _),
+                ),
+                _ => unreachable!(),
             }
-            queue!(out, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-            return Ok(());
         }
 
-        let width = self.size.width / num_tags;
-        for Tag {
-            tag,
-            color,
-            desc,
-            desc_short,
-        } in tags
-        {
-            let dd = if can_print_long { desc } else { desc_short };
+        fn node_stat(stat: &fsync::stat::Node, len_tag: u16) -> String {
+            match len_tag {
+                SHORT => format!("{}", stat.nodes),
+                MEDIUM => format!("{}", stat.nodes),
+                LONG => format!("nodes:{}", stat.nodes),
+                _ => unreachable!(),
+            }
+        }
 
-            let print_len = 4 + dd.chars().count() as u16;
-            let print_start = width / 2 - print_len / 2;
+        fn sync_stat(stat: &fsync::stat::Node, len_tag: u16) -> String {
+            match len_tag {
+                SHORT => format!("{}", stat.sync),
+                MEDIUM => format!("{}", stat.sync),
+                LONG => format!("sync:{}", stat.sync),
+                _ => unreachable!(),
+            }
+        }
+
+        fn conflict_stat(stat: &fsync::stat::Node, len_tag: u16) -> String {
+            match len_tag {
+                SHORT => format!("{}", stat.conflicts),
+                MEDIUM => format!("{}", stat.conflicts),
+                LONG => format!("conflicts:{}", stat.conflicts),
+                _ => unreachable!(),
+            }
+        }
+
+        let sep = " | ";
+
+        let mut len_tag = LONG;
+
+        let (local, remote, nodes, sync, conflicts) = loop {
+            let local = dir_stat(&stat.local, len_tag);
+            let remote = dir_stat(&stat.remote, len_tag);
+            let nodes = node_stat(&stat.node, len_tag);
+            let sync = sync_stat(&stat.node, len_tag);
+            let conflicts = conflict_stat(&stat.node, len_tag);
+
+            let fits = if viewport.height() == 3 {
+                local.width() <= viewport.width()
+                    && remote.width() <= viewport.width()
+                    && (nodes.width() + sync.width() + conflicts.width() + sep.width() * 2)
+                        <= viewport.width()
+            } else {
+                local.width()
+                    + remote.width()
+                    + nodes.width()
+                    + sync.width()
+                    + conflicts.width()
+                    + sep.width() * 4
+                    <= viewport.width()
+            };
+            if fits || len_tag == SHORT {
+                break (local, remote, nodes, sync, conflicts);
+            }
+            len_tag -= 1;
+        };
+
+        if viewport.height() == 3 {
+            let len = local.width();
+            queue!(
+                out,
+                viewport.move_to(Pos { x: 0, y: 0 }),
+                PrintStyledContent(local.with(LOCAL_COLOR))
+            )?;
+            if len <= viewport.width() {
+                queue!(
+                    out,
+                    Print(" ".repeat((viewport.width() - len) as usize).as_str())
+                )?;
+            }
+
+            let len = remote.width();
+            queue!(
+                out,
+                viewport.move_to(Pos { x: 0, y: 1 }),
+                PrintStyledContent(remote.with(REMOTE_COLOR))
+            )?;
+            if len <= viewport.width() {
+                queue!(
+                    out,
+                    Print(" ".repeat((viewport.width() - len) as usize).as_str())
+                )?;
+            }
+
+            let len = nodes.width() + sync.width() + conflicts.width() + sep.width() * 2;
+            queue!(
+                out,
+                viewport.move_to(Pos { x: 0, y: 2 }),
+                PrintStyledContent(nodes.with(NODE_COLOR)),
+                Print(sep),
+                PrintStyledContent(sync.with(SYNC_COLOR)),
+                Print(sep),
+                PrintStyledContent(conflicts.with(CONFLICT_COLOR)),
+            )?;
+            if len <= viewport.width() {
+                queue!(
+                    out,
+                    Print(" ".repeat((viewport.width() - len) as usize).as_str())
+                )?;
+            }
+        } else {
+            let len = local.width()
+                + remote.width()
+                + nodes.width()
+                + sync.width()
+                + conflicts.width()
+                + sep.width() * 4;
 
             queue!(
                 out,
-                Print(" ".repeat(print_start as usize).as_str()),
-                PrintStyledContent(format!("{tag} : {dd}").with(color)),
-                Print(
-                    " ".repeat((width - print_start - print_len) as usize)
-                        .as_str()
-                ),
+                viewport.move_to(Pos { x: 0, y: 0 }),
+                PrintStyledContent(local.with(LOCAL_COLOR)),
+                Print(sep),
+                PrintStyledContent(remote.with(REMOTE_COLOR)),
+                Print(sep),
+                PrintStyledContent(nodes.with(NODE_COLOR)),
+                Print(sep),
+                PrintStyledContent(sync.with(SYNC_COLOR)),
+                Print(sep),
+                PrintStyledContent(conflicts.with(CONFLICT_COLOR)),
             )?;
-        }
 
+            if len < viewport.width() {
+                queue!(
+                    out,
+                    Print(
+                        " ".repeat((viewport.width() - len as u16 - 12) as usize)
+                            .as_str(),
+                    )
+                )?;
+            }
+        }
         Ok(())
     }
 }
