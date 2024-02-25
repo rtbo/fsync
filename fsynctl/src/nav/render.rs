@@ -302,7 +302,7 @@ impl super::Navigator {
         let mut w = path.len() as u16 + 2;
 
         if self.node.children_have_conflicts() {
-            let cf = format!(" [{}]", node.children_conflict_count());
+            let cf = format!(" [{}]", node.children_conflicts());
             queue!(out, PrintStyledContent(cf.as_str().with(Color::Red)))?;
             w += cf.len() as u16;
         }
@@ -409,7 +409,7 @@ impl super::Navigator {
             w += name.len() as u16;
 
             if child.children_have_conflicts() {
-                let cf = format!(" [{}]", child.children_conflict_count());
+                let cf = format!(" [{}]", child.children_conflicts());
                 queue!(out, PrintStyledContent(cf.as_str().with(Color::Red),))?;
                 w += cf.len() as u16;
             }

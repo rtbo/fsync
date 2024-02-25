@@ -2,7 +2,7 @@ use fsync::{
     path::{Path, PathBuf}, stat, tree::Entry, Location, Operation, StorageDir
 };
 
-use crate::{harness, utils::UnwrapDisplay};
+use crate::{dataset, harness, utils::UnwrapDisplay};
 
 #[tokio::test]
 async fn entry() {
@@ -23,6 +23,14 @@ async fn entry() {
 }
 
 #[tokio::test]
+async fn node_stat() {
+    let h = harness().await;
+    let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
+    let stat = root.stat();
+    assert_eq!(stat.node, dataset::NODE_STAT);
+}
+
+#[tokio::test]
 async fn copy_remote_to_local() {
     let h = harness().await;
 
@@ -38,16 +46,23 @@ async fn copy_remote_to_local() {
     let content = h.local_file_content(&path).await.unwrap();
     assert_eq!(&content, path.as_str());
 
-    let added_stat = stat::Dir {
-        data: content.len() as i64,
-        dirs: 0,
-        files: 1,
+    let added_stat = stat::Tree {
+        local: stat::Dir {
+            data: content.len() as i64,
+            dirs: 0,
+            files: 1,
+        },
+        remote: stat::Dir::null(),
+        node: stat::Node {
+            nodes: 0,
+            sync: 1,
+            conflicts: 0,
+        },
     };
 
     let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
     let new_stat = root.stat();
-
-    assert_eq!(new_stat.local, orig_stat.local + added_stat);
+    assert_eq!(new_stat, orig_stat + added_stat);
 }
 
 #[tokio::test]

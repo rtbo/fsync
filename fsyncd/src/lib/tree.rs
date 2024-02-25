@@ -13,73 +13,6 @@ use futures::{
 
 use crate::storage;
 
-trait AddStat {
-    type Stat;
-    fn add_stat(&mut self, added: &Self::Stat);
-}
-
-impl AddStat for fsync::Metadata {
-    type Stat = stat::Dir;
-    fn add_stat(&mut self, added: &stat::Dir) {
-        match self {
-            fsync::Metadata::Directory { stat: Some(stat), .. } => *stat += *added,
-            fsync::Metadata::Directory { stat, .. } => *stat = Some(*added),
-            _ if added.is_null() => (),
-            _ => panic!("Not a directory"),
-        }
-    }
-}
-
-impl AddStat for EntryNode {
-    type Stat = stat::Tree;
-    fn add_stat(&mut self, added: &stat::Tree) {
-        match self.entry_mut() {
-            Entry::Local(local) => {
-                local.add_stat(&added.local);
-            }
-            Entry::Remote(remote) => {
-                remote.add_stat(&added.remote);
-            }
-            Entry::Sync { local, remote, .. } => {
-                local.add_stat(&added.local);
-                remote.add_stat(&added.remote);
-            }
-        }
-        self.add_children_conflicts(added.conflicts);
-    }
-}
-
-trait NewWithStat {
-    type Stat;
-    fn new_with_children_stat(entry: Entry, children: Vec<String>, children_stat: Self::Stat) -> Self;
-}
-
-impl NewWithStat for EntryNode {
-    type Stat = stat::Tree;
-    fn new_with_children_stat(entry: Entry, children: Vec<String>, children_stat: Self::Stat) -> Self {
-        let mut entry = entry;
-        match &mut entry {
-            Entry::Local(local) => {
-                debug_assert!(children_stat.remote.is_null(), "Remote stat should be null for local entry");
-                debug_assert!(local.is_dir() || children_stat.local.is_null(), "Stat should be null for non-dir entry");
-                local.add_stat(&children_stat.local);
-            }
-            Entry::Remote(remote) => {
-                debug_assert!(children_stat.local.is_null(), "Local stat should be null for remote entry");
-                debug_assert!(remote.is_dir() || children_stat.remote.is_null(), "Stat should be null for non-dir entry");
-                remote.add_stat(&children_stat.remote);
-            }
-            Entry::Sync { local, remote, .. } => {
-                debug_assert!(local.is_dir() || children_stat.local.is_null(), "Stat should be null for non-dir entry");
-                debug_assert!(remote.is_dir() || children_stat.remote.is_null(), "Stat should be null for non-dir entry");
-                local.add_stat(&children_stat.local);
-                remote.add_stat(&children_stat.remote);
-            }
-        }
-        Self::new(entry, children, children_stat.conflicts as _) 
-    }
-}
-
 trait EntryExt {
     fn with(self, md: fsync::Metadata, loc: StorageLoc) -> Self;
     fn with_local(self, local: fsync::Metadata) -> Self;
@@ -369,7 +302,7 @@ where
             assert_eq!(local.path(), remote.path());
             let path = local.path().to_owned();
             let entry = Entry::new_sync(local, remote);
-            let node = EntryNode::new_with_children_stat(entry, children, children_stat);
+            let node = EntryNode::new(entry, children, children_stat);
             let res = node.stat();
 
             self.nodes.insert(path, node);
@@ -405,7 +338,7 @@ where
 
             let path = entry.path().to_owned();
             let entry = Entry::Local(entry);
-            let node = EntryNode::new_with_children_stat(entry, children_names, children_stat);
+            let node = EntryNode::new(entry, children_names, children_stat);
             let res = node.stat();
 
             self.nodes.insert(path, node);
@@ -441,7 +374,7 @@ where
 
             let path = entry.path().to_owned();
             let entry = Entry::Remote(entry);
-            let node = EntryNode::new_with_children_stat(entry, child_names, children_stat);
+            let node = EntryNode::new(entry, child_names, children_stat);
             let res = node.stat();
 
             self.nodes.insert(path, node);

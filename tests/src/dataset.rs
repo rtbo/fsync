@@ -1,6 +1,6 @@
 use std::time::{Duration, SystemTime};
 
-use fsync::path::FsPath;
+use fsync::{path::FsPath, stat};
 use futures::future::BoxFuture;
 use tokio::io::AsyncWriteExt;
 
@@ -64,7 +64,7 @@ impl CreateDataset for &[Entry] {
 #[rustfmt::skip]
 pub const LOCAL: &[Entry] = &[
     Entry::File{name: "only-local.txt", content: "/only-local.txt", age: None},
-    Entry::File{name: "both.txt", content: "/both.txt - local", age: None},
+    Entry::File{name: "both.txt", content: "/both.txt - local", age: Some(0)},
     Entry::Dir{name: "only-local", entries: &[
         Entry::File{name: "file1.txt", content: "/only-local/file1.txt", age: None},
         Entry::File{name: "file2.txt", content: "/only-local/file2.txt", age: None},
@@ -74,11 +74,11 @@ pub const LOCAL: &[Entry] = &[
         ]},
     ]},
     Entry::Dir{name: "both", entries: &[
-        Entry::File{name: "both.txt", content: "/both/both.txt - local", age: None},
+        Entry::File{name: "both.txt", content: "/both/both.txt - local", age: Some(20)},
         Entry::File{name: "only-local.txt", content: "/both/only-local.txt", age: None},
         Entry::Dir{name: "deep", entries: &[
-            Entry::File{name: "file1.txt", content: "/both/deep/file1.txt", age: None},
-            Entry::File{name: "file2.txt", content: "/both/deep/file2.txt", age: None},
+            Entry::File{name: "file1.txt", content: "/both/deep/file1.txt", age: Some(0)},
+            Entry::File{name: "file2.txt", content: "/both/deep/file2.txt", age: Some(0)},
         ]},
     ]},
 ];
@@ -86,7 +86,7 @@ pub const LOCAL: &[Entry] = &[
 #[rustfmt::skip]
 pub const REMOTE: &[Entry] = &[
     Entry::File{name: "only-remote.txt", content: "/only-remote.txt", age: None},
-    Entry::File{name: "both.txt", content: "/both.txt - remote", age: None},
+    Entry::File{name: "both.txt", content: "/both.txt - remote", age: Some(20)},
     Entry::Dir{name: "only-remote", entries: &[
         Entry::File{name: "file1.txt", content: "/only-remote/file1.txt", age: None},
         Entry::File{name: "file2.txt", content: "/only-remote/file2.txt", age: None},
@@ -96,11 +96,17 @@ pub const REMOTE: &[Entry] = &[
         ]},
     ]},
     Entry::Dir{name: "both", entries: &[
-        Entry::File{name: "both.txt", content: "/both/both.txt - remote", age: None},
+        Entry::File{name: "both.txt", content: "/both/both.txt - remote", age: Some(0)},
         Entry::File{name: "only-remote.txt", content: "/both/only-remote.txt", age: None},
         Entry::Dir{name: "deep", entries: &[
-            Entry::File{name: "file1.txt", content: "/both/deep/file1.txt", age: None},
-            Entry::File{name: "file2.txt", content: "/both/deep/file2.txt", age: None},
+            Entry::File{name: "file1.txt", content: "/both/deep/file1.txt", age: Some(0)},
+            Entry::File{name: "file2.txt", content: "/both/deep/file2.txt", age: Some(20)},
         ]},
     ]},
 ];
+
+pub const NODE_STAT: stat::Node = stat::Node {
+    nodes: 23,      // 22 + root
+    sync: 7,        // 6 + root
+    conflicts: 3,   // all 'both' with different content or age
+};
