@@ -84,6 +84,7 @@ trait EntryExt {
     fn with(self, md: fsync::Metadata, loc: StorageLoc) -> Self;
     fn with_local(self, local: fsync::Metadata) -> Self;
     fn with_remote(self, remote: fsync::Metadata) -> Self;
+    fn without(self, loc: StorageLoc) -> Self;
     fn without_local(self) -> Self;
     fn without_remote(self) -> Self;
 }
@@ -109,6 +110,13 @@ impl EntryExt for Entry {
             Entry::Local(local) => Entry::new_sync(local, remote),
             Entry::Remote(..) => Entry::Remote(remote),
             Entry::Sync { local, .. } => Entry::new_sync(local, remote),
+        }
+    }
+
+    fn without(self, loc: StorageLoc) -> Self {
+        match loc {
+            StorageLoc::Local => self.without_local(),
+            StorageLoc::Remote => self.without_remote(),
         }
     }
 
@@ -165,29 +173,16 @@ impl DiffTree {
     }
 
     pub fn add_to_storage_check_conflict(&self, path: &Path, metadata: fsync::Metadata, loc: StorageLoc) ->bool{
-        self.op_entry_is_conflict(path, |entry| entry.with(metadata, loc))
+        self.op_entry_check_conflict(path, |entry| entry.with(metadata, loc))
     }
 
-    pub fn add_local_is_conflict(&self, path: &Path, local: fsync::Metadata) -> bool {
-        self.op_entry_is_conflict(path, move |entry| entry.with_local(local))
-    }
-
-    pub fn add_remote_is_conflict(&self, path: &Path, remote: fsync::Metadata) -> bool {
-        self.op_entry_is_conflict(path, move |entry| entry.with_remote(remote))
-    }
-
-    pub fn remove_local(&self, path: &Path) {
-        let is_conflict = self.op_entry_is_conflict(path, |entry| entry.without_local());
-        debug_assert!(!is_conflict);
-    }
-
-    pub fn remove_remote(&self, path: &Path) {
-        let is_conflict = self.op_entry_is_conflict(path, |entry| entry.without_remote());
+    pub fn remove_from_storage(&self, path: &Path, loc: StorageLoc) {
+        let is_conflict = self.op_entry_check_conflict(path, |entry| entry.without(loc));
         debug_assert!(!is_conflict);
     }
 
     /// Apply `op` to entry and return whether it is a conflict
-    fn op_entry_is_conflict<F: FnOnce(Entry) -> Entry>(&self, path: &Path, op: F) -> bool {
+    fn op_entry_check_conflict<F: FnOnce(Entry) -> Entry>(&self, path: &Path, op: F) -> bool {
         let (stat_diff, is_conflict) = {
             let mut node = self.nodes.get_mut(path).expect("this node should be valid");
 

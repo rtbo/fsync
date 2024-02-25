@@ -257,11 +257,11 @@ where
             }
             (tree::Entry::Sync { .. }, Location::Local) => {
                 self.local().delete(path).await?;
-                self.tree.remove_local(path);
+                self.tree.remove_from_storage(path, fsync::StorageLoc::Local);
             }
             (tree::Entry::Sync { .. }, Location::Remote) => {
                 self.remote().delete(path).await?;
-                self.tree.remove_remote(path);
+                self.tree.remove_from_storage(path, fsync::StorageLoc::Remote);
             }
             (tree::Entry::Sync { .. }, Location::Both) => {
                 self.local().delete(path).await?;
