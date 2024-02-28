@@ -242,7 +242,7 @@ impl super::Navigator {
             },
             size: Size {
                 width: menu_sz.width,
-                height: (max_vp_height - legend_sz.height).min(menu_sz.height),
+                height: (max_vp_height - legend_sz.height).max(menu_sz.height),
             },
         };
         self.menu.render(menu_viewport, self.focus)?;
