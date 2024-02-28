@@ -170,6 +170,19 @@ impl Rect {
         self.abs_pos(pos).move_to()
     }
 
+    pub fn crop_left(&self, w: u16) -> Rect {
+        Rect {
+            top_left: Pos {
+                x: self.top_left.x + w,
+                y: self.top_left.y,
+            },
+            size: Size {
+                width: self.width() - w,
+                height: self.height(),
+            },
+        }
+    }
+
     pub fn crop_right(&self, w: u16) -> Rect {
         Rect {
             top_left: self.top_left,
@@ -448,7 +461,7 @@ impl super::Navigator {
 
     fn compute_child_height(&self, idx: usize) -> u16 {
         if Some(idx) == self.detailed_child {
-            3
+            4
         } else {
             1
         }
@@ -464,23 +477,16 @@ impl super::Navigator {
     ) -> anyhow::Result<u16> {
         let height = self.compute_child_height(idx);
         let start_y = pos.y as i16 + scroll_offset;
-        let end_y = start_y + height as i16 - 1;
 
         // start_y is the line showing the child name
-        // end_y is the last line of details
-
-        if end_y < 0 {
-            return Ok(height);
-        }
 
         let mut out = io::stdout();
 
         let is_current = idx == self.cur_child;
         let is_detailed = Some(idx) == self.detailed_child;
 
-        let mut w = 0;
-
         if start_y >= 0 && start_y < viewport.height() as i16 {
+            let mut w = 0;
             let tag = Tag::from(child.entry());
             let abs_pos = viewport.abs_pos(Pos {
                 x: pos.x,
@@ -522,7 +528,24 @@ impl super::Navigator {
         }
 
         if is_detailed {
-            self.render_child_details(idx, child, pos.x, start_y + 1, viewport)?;
+            let vp = Rect {
+                top_left: viewport.abs_pos(Pos{x: pos.x, y: start_y as u16 + 1}),
+                size: Size {
+                    width: viewport.width(),
+                    height: height - 1,
+                }   
+            };
+            let offset = 6u16;
+            let blank = " ".repeat(offset as usize);
+            for y in 0..vp.height() {
+                queue!(
+                    out,
+                    vp.move_to(Pos { x: 0, y: y as u16 }),
+                    Print(&blank),
+                )?;
+            }
+            let vp = vp.crop_left(offset);
+            self.render_child_details(child, &vp)?;
         }
 
         Ok(height)
@@ -530,37 +553,12 @@ impl super::Navigator {
 
     fn render_child_details(
         &self,
-        _idx: usize,
-        _child: &EntryNode,
-        x: u16,
-        y: i16,
-        viewport: Rect,
-    ) -> anyhow::Result<u16> {
-        let mut out = io::stdout();
-
-        // line 1
-        if y >= 0 && y < viewport.height() as i16 {
-            let pos = viewport.abs_pos(Pos { x, y: y as u16 });
-            queue!(
-                out,
-                pos.move_to(),
-                Print(" ".repeat((viewport.width() - x) as usize).as_str()),
-            )?;
-        }
-        // line 2
-        if (y + 1) >= 0 && (y + 1) < viewport.height() as i16 {
-            let pos = viewport.abs_pos(Pos {
-                x,
-                y: (y + 1) as u16,
-            });
-            queue!(
-                out,
-                pos.move_to(),
-                Print(" ".repeat((viewport.width() - x) as usize).as_str()),
-            )?;
-        }
-
-        Ok(2)
+        child: &EntryNode,
+        viewport: &Rect,
+    ) -> anyhow::Result<()> {
+        let stat = child.stat();
+        self.render_stats(&viewport, &stat)?;
+        Ok(())
     }
 
     fn render_stats(&self, viewport: &Rect, stat: &fsync::stat::Tree) -> anyhow::Result<()> {
@@ -585,7 +583,7 @@ impl super::Navigator {
                     data = utils::adjusted_byte(stat.data as _),
                 ),
                 LONG => format!(
-                    "dirs:{dirs} files:{files} data:{data:.2}",
+                    "dirs:{dirs}  files:{files}  data:{data:.2}",
                     dirs = stat.dirs,
                     files = stat.files,
                     data = utils::adjusted_byte(stat.data as _),
@@ -594,43 +592,31 @@ impl super::Navigator {
             }
         }
 
-        fn node_stat(stat: &fsync::stat::Node, len_tag: u16) -> String {
+        fn node_stat(name: &str, stat: i32, len_tag: u16) -> String {
             match len_tag {
-                SHORT => format!("{}", stat.nodes),
-                MEDIUM => format!("{}", stat.nodes),
-                LONG => format!("nodes:{}", stat.nodes),
+                SHORT => format!("{}", stat),
+                MEDIUM => format!("{}", stat),
+                LONG => format!("{name}:{}", stat),
                 _ => unreachable!(),
             }
         }
 
-        fn sync_stat(stat: &fsync::stat::Node, len_tag: u16) -> String {
-            match len_tag {
-                SHORT => format!("{}", stat.sync),
-                MEDIUM => format!("{}", stat.sync),
-                LONG => format!("sync:{}", stat.sync),
-                _ => unreachable!(),
-            }
-        }
-
-        fn conflict_stat(stat: &fsync::stat::Node, len_tag: u16) -> String {
-            match len_tag {
-                SHORT => format!("{}", stat.conflicts),
-                MEDIUM => format!("{}", stat.conflicts),
-                LONG => format!("conflicts:{}", stat.conflicts),
-                _ => unreachable!(),
-            }
-        }
-
-        let sep = " | ";
+        let sep1 = " | ";
+        let sep3 = "  ";
+        let sep = if viewport.height() == 1 {
+            sep1
+        } else {
+            sep3
+        };
 
         let mut len_tag = LONG;
 
         let (local, remote, nodes, sync, conflicts) = loop {
             let local = dir_stat(&stat.local, len_tag);
             let remote = dir_stat(&stat.remote, len_tag);
-            let nodes = node_stat(&stat.node, len_tag);
-            let sync = sync_stat(&stat.node, len_tag);
-            let conflicts = conflict_stat(&stat.node, len_tag);
+            let nodes = node_stat("nodes", stat.node.nodes, len_tag);
+            let sync = node_stat("sync", stat.node.sync, len_tag);
+            let conflicts = node_stat("conflicts", stat.node.conflicts, len_tag);
 
             let fits = if viewport.height() == 3 {
                 local.width() <= viewport.width()
