@@ -241,29 +241,39 @@ impl Menu {
                 break;
             }
 
-            if let MenuItem::Action {
-                action,
-                action_desc,
-                key_desc,
-                ..
-            } = item
-            {
-                let enabled = self.is_enabled(*action) && focus;
-                let key_start = menu_width - desc_width - sep_count - key_desc.chars().count() as u16;
-                let pos = viewport.abs_pos(Pos { x: 0, y });
-                queue!(
-                    out,
-                    pos.move_to(),
-                    Print(" ".repeat(key_start as usize)),
-                    if enabled {
-                        PrintStyledContent(key_desc.as_str().cyan())
-                    } else {
-                        PrintStyledContent(key_desc.as_str().with(Color::Grey).dim())
-                    },
-                    PrintStyledContent(sep.grey().dim()),
-                    PrintStyledContent(action_desc.as_str().grey()),
-                    terminal::Clear(terminal::ClearType::UntilNewLine),
-                )?;
+            match item {
+                MenuItem::Action {
+                    action,
+                    action_desc,
+                    key_desc,
+                    ..
+                } => {
+                    let enabled = self.is_enabled(*action) && focus;
+                    let key_start =
+                        menu_width - desc_width - sep_count - key_desc.chars().count() as u16;
+                    let pos = viewport.abs_pos(Pos { x: 0, y });
+                    queue!(
+                        out,
+                        pos.move_to(),
+                        Print(" ".repeat(key_start as usize)),
+                        if enabled {
+                            PrintStyledContent(key_desc.as_str().cyan())
+                        } else {
+                            PrintStyledContent(key_desc.as_str().with(Color::Grey).dim())
+                        },
+                        PrintStyledContent(sep.grey().dim()),
+                        PrintStyledContent(action_desc.as_str().grey()),
+                        terminal::Clear(terminal::ClearType::UntilNewLine),
+                    )?;
+                }
+                MenuItem::Sep => {
+                    let pos = viewport.abs_pos(Pos { x: 0, y });
+                    queue!(
+                        out,
+                        pos.move_to(),
+                        terminal::Clear(terminal::ClearType::UntilNewLine)
+                    )?;
+                }
             }
         }
 
