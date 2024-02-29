@@ -1,11 +1,8 @@
 #![cfg(test)]
 
-use std::sync::Once;
+use std::{sync::Once, time::SystemTime};
 
-use fsync::{
-    path::{FsPath, Path},
-    Metadata,
-};
+use fsync::{path::Path, Metadata};
 use fsyncd::{
     service::Service,
     storage::{
@@ -15,6 +12,7 @@ use fsyncd::{
 };
 
 //mod config;
+mod dataset;
 mod utils;
 mod stubs {
     //pub mod drive;
@@ -23,6 +21,7 @@ mod stubs {
 }
 mod tests;
 
+use futures::FutureExt;
 use stubs::{fs, id};
 
 pub struct Harness<L, R> {
@@ -43,13 +42,13 @@ where
     }
 
     pub async fn local_metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>> {
-        let e = self.service.entry(path).await?;
+        let e = self.service.entry_node(path).await?;
         Ok(e.map(|node| node.into_entry().into_local_metadata())
             .flatten())
     }
 
     pub async fn remote_metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>> {
-        let e = self.service.entry(path).await?;
+        let e = self.service.entry_node(path).await?;
         Ok(e.map(|node| node.into_entry().into_remote_metadata())
             .flatten())
     }
@@ -72,16 +71,23 @@ type CacheHarness = Harness<fs::Stub, CacheStorage<id::Stub>>;
 static LOG_INIT: Once = Once::new();
 
 async fn harness() -> CacheHarness {
+    harness_with(dataset::LOCAL, dataset::REMOTE).await
+}
+
+async fn harness_with(local: &[dataset::Entry], remote: &[dataset::Entry]) -> CacheHarness {
     LOG_INIT.call_once(env_logger::init);
 
-    let dir = FsPath::new(env!("CARGO_MANIFEST_DIR"));
+    let now = Some(SystemTime::now());
 
-    let local_dir = dir.join("local");
-    let local = fs::Stub::new(&local_dir);
+    let dst = utils::temp_path(Some("fsync-fs"), None);
+    tokio::fs::create_dir(&dst).await.unwrap();
 
-    let remote_dir = dir.join("remote");
-    let remote = id::Stub::new(&remote_dir).await.unwrap();
-    let remote = CacheStorage::new(remote, CachePersist::Memory);
+    let local_root = dst.join("local");
+    let local = fs::Stub::new(&local_root, local, now);
+
+    let remote_root = dst.join("remote");
+    let remote = id::Stub::new(&remote_root, remote, now)
+        .then(|remote| async { CacheStorage::new(remote.unwrap(), CachePersist::Memory).await });
 
     let (local, remote) = tokio::try_join!(local, remote).unwrap();
 

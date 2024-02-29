@@ -1,46 +1,55 @@
 use std::cmp::Ordering;
 
 use dashmap::DashMap;
-use fsync::path::{Path, PathBuf};
+pub use fsync::tree::{Entry, EntryNode};
+use fsync::{
+    path::{Path, PathBuf},
+    stat, StorageLoc,
+};
 use futures::{
     future::{self, BoxFuture},
     StreamExt, TryStreamExt,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::storage;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Entry {
-    Local(fsync::Metadata),
-    Remote(fsync::Metadata),
-    Both {
-        local: fsync::Metadata,
-        remote: fsync::Metadata,
-    },
+trait EntryExt {
+    fn with(self, md: fsync::Metadata, loc: StorageLoc) -> Self;
+    fn with_local(self, local: fsync::Metadata) -> Self;
+    fn with_remote(self, remote: fsync::Metadata) -> Self;
+    fn without(self, loc: StorageLoc) -> Self;
+    fn without_local(self) -> Self;
+    fn without_remote(self) -> Self;
 }
 
-impl Entry {
-    pub fn root() -> Self {
-        Self::Both {
-            local: fsync::Metadata::root(),
-            remote: fsync::Metadata::root(),
+impl EntryExt for Entry {
+    fn with(self, md: fsync::Metadata, loc: StorageLoc) -> Self {
+        match loc {
+            StorageLoc::Local => self.with_local(md),
+            StorageLoc::Remote => self.with_remote(md),
         }
     }
 
     fn with_local(self, local: fsync::Metadata) -> Self {
         match self {
-            Entry::Remote(remote) => Entry::Both { local, remote },
+            Entry::Remote(remote) => Entry::new_sync(local, remote),
             Entry::Local(..) => Entry::Local(local),
-            Entry::Both { remote, .. } => Entry::Both { local, remote },
+            Entry::Sync { remote, .. } => Entry::new_sync(local, remote),
         }
     }
 
     fn with_remote(self, remote: fsync::Metadata) -> Self {
         match self {
-            Entry::Local(local) => Entry::Both { local, remote },
+            Entry::Local(local) => Entry::new_sync(local, remote),
             Entry::Remote(..) => Entry::Remote(remote),
-            Entry::Both { local, .. } => Entry::Both { local, remote },
+            Entry::Sync { local, .. } => Entry::new_sync(local, remote),
+        }
+    }
+
+    fn without(self, loc: StorageLoc) -> Self {
+        match loc {
+            StorageLoc::Local => self.without_local(),
+            StorageLoc::Remote => self.without_remote(),
         }
     }
 
@@ -48,7 +57,7 @@ impl Entry {
         match self {
             Entry::Local(..) => unreachable!(),
             Entry::Remote(..) => unreachable!(),
-            Entry::Both { remote, .. } => Entry::Remote(remote),
+            Entry::Sync { remote, .. } => Entry::Remote(remote),
         }
     }
 
@@ -56,101 +65,14 @@ impl Entry {
         match self {
             Entry::Local(..) => unreachable!(),
             Entry::Remote(..) => unreachable!(),
-            Entry::Both { local, .. } => Entry::Local(local),
+            Entry::Sync { local, .. } => Entry::Local(local),
         }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Node {
-    entry: Entry,
-    children: Vec<String>,
-}
-
-impl Node {
-    pub fn new(entry: Entry, children: Vec<String>) -> Self {
-        Self { entry, children }
-    }
-
-    pub fn entry(&self) -> &Entry {
-        &self.entry
-    }
-
-    pub fn children(&self) -> &[String] {
-        &self.children
-    }
-
-    pub fn path(&self) -> &Path {
-        match &self.entry {
-            Entry::Both { local, remote } => {
-                debug_assert_eq!(local.path(), remote.path());
-                local.path()
-            }
-            Entry::Local(entry) => entry.path(),
-            Entry::Remote(entry) => entry.path(),
-        }
-    }
-
-    pub fn is_local_only(&self) -> bool {
-        matches!(self.entry, Entry::Local(..))
-    }
-
-    pub fn is_remote_only(&self) -> bool {
-        matches!(self.entry, Entry::Remote(..))
-    }
-
-    pub fn is_both(&self) -> bool {
-        matches!(self.entry, Entry::Both { .. })
-    }
-
-    pub fn add_local(&mut self, local: fsync::Metadata) {
-        use std::mem;
-        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.with_local(local);
-    }
-
-    pub fn add_remote(&mut self, remote: fsync::Metadata) {
-        use std::mem;
-        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.with_remote(remote);
-    }
-
-    pub fn remove_local(&mut self) {
-        use std::mem;
-        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.without_local();
-    }
-
-    pub fn remove_remote(&mut self) {
-        use std::mem;
-        let invalid: Entry = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        let valid = mem::replace(&mut self.entry, invalid);
-        self.entry = valid.without_remote();
-    }
-}
-
-impl From<Entry> for fsync::tree::Entry {
-    fn from(value: Entry) -> Self {
-        match value {
-            Entry::Local(metadata) => fsync::tree::Entry::Local(metadata),
-            Entry::Remote(metadata) => fsync::tree::Entry::Remote(metadata),
-            Entry::Both { local, remote } => fsync::tree::Entry::Both { local, remote },
-        }
-    }
-}
-
-impl From<Node> for fsync::tree::Node {
-    fn from(value: Node) -> Self {
-        fsync::tree::Node::new(value.entry.into(), value.children)
     }
 }
 
 #[derive(Debug)]
 pub struct DiffTree {
-    nodes: DashMap<PathBuf, Node>,
+    nodes: DashMap<PathBuf, EntryNode>,
 }
 
 impl DiffTree {
@@ -167,56 +89,98 @@ impl DiffTree {
             nodes: &nodes,
         };
         build
-            .both(fsync::Metadata::root(), fsync::Metadata::root())
+            .sync(fsync::Metadata::root(), fsync::Metadata::root())
             .await?;
 
         Ok(Self { nodes })
     }
 
-    pub fn entry(&self, path: &Path) -> Option<Node> {
+    pub fn entry(&self, path: &Path) -> Option<EntryNode> {
         self.nodes.get(path).map(|node| node.clone())
     }
 
-    pub fn add_local(
-        &self,
-        path: &Path,
-        local: fsync::Metadata,
-    ) -> std::result::Result<(), fsync::Metadata> {
-        let node = self.nodes.get_mut(path);
-        if node.is_none() {
-            return Err(local);
+    pub fn entries<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMulti<'a, PathBuf, EntryNode>> {
+        self.nodes.iter()
+    }
+
+    pub fn add_to_storage_check_conflict(&self, path: &Path, metadata: fsync::Metadata, loc: StorageLoc) ->bool{
+        self.op_entry_check_conflict(path, |entry| entry.with(metadata, loc))
+    }
+
+    pub fn remove_from_storage(&self, path: &Path, loc: StorageLoc) {
+        let is_conflict = self.op_entry_check_conflict(path, |entry| entry.without(loc));
+        debug_assert!(!is_conflict);
+    }
+
+    /// Apply `op` to entry and return whether it is a conflict
+    fn op_entry_check_conflict<F: FnOnce(Entry) -> Entry>(&self, path: &Path, op: F) -> bool {
+        let (stat_diff, is_conflict) = {
+            let mut node = self.nodes.get_mut(path).expect("this node should be valid");
+
+            let rem = node.stat();
+            node.op_entry(op);
+            let add = node.stat();
+
+            (add - rem, node.entry().is_conflict())
+        };
+        if !stat_diff.is_null() {
+            self.add_stat_to_ancestors(path, &stat_diff);
         }
-        let mut node = node.unwrap();
-        node.add_local(local);
-        Ok(())
+        is_conflict
     }
 
-    pub fn add_remote(
-        &self,
-        path: &Path,
-        remote: fsync::Metadata,
-    ) -> std::result::Result<(), fsync::Metadata> {
-        let node = self.nodes.get_mut(path);
-        if node.is_none() {
-            return Err(remote);
+    fn add_stat_to_ancestors(&self, path: &Path, diff: &stat::Tree) {
+        let mut parent = path.parent();
+        while let Some(path) = parent {
+            let mut node = self
+                .nodes
+                .get_mut(path)
+                .expect("parent of valid path should be valid as well");
+            node.add_stat(diff);
+            parent = path.parent();
         }
-        let mut node = node.unwrap();
-        node.add_remote(remote);
-        Ok(())
     }
 
-    pub fn remove_local(&self, path: &Path) {
-        let node = self.nodes.get_mut(path);
-        let mut node = node.expect("remove_local should be called with a valid path");
-        assert!(node.is_both());
-        node.remove_local();
-    }
+    /// Ensure that parents of `path` are added in the tree for `loc`.
+    /// Also perform stats calculation.
+    /// Returns which of the parents are conflicts.
+    pub fn ensure_parents(&self, path: &Path, loc: StorageLoc) -> Vec<(PathBuf, bool)> {
+        debug_assert!(path.is_absolute());
+        let mut conflicts = vec![];
+        if path.is_root() {
+            return conflicts;
+        }
 
-    pub fn remove_remote(&self, path: &Path) {
-        let node = self.nodes.get_mut(path);
-        let mut node = node.expect("remove_remote should be called with a valid path");
-        assert!(node.is_both());
-        node.remove_remote();
+        let mut dir_stat = stat::Dir::null();
+        let mut tree_stat = stat::Tree::null();
+
+        let mut parent = path.parent();
+        while let Some(path) = parent {
+            let mut node = self.nodes.get_mut(path).expect("this node should be valid");
+
+            if node.entry().has_by_loc(loc) {
+                node.add_stat(&tree_stat);
+            } else {
+                let md = fsync::Metadata::Directory {
+                    path: path.to_path_buf(),
+                    stat: Some(dir_stat),
+                };
+
+                let bef = node.stat();
+                node.op_entry(move |entry| entry.with(md, loc));
+                let aft = node.stat();
+
+                let is_conflict = node.entry().is_conflict();
+                conflicts.push((path.to_path_buf(), is_conflict));
+
+                tree_stat = aft - bef;
+                dir_stat += *tree_stat.by_loc(loc);
+            }
+            parent = path.parent();
+        }
+        conflicts
     }
 
     pub fn remove(&self, path: &Path) {
@@ -243,7 +207,7 @@ impl DiffTree {
     {
         let node = self.nodes.get(path).unwrap();
         let marker = match node.entry() {
-            Entry::Both { .. } => "B",
+            Entry::Sync { .. } => "S",
             Entry::Local { .. } => "L",
             Entry::Remote { .. } => "R",
         };
@@ -266,7 +230,7 @@ impl DiffTree {
 struct DiffTreeBuild<'a, L, R> {
     local: &'a L,
     remote: &'a R,
-    nodes: &'a DashMap<PathBuf, Node>,
+    nodes: &'a DashMap<PathBuf, EntryNode>,
 }
 
 impl<'a, L, R> DiffTreeBuild<'a, L, R>
@@ -274,11 +238,11 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    fn both(
+    fn sync(
         &self,
         local: fsync::Metadata,
         remote: fsync::Metadata,
-    ) -> BoxFuture<'_, anyhow::Result<()>> {
+    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let loc_children = entry_children_sorted(&*self.local, &local);
             let rem_children = entry_children_sorted(&*self.remote, &remote);
@@ -300,7 +264,7 @@ where
                     (None, None) => break,
                     (Some(loc), Some(rem)) => match loc.name().cmp(rem.name()) {
                         Ordering::Equal => {
-                            joinvec.push(self.both(loc.clone(), rem.clone()));
+                            joinvec.push(self.sync(loc.clone(), rem.clone()));
                             children.push(loc.name().to_string());
                             loc_child = loc_children.next();
                             rem_child = rem_children.next();
@@ -329,51 +293,71 @@ where
                 }
             }
 
-            future::try_join_all(joinvec).await?;
+            let mut children_stat = stat::Tree::null();
+            let stat_vec = future::try_join_all(joinvec).await?;
+            for stat in stat_vec {
+                children_stat = children_stat + stat;
+            }
 
             assert_eq!(local.path(), remote.path());
             let path = local.path().to_owned();
-            let entry = Entry::Both { local, remote };
+            let entry = Entry::new_sync(local, remote);
+            let node = EntryNode::new(entry, children, children_stat);
+            let res = node.stat();
 
-            let node = Node::new(entry, children);
             self.nodes.insert(path, node);
 
-            Ok(())
+            Ok(res)
         })
     }
 
-    fn local(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<()>> {
+    fn local(
+        &self,
+        entry: fsync::Metadata,
+    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
-            let mut child_names = Vec::new();
+            let mut children_names = Vec::new();
+            let mut children_stat = stat::Tree::null();
 
-            if entry.is_dir() {
+            if let fsync::Metadata::Directory { path, .. } = &entry {
                 let mut joinvec = Vec::new();
-                let children = self.local.dir_entries(entry.path());
+                let children = self.local.dir_entries(&path);
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
                     let child = child?;
-                    child_names.push(child.name().to_owned());
+                    children_names.push(child.name().to_owned());
                     joinvec.push(self.local(child));
                 }
-                future::try_join_all(joinvec).await?;
+
+                let stat_vec = future::try_join_all(joinvec).await?;
+                for s in stat_vec {
+                    children_stat = children_stat + s;
+                }
             }
 
             let path = entry.path().to_owned();
             let entry = Entry::Local(entry);
-            let node = Node::new(entry, child_names);
+            let node = EntryNode::new(entry, children_names, children_stat);
+            let res = node.stat();
+
             self.nodes.insert(path, node);
-            Ok(())
+
+            Ok(res)
         })
     }
 
-    fn remote(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<()>> {
+    fn remote(
+        &self,
+        entry: fsync::Metadata,
+    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
+            let mut children_stat = stat::Tree::null();
 
-            if entry.is_dir() {
+            if let fsync::Metadata::Directory { path, .. } = &entry {
                 let mut joinvec = Vec::new();
-                let children = self.remote.dir_entries(entry.path());
+                let children = self.remote.dir_entries(path);
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -381,14 +365,21 @@ where
                     child_names.push(child.name().to_owned());
                     joinvec.push(self.remote(child));
                 }
-                future::try_join_all(joinvec).await?;
+
+                let stat_vec = future::try_join_all(joinvec).await?;
+                for s in stat_vec {
+                    children_stat = children_stat + s;
+                }
             }
 
             let path = entry.path().to_owned();
             let entry = Entry::Remote(entry);
-            let node = Node::new(entry, child_names);
+            let node = EntryNode::new(entry, child_names, children_stat);
+            let res = node.stat();
+
             self.nodes.insert(path, node);
-            Ok(())
+
+            Ok(res)
         })
     }
 }

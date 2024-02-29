@@ -1,5 +1,4 @@
 use std::{
-    cmp::Ordering,
     net::{IpAddr, Ipv6Addr},
     sync::Arc,
 };
@@ -42,7 +41,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
     let client = Arc::new(FsyncClient::new(client::Config::default(), transport.await?).spawn());
     let path = args.path.unwrap_or_else(PathBuf::root);
     let node = client
-        .entry(context::current(), path.clone())
+        .entry_node(context::current(), path.clone())
         .await?
         .unwrap();
 
@@ -62,14 +61,14 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 fn walk(
     client: Arc<FsyncClient>,
     prefix: String,
-    node: tree::Node,
+    node: tree::EntryNode,
 ) -> BoxFuture<'static, anyhow::Result<()>> {
     Box::pin(async move {
         let dir = node.path();
         let joinvec: Vec<_> = node
             .children()
             .iter()
-            .map(|c| client.entry(context::current(), dir.join(c)))
+            .map(|c| client.entry_node(context::current(), dir.join(c)))
             .collect();
         let children = future::try_join_all(joinvec).await?;
         let mut len = children.len();
@@ -114,23 +113,14 @@ fn print_entry_status(first: bool, has_follower: bool, prefix_head: &str, entry:
         tree::Entry::Remote(..) => {
             println!("R {prefix_head}{prefix_tail}{name}");
         }
-        tree::Entry::Both { local, remote } => {
+        tree::Entry::Sync {
+            local,
+            remote,
+            conflict,
+        } => {
             assert_eq!(local.path(), remote.path());
-            let mtime_cmp = fsync::compare_mtime_opt(local.mtime(), remote.mtime());
 
-            let conflict = match (local.is_dir(), remote.is_dir()) {
-                (true, true) => None,
-                (false, false) => {
-                    match mtime_cmp.expect("Regular file entries should have modification time") {
-                        Ordering::Equal => None,
-                        Ordering::Less => Some("local is older than remote"),
-                        Ordering::Greater => Some("remote is older than local"),
-                    }
-                }
-                (true, false) => Some("local is a directory, remote a file"),
-                (false, true) => Some("local is a file, remote a directory"),
-            };
-
+            let conflict = conflict.map(|c| c.to_string());
             let status = if conflict.is_none() { "S" } else { "C" };
 
             println!("{status} {prefix_head}{prefix_tail}{name}");

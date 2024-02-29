@@ -9,6 +9,17 @@ use inquire::{
 
 mod drive;
 
+mod fs {
+    use fsync::path::FsPathBuf;
+    use inquire::Text;
+
+    pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
+        let root = Text::new("Choose the service root in the local file system").prompt()?;
+        let root = FsPathBuf::from(root);
+        Ok(super::ProviderOpts::LocalFs(root))
+    }
+}
+
 #[derive(clap::Args)]
 pub struct Args {
     /// Name of the share
@@ -49,7 +60,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
             .map(FsPathBuf::from)?
     };
 
-    let providers = vec![fsync::Provider::GoogleDrive];
+    let providers = vec![fsync::Provider::GoogleDrive, fsync::Provider::LocalFs];
     let provider = tokio::task::spawn_blocking(move || {
         Select::new("Select remote service provider", providers).prompt()
     });
@@ -83,12 +94,14 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 
 enum ProviderOpts {
     GoogleDrive(drive::Opts),
+    LocalFs(FsPathBuf),
 }
 
 impl From<&ProviderOpts> for fsync::Provider {
     fn from(value: &ProviderOpts) -> Self {
         match value {
             ProviderOpts::GoogleDrive(..) => fsync::Provider::GoogleDrive,
+            ProviderOpts::LocalFs(..) => fsync::Provider::LocalFs,
         }
     }
 }
@@ -100,6 +113,7 @@ impl TryFrom<&ProviderOpts> for fsync::ProviderConfig {
             ProviderOpts::GoogleDrive(opts) => {
                 Ok(fsync::ProviderConfig::GoogleDrive(opts.try_into()?))
             }
+            ProviderOpts::LocalFs(path) => Ok(fsync::ProviderConfig::LocalFs(path.clone())),
         }
     }
 }
@@ -107,6 +121,7 @@ impl TryFrom<&ProviderOpts> for fsync::ProviderConfig {
 async fn prompt_provider_opts(provider: fsync::Provider) -> anyhow::Result<ProviderOpts> {
     match provider {
         fsync::Provider::GoogleDrive => drive::prompt_opts(),
+        fsync::Provider::LocalFs => fs::prompt_opts(),
     }
 }
 

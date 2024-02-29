@@ -43,6 +43,7 @@ impl Config {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ProviderConfig {
     GoogleDrive(drive::Config),
+    LocalFs(FsPathBuf),
 }
 
 pub mod drive {

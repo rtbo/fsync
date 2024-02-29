@@ -51,7 +51,7 @@ pub fn temp_path(prefix: Option<&str>, ext: Option<&str>) -> FsPathBuf {
     p.try_into().unwrap()
 }
 
-pub fn copy_dir_all<'a>(
+pub fn _copy_dir_all<'a>(
     src: impl AsRef<FsPath>,
     dst: impl AsRef<FsPath>,
 ) -> BoxFuture<'a, anyhow::Result<()>> {
@@ -66,7 +66,7 @@ pub fn copy_dir_all<'a>(
             if ty.is_dir() {
                 let src: FsPathBuf = entry.path().try_into()?;
                 let dst: FsPathBuf = dst.join(entry.file_name()).try_into()?;
-                copy_dir_all(&src, &dst).await?;
+                _copy_dir_all(&src, &dst).await?;
             } else {
                 fs::copy(entry.path(), dst.join(entry.file_name())).await?;
             }
