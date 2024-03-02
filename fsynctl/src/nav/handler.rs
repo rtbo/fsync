@@ -1,9 +1,8 @@
 use crossterm::event;
 use fsync::{path::Path, StorageDir};
 
-use crate::nav::ctx;
-
 use super::{menu::Action, render::Size};
+use crate::nav::ctx;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandlerResult {
@@ -31,7 +30,10 @@ impl super::Navigator {
 }
 
 impl super::Navigator {
-    async fn handle_key_event(&mut self, key_event: event::KeyEvent) -> anyhow::Result<HandlerResult> {
+    async fn handle_key_event(
+        &mut self,
+        key_event: event::KeyEvent,
+    ) -> anyhow::Result<HandlerResult> {
         use HandlerResult::*;
 
         let action = self.menu.action(&key_event);

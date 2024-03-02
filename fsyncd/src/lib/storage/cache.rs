@@ -218,7 +218,10 @@ where
                     parent_id = entry.id.clone();
                 } else {
                     let id = self.storage.mkdir(parent_id.as_deref(), c.as_str()).await?;
-                    let metadata = Metadata::Directory { path: cur.clone(), stat: None };
+                    let metadata = Metadata::Directory {
+                        path: cur.clone(),
+                        stat: None,
+                    };
                     {
                         let parent = cur.parent().unwrap();
                         let mut parent_entry = self.entries.get_mut(parent).unwrap();
@@ -252,7 +255,10 @@ where
                 entry.children.push(path.file_name().unwrap().to_string());
                 id
             };
-            let metadata = Metadata::Directory { path: path.clone(), stat: None };
+            let metadata = Metadata::Directory {
+                path: path.clone(),
+                stat: None,
+            };
             self.entries.insert(
                 path.clone(),
                 CacheNode {

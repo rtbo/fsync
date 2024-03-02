@@ -35,7 +35,7 @@ impl StorageLoc {
         match self {
             StorageLoc::Local => StorageLoc::Remote,
             StorageLoc::Remote => StorageLoc::Local,
-        } 
+        }
     }
 }
 
@@ -59,7 +59,7 @@ impl StorageDir {
         match self {
             StorageDir::LocalToRemote => StorageDir::RemoteToLocal,
             StorageDir::RemoteToLocal => StorageDir::LocalToRemote,
-        } 
+        }
     }
 
     pub fn src(self) -> StorageLoc {

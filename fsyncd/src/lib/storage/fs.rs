@@ -180,7 +180,7 @@ async fn map_metadata(
     metadata: &std::fs::Metadata,
     _fs_path: &FsPath,
 ) -> fsync::Result<fsync::Metadata> {
-    assert!(!metadata.is_symlink(), "symlinks are not supported");  
+    assert!(!metadata.is_symlink(), "symlinks are not supported");
     let metadata = /* if metadata.is_symlink() {
         let target = tokio::fs::read_link(fs_path).await?;
         let target = PathBuf::try_from(target)?;

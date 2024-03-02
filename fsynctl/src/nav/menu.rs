@@ -1,10 +1,11 @@
+use std::{fmt, io};
+
 use crossterm::{
     event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     queue,
     style::{Color, Print, PrintStyledContent, Stylize},
     terminal,
 };
-use std::{fmt, io};
 
 use super::render::{Pos, Rect, Size};
 

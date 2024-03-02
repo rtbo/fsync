@@ -6,7 +6,10 @@ use std::{
 };
 
 use fsync::{
-    self, loc::inst, path::{Path, PathBuf}, Error, Fsync, Location, Metadata, OpRes, Operation, PathError, StorageDir
+    self,
+    loc::inst,
+    path::{Path, PathBuf},
+    Error, Fsync, Location, Metadata, OpRes, Operation, PathError, StorageDir,
 };
 use futures::{
     future,
@@ -156,8 +159,7 @@ impl<L, R> Service<L, R> {
     }
 }
 
-impl<L, R> Service<L, R>
-{
+impl<L, R> Service<L, R> {
     pub fn local(&self) -> &L {
         &self.local
     }
@@ -225,12 +227,13 @@ where
         let node = self.check_node(path)?;
         match (node.entry(), dir) {
             (tree::Entry::Sync { remote, .. }, StorageDir::RemoteToLocal) => {
-                self.do_replace(remote, &self.remote, &self.local, dir).await 
+                self.do_replace(remote, &self.remote, &self.local, dir)
+                    .await
             }
             (tree::Entry::Sync { local, .. }, StorageDir::LocalToRemote) => {
-                self.do_replace(local, &self.local, &self.remote, dir).await 
+                self.do_replace(local, &self.local, &self.remote, dir).await
             }
-            (tree::Entry::Local(local), _)=> Err(PathError::Unexpected(
+            (tree::Entry::Local(local), _) => Err(PathError::Unexpected(
                 local.path().to_owned(),
                 Location::Local,
             ))?,
@@ -254,11 +257,13 @@ where
             }
             (tree::Entry::Sync { .. }, Location::Local) => {
                 self.local().delete(path).await?;
-                self.tree.remove_from_storage(path, fsync::StorageLoc::Local);
+                self.tree
+                    .remove_from_storage(path, fsync::StorageLoc::Local);
             }
             (tree::Entry::Sync { .. }, Location::Remote) => {
                 self.remote().delete(path).await?;
-                self.tree.remove_from_storage(path, fsync::StorageLoc::Remote);
+                self.tree
+                    .remove_from_storage(path, fsync::StorageLoc::Remote);
             }
             (tree::Entry::Sync { .. }, Location::Both) => {
                 self.local().delete(path).await?;

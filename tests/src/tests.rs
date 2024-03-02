@@ -1,5 +1,8 @@
 use fsync::{
-    path::{Path, PathBuf}, stat, tree::Entry, Location, Operation, StorageDir
+    path::{Path, PathBuf},
+    stat,
+    tree::Entry,
+    Location, Operation, StorageDir,
 };
 
 use crate::{dataset, harness, utils::UnwrapDisplay};

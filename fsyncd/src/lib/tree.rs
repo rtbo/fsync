@@ -105,7 +105,12 @@ impl DiffTree {
         self.nodes.iter()
     }
 
-    pub fn add_to_storage_check_conflict(&self, path: &Path, metadata: fsync::Metadata, loc: StorageLoc) ->bool{
+    pub fn add_to_storage_check_conflict(
+        &self,
+        path: &Path,
+        metadata: fsync::Metadata,
+        loc: StorageLoc,
+    ) -> bool {
         self.op_entry_check_conflict(path, |entry| entry.with(metadata, loc))
     }
 
@@ -311,10 +316,7 @@ where
         })
     }
 
-    fn local(
-        &self,
-        entry: fsync::Metadata,
-    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
+    fn local(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let mut children_names = Vec::new();
             let mut children_stat = stat::Tree::null();
@@ -347,10 +349,7 @@ where
         })
     }
 
-    fn remote(
-        &self,
-        entry: fsync::Metadata,
-    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
+    fn remote(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
             let mut children_stat = stat::Tree::null();

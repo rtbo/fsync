@@ -529,20 +529,19 @@ impl super::Navigator {
 
         if is_detailed {
             let vp = Rect {
-                top_left: viewport.abs_pos(Pos{x: pos.x, y: start_y as u16 + 1}),
+                top_left: viewport.abs_pos(Pos {
+                    x: pos.x,
+                    y: start_y as u16 + 1,
+                }),
                 size: Size {
                     width: viewport.width(),
                     height: height - 1,
-                }   
+                },
             };
             let offset = 6u16;
             let blank = " ".repeat(offset as usize);
             for y in 0..vp.height() {
-                queue!(
-                    out,
-                    vp.move_to(Pos { x: 0, y: y as u16 }),
-                    Print(&blank),
-                )?;
+                queue!(out, vp.move_to(Pos { x: 0, y: y as u16 }), Print(&blank),)?;
             }
             let vp = vp.crop_left(offset);
             self.render_child_details(child, &vp)?;
@@ -551,11 +550,7 @@ impl super::Navigator {
         Ok(height)
     }
 
-    fn render_child_details(
-        &self,
-        child: &EntryNode,
-        viewport: &Rect,
-    ) -> anyhow::Result<()> {
+    fn render_child_details(&self, child: &EntryNode, viewport: &Rect) -> anyhow::Result<()> {
         let stat = child.stat();
         self.render_stats(&viewport, &stat)?;
         Ok(())
@@ -603,11 +598,7 @@ impl super::Navigator {
 
         let sep1 = " | ";
         let sep3 = "  ";
-        let sep = if viewport.height() == 1 {
-            sep1
-        } else {
-            sep3
-        };
+        let sep = if viewport.height() == 1 { sep1 } else { sep3 };
 
         let mut len_tag = LONG;
 

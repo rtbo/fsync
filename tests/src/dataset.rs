@@ -106,7 +106,7 @@ pub const REMOTE: &[Entry] = &[
 ];
 
 pub const NODE_STAT: stat::Node = stat::Node {
-    nodes: 23,      // 22 + root
-    sync: 7,        // 6 + root
-    conflicts: 3,   // all 'both' with different content or age
+    nodes: 23,    // 22 + root
+    sync: 7,      // 6 + root
+    conflicts: 3, // all 'both' with different content or age
 };

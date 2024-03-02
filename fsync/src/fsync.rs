@@ -255,7 +255,10 @@ pub mod tree {
             let mut entry = entry;
             match &mut entry {
                 Entry::Local(local) => {
-                    debug_assert!(!local.has_stat(), "Entry should not have stat in EntryNode::new");
+                    debug_assert!(
+                        !local.has_stat(),
+                        "Entry should not have stat in EntryNode::new"
+                    );
                     debug_assert!(
                         children_stat.remote.is_null(),
                         "Remote stat should be null for local entry"
@@ -267,7 +270,10 @@ pub mod tree {
                     local.add_stat(&children_stat.local);
                 }
                 Entry::Remote(remote) => {
-                    debug_assert!(!remote.has_stat(), "Entry should not have stat in EntryNode::new");
+                    debug_assert!(
+                        !remote.has_stat(),
+                        "Entry should not have stat in EntryNode::new"
+                    );
                     debug_assert!(
                         children_stat.local.is_null(),
                         "Local stat should be null for remote entry"
@@ -279,8 +285,14 @@ pub mod tree {
                     remote.add_stat(&children_stat.remote);
                 }
                 Entry::Sync { local, remote, .. } => {
-                    debug_assert!(!local.has_stat(), "Entry should not have stat in EntryNode::new");
-                    debug_assert!(!remote.has_stat(), "Entry should not have stat in EntryNode::new");
+                    debug_assert!(
+                        !local.has_stat(),
+                        "Entry should not have stat in EntryNode::new"
+                    );
+                    debug_assert!(
+                        !remote.has_stat(),
+                        "Entry should not have stat in EntryNode::new"
+                    );
                     debug_assert!(
                         local.is_dir() || children_stat.local.is_null(),
                         "Stat should be null for non-dir entry"
