@@ -6,10 +6,7 @@ use std::{
 };
 
 use fsync::{
-    self,
-    loc::inst,
-    path::{Path, PathBuf},
-    Error, Fsync, Location, Metadata, Operation, PathError, StorageDir,
+    self, loc::inst, path::{Path, PathBuf}, Error, Fsync, Location, Metadata, OpRes, Operation, PathError, StorageDir
 };
 use futures::{
     future,
@@ -397,9 +394,21 @@ where
         res
     }
 
-    async fn operate(self, _: Context, action: fsync::Operation) -> fsync::Result<()> {
+    async fn operate(self, _: Context, action: fsync::Operation) -> fsync::Result<OpRes> {
         let res = self.inner.operate(&action).await;
         log::trace!(target: "RPC", "{action:#?} -> {res:#?}");
+        res.map(|()| OpRes::Done)
+    }
+
+    async fn progress(self, _: Context, path: PathBuf) -> fsync::Result<Option<fsync::Progress>> {
+        let res = Ok(None);
+        log::trace!(target: "RPC", "Fsync::progress(path: {path:?}) -> {res:#?}");
+        res
+    }
+
+    async fn all_progress(self, _: Context) -> fsync::Result<Vec<(PathBuf, fsync::Progress)>> {
+        let res = Ok(vec![]);
+        log::trace!(target: "RPC", "Fsync::all_progress() -> {res:#?}");
         res
     }
 }

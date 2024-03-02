@@ -425,9 +425,24 @@ pub enum Operation {
     Delete(PathBuf, Location),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum OpRes {
+    Done,
+    Progress,
+    Auth(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Progress {
+    pub total: u64,
+    pub done: u64,
+}
+
 #[tarpc::service]
 pub trait Fsync {
     async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<tree::Entry>>;
     async fn entry_node(path: PathBuf) -> crate::Result<Option<tree::EntryNode>>;
-    async fn operate(operation: Operation) -> crate::Result<()>;
+    async fn operate(operation: Operation) -> crate::Result<OpRes>;
+    async fn progress(path: PathBuf) -> crate::Result<Option<Progress>>;
+    async fn all_progress() -> crate::Result<Vec<(PathBuf, Progress)>>;
 }
