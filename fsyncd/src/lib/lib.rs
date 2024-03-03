@@ -1,13 +1,59 @@
+use std::sync::Arc;
+
+use fsync::path::PathBuf;
 use futures::{
     future::{self, BoxFuture},
     Future,
 };
+use tokio::sync::RwLock;
 
 pub mod service;
 pub mod storage;
 pub mod tree;
 
 pub mod oauth2;
+
+#[derive(Debug, Clone)]
+pub enum OpState {
+    Init,
+    Indexing(PathBuf),
+    OAuth2Browse(String),
+    OAuth2Exchange,
+    OAuth2Refresh,
+    Progress { progress: u64, total: u64 },
+    Done,
+    Error(fsync::Error),
+}
+
+#[derive(Debug, Clone)]
+pub struct SharedOpState {
+    inner: Arc<RwLock<OpState>>,
+}
+
+impl SharedOpState {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(OpState::Init)),
+        }
+    }
+
+    /// Get the state
+    pub async fn get(&self) -> OpState {
+        self.inner.read().await.clone()
+    }
+
+    /// Set the state 
+    pub async fn set(&self, state: OpState) {
+        *self.inner.write().await = state;
+    }
+
+    /// Set the state and get previous one
+    pub async fn swap(&self, mut state: OpState) -> OpState {
+        let mut inner = self.inner.write().await;
+        std::mem::swap(&mut *inner, &mut state);
+        state
+    }
+}
 
 pub mod uri {
     #[derive(Debug)]

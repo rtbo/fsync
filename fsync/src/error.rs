@@ -8,7 +8,7 @@ use crate::{
     Location,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PathError {
     NotFound(PathBuf, Option<Location>),
     Only(PathBuf, Location),
@@ -38,7 +38,7 @@ impl fmt::Display for PathError {
 impl error::Error for PathError {}
 
 /// An error type for RPC results
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
     Path(PathError),
     Utf8(String),
