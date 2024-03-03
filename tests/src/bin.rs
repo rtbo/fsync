@@ -54,13 +54,13 @@ where
     }
 
     pub async fn local_file_content(&self, path: &Path) -> anyhow::Result<String> {
-        let r = self.local().read_file(path.to_owned()).await?;
+        let r = self.local().read_file(path.to_owned(), None).await?;
         let c = utils::file_content(r).await?;
         Ok(c)
     }
 
     pub async fn remote_file_content(&self, path: &Path) -> anyhow::Result<String> {
-        let r = self.remote().read_file(path.to_owned()).await?;
+        let r = self.remote().read_file(path.to_owned(), None).await?;
         let c = utils::file_content(r).await?;
         Ok(c)
     }

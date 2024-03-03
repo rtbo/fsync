@@ -10,12 +10,13 @@ mod server;
 mod token_cache;
 
 pub use self::token_cache::{CacheResult, TokenCache, TokenMap, TokenPersist};
-use crate::{error, PersistCache};
+use crate::{error, OpState, PersistCache, SharedOpState};
 
 pub trait GetToken: Send + Sync + 'static {
     fn get_token(
         &self,
         scopes: Vec<Scope>,
+        op_state: Option<&SharedOpState>,
     ) -> impl Future<Output = fsync::Result<AccessToken>> + Send;
 }
 
@@ -60,8 +61,13 @@ impl Client {
         &self,
         refresh_token: RefreshToken,
         scopes: Vec<Scope>,
+        op_state: Option<&SharedOpState>,
     ) -> fsync::Result<AccessToken> {
         log::info!("Refreshing token for scopes {:?}", scopes);
+
+        if let Some(op_state) = op_state {
+            op_state.set(OpState::OAuth2Refresh).await;
+        }
 
         let token_response = self
             .inner
@@ -80,8 +86,12 @@ impl Client {
         Ok(access)
     }
 
-    async fn pkce_and_cache(&self, scopes: Vec<Scope>) -> fsync::Result<AccessToken> {
-        let resp = self.fetch_token_pkce(scopes).await?;
+    async fn pkce_and_cache(
+        &self,
+        scopes: Vec<Scope>,
+        op_state: Option<&SharedOpState>,
+    ) -> fsync::Result<AccessToken> {
+        let resp = self.fetch_token_pkce(scopes, op_state).await?;
         let mut cache = self.inner.cache.write().await;
         cache.put(&resp);
         Ok(resp.access_token().clone())
@@ -125,16 +135,20 @@ impl Client {
 }
 
 impl GetToken for Client {
-    async fn get_token(&self, scopes: Vec<Scope>) -> fsync::Result<AccessToken> {
+    async fn get_token(
+        &self,
+        scopes: Vec<Scope>,
+        op_state: Option<&SharedOpState>,
+    ) -> fsync::Result<AccessToken> {
         let cache = self.inner.cache.read().await.check(&scopes);
         match cache {
             CacheResult::Ok(access_token) => Ok(access_token),
             CacheResult::Expired(refresh_token, scopes) => {
-                self.refresh_token(refresh_token, scopes.clone())
-                    .or_else(|_err| self.pkce_and_cache(scopes))
+                self.refresh_token(refresh_token, scopes.clone(), op_state)
+                    .or_else(|_err| self.pkce_and_cache(scopes, op_state))
                     .await
             }
-            CacheResult::None => self.pkce_and_cache(scopes).await,
+            CacheResult::None => self.pkce_and_cache(scopes, op_state).await,
         }
     }
 }

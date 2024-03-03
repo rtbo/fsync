@@ -9,7 +9,7 @@ use tokio::io;
 use crate::{
     oauth2::GetToken,
     storage::id::{Id, IdBuf},
-    PersistCache, Shutdown,
+    PersistCache, SharedOpState, Shutdown,
 };
 
 #[derive(Default, Debug)]
@@ -144,7 +144,7 @@ where
     pub async fn delete_folder_content(&self, id: Option<&Id>, path: &Path) -> anyhow::Result<()> {
         use super::id::DirEntries;
 
-        let entries = self.dir_entries(id, path);
+        let entries = self.dir_entries(id, path, None);
         tokio::pin!(entries);
         while let Some(entry) = entries.next().await {
             let (file_id, _metadata) = entry?;
@@ -162,6 +162,7 @@ where
         &self,
         parent_id: Option<&Id>,
         parent_path: &Path,
+        _op_state: Option<&SharedOpState>,
     ) -> impl Stream<Item = fsync::Result<(IdBuf, fsync::Metadata)>> + Send {
         debug_assert!(
             parent_id.is_some() || parent_path.is_root(),
@@ -195,7 +196,11 @@ impl<A> super::id::ReadFile for GoogleDrive<A>
 where
     A: GetToken,
 {
-    async fn read_file(&self, id: IdBuf) -> fsync::Result<impl io::AsyncRead> {
+    async fn read_file(
+        &self,
+        id: IdBuf,
+        _op_state: Option<&SharedOpState>,
+    ) -> fsync::Result<impl io::AsyncRead> {
         log::trace!("reading file {id}");
         Ok(self
             .files_get_media(id.as_str())
@@ -208,7 +213,12 @@ impl<A> super::id::MkDir for GoogleDrive<A>
 where
     A: GetToken,
 {
-    async fn mkdir(&self, parent_id: Option<&Id>, name: &str) -> fsync::Result<IdBuf> {
+    async fn mkdir(
+        &self,
+        parent_id: Option<&Id>,
+        name: &str,
+        _op_state: Option<&SharedOpState>,
+    ) -> fsync::Result<IdBuf> {
         if let Some(parent_id) = parent_id {
             log::info!("creating folder {name} in folder {parent_id}");
         } else {
@@ -236,6 +246,7 @@ where
         parent_id: Option<&Id>,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead,
+        _op_state: Option<&SharedOpState>,
     ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
         debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
         log::info!(
@@ -263,6 +274,7 @@ where
         parent_id: Option<&Id>,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead,
+        _op_state: Option<&SharedOpState>,
     ) -> fsync::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_absolute() && !metadata.path().is_root());
         log::info!(
@@ -287,7 +299,7 @@ impl<A> super::id::Delete for GoogleDrive<A>
 where
     A: GetToken,
 {
-    async fn delete(&self, id: &Id) -> fsync::Result<()> {
+    async fn delete(&self, id: &Id, _op_state: Option<&SharedOpState>) -> fsync::Result<()> {
         self.files_delete(id).await
     }
 }
@@ -725,7 +737,7 @@ mod utils {
     {
         pub async fn fetch_token(&self, scopes: &[api::Scope]) -> fsync::Result<AccessToken> {
             let scopes = scopes.iter().map(|&s| s.into()).collect();
-            Ok(self.auth.get_token(scopes).await?)
+            Ok(self.auth.get_token(scopes, None).await?)
         }
 
         pub async fn get_query<Q, K, V>(

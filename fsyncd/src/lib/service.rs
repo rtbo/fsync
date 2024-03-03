@@ -109,22 +109,22 @@ impl<L, R> Service<L, R> {
         let path = metadata.path();
         debug_assert!(path.is_absolute() && !path.is_root());
         let is_conflict = if metadata.is_file() {
-            let read = src.read_file(path.to_owned()).await?;
+            let read = src.read_file(path.to_owned(), None).await?;
 
             // create parents
-            dest.mkdir(path.parent().unwrap(), true).await?;
+            dest.mkdir(path.parent().unwrap(), true, None).await?;
             let conflicts = self.tree.ensure_parents(path, dir.dest());
             for (path, is_conflict) in conflicts {
                 self.check_conflict(&path, is_conflict).await;
             }
 
-            let metadata = dest.create_file(&metadata, read).await.unwrap();
+            let metadata = dest.create_file(&metadata, read, None).await.unwrap();
             self.tree
                 .add_to_storage_check_conflict(path, metadata, dir.dest())
         } else {
             assert!(metadata.is_dir());
 
-            dest.mkdir(path, false).await?;
+            dest.mkdir(path, false, None).await?;
             let metadata = Metadata::Directory {
                 path: path.to_path_buf(),
                 stat: None,
@@ -149,8 +149,8 @@ impl<L, R> Service<L, R> {
     {
         let path = metadata.path();
 
-        let data = src.read_file(path.to_path_buf()).await?;
-        let written = dest.write_file(metadata, data).await?;
+        let data = src.read_file(path.to_path_buf(), None).await?;
+        let written = dest.write_file(metadata, data, None).await?;
         let is_conflict = self
             .tree
             .add_to_storage_check_conflict(path, written, dir.dest());
@@ -248,26 +248,26 @@ where
         let node = self.check_node(path)?;
         match (node.entry(), location) {
             (tree::Entry::Local(..), Location::Local) => {
-                self.local().delete(path).await?;
+                self.local().delete(path, None).await?;
                 self.tree.remove(path);
             }
             (tree::Entry::Remote(..), Location::Remote) => {
-                self.remote().delete(path).await?;
+                self.remote().delete(path, None).await?;
                 self.tree.remove(path);
             }
             (tree::Entry::Sync { .. }, Location::Local) => {
-                self.local().delete(path).await?;
+                self.local().delete(path, None).await?;
                 self.tree
                     .remove_from_storage(path, fsync::StorageLoc::Local);
             }
             (tree::Entry::Sync { .. }, Location::Remote) => {
-                self.remote().delete(path).await?;
+                self.remote().delete(path, None).await?;
                 self.tree
                     .remove_from_storage(path, fsync::StorageLoc::Remote);
             }
             (tree::Entry::Sync { .. }, Location::Both) => {
-                self.local().delete(path).await?;
-                self.remote().delete(path).await?;
+                self.local().delete(path, None).await?;
+                self.remote().delete(path, None).await?;
                 self.tree.remove(path);
             }
             _ => Err(fsync::PathError::NotFound(

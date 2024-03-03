@@ -6,7 +6,7 @@ use tokio::{
     io,
 };
 
-use crate::Shutdown;
+use crate::{SharedOpState, Shutdown};
 
 #[derive(Debug, Clone)]
 pub struct FileSystem {
@@ -60,6 +60,7 @@ impl super::DirEntries for FileSystem {
     fn dir_entries(
         &self,
         parent_path: &Path,
+        _op_state: Option<&SharedOpState>,
     ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         debug_assert!(parent_path.is_absolute());
         let fs_base = self.root.join(parent_path.without_root().as_str());
@@ -79,7 +80,7 @@ impl super::DirEntries for FileSystem {
 }
 
 impl super::ReadFile for FileSystem {
-    async fn read_file(&self, path: PathBuf) -> fsync::Result<impl io::AsyncRead> {
+    async fn read_file(&self, path: PathBuf, _op_state: Option<&SharedOpState>) -> fsync::Result<impl io::AsyncRead> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
         log::trace!("reading {fs_path}");
@@ -88,7 +89,7 @@ impl super::ReadFile for FileSystem {
 }
 
 impl super::MkDir for FileSystem {
-    async fn mkdir(&self, path: &Path, parents: bool) -> fsync::Result<()> {
+    async fn mkdir(&self, path: &Path, parents: bool, _op_state: Option<&SharedOpState>) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
         log::info!("mkdir {}{}", if parents { "-p " } else { "" }, fs_path);
@@ -106,6 +107,7 @@ impl super::CreateFile for FileSystem {
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
+        _op_state: Option<&SharedOpState>,
     ) -> fsync::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_absolute());
         let fs_path = self.root.join(metadata.path().without_root().as_str());
@@ -125,6 +127,7 @@ impl super::WriteFile for FileSystem {
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
+        _op_state: Option<&SharedOpState>,
     ) -> fsync::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_absolute());
         let fs_path = self.root.join(metadata.path().without_root().as_str());
@@ -140,7 +143,7 @@ impl super::WriteFile for FileSystem {
 }
 
 impl super::Delete for FileSystem {
-    async fn delete(&self, path: &Path) -> fsync::Result<()> {
+    async fn delete(&self, path: &Path, _op_state: Option<&SharedOpState>) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
         log::info!("deleting {fs_path}");

@@ -323,7 +323,7 @@ where
 
             if let fsync::Metadata::Directory { path, .. } = &entry {
                 let mut joinvec = Vec::new();
-                let children = self.local.dir_entries(&path);
+                let children = self.local.dir_entries(&path, None);
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -356,7 +356,7 @@ where
 
             if let fsync::Metadata::Directory { path, .. } = &entry {
                 let mut joinvec = Vec::new();
-                let children = self.remote.dir_entries(path);
+                let children = self.remote.dir_entries(path, None);
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -393,7 +393,7 @@ where
     if !entry.is_dir() {
         return Ok(vec![]);
     }
-    let children = storage.dir_entries(entry.path());
+    let children = storage.dir_entries(entry.path(), None);
     let mut children = children.try_collect::<Vec<_>>().await?;
 
     children.sort_unstable_by(|a, b| a.name().cmp(b.name()));
