@@ -1,7 +1,10 @@
 use std::time::SystemTime;
 
 use fsync::path::{FsPath, Path};
-use fsyncd::{storage::{self, fs::FileSystem}, SharedOpState};
+use fsyncd::{
+    storage::{self, fs::FileSystem},
+    SharedProgress,
+};
 use futures::{Future, Stream};
 use tokio::{fs, io};
 
@@ -40,9 +43,9 @@ impl storage::DirEntries for Stub {
     fn dir_entries(
         &self,
         parent_path: &Path,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
-        self.inner.dir_entries(parent_path, op_state)
+        self.inner.dir_entries(parent_path, progress)
     }
 }
 
@@ -50,9 +53,9 @@ impl storage::ReadFile for Stub {
     fn read_file(
         &self,
         path: fsync::path::PathBuf,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<impl io::AsyncRead + Send>> + Send {
-        self.inner.read_file(path, op_state)
+        self.inner.read_file(path, progress)
     }
 }
 
@@ -61,9 +64,9 @@ impl storage::MkDir for Stub {
         &self,
         path: &fsync::path::Path,
         parents: bool,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<()>> + Send {
-        self.inner.mkdir(path, parents, op_state)
+        self.inner.mkdir(path, parents, progress)
     }
 }
 
@@ -72,9 +75,9 @@ impl storage::CreateFile for Stub {
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
-        self.inner.create_file(metadata, data, op_state)
+        self.inner.create_file(metadata, data, progress)
     }
 }
 
@@ -83,15 +86,19 @@ impl storage::WriteFile for Stub {
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
-        self.inner.write_file(metadata, data, op_state)
+        self.inner.write_file(metadata, data, progress)
     }
 }
 
 impl storage::Delete for Stub {
-    fn delete(&self, path: &Path, op_state: Option<&SharedOpState>) -> impl Future<Output = fsync::Result<()>> + Send {
-        self.inner.delete(path, op_state)
+    fn delete(
+        &self,
+        path: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> impl Future<Output = fsync::Result<()>> + Send {
+        self.inner.delete(path, progress)
     }
 }
 

@@ -5,7 +5,7 @@ use fsync::{
 use futures::{Future, Stream};
 use tokio::io;
 
-use crate::{SharedOpState, Shutdown};
+use crate::{SharedProgress, Shutdown};
 
 pub mod cache;
 pub mod drive;
@@ -16,7 +16,7 @@ pub trait DirEntries {
     fn dir_entries(
         &self,
         parent_path: &Path,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Stream<Item = fsync::Result<Metadata>> + Send;
 }
 
@@ -24,7 +24,7 @@ pub trait ReadFile {
     fn read_file(
         &self,
         path: PathBuf,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<impl io::AsyncRead + Send>> + Send;
 }
 
@@ -33,7 +33,7 @@ pub trait MkDir {
         &self,
         path: &Path,
         parents: bool,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<()>> + Send;
 }
 
@@ -42,7 +42,7 @@ pub trait CreateFile {
         &self,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
@@ -51,7 +51,7 @@ pub trait WriteFile {
         &self,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
@@ -62,7 +62,7 @@ pub trait Delete {
     fn delete(
         &self,
         path: &Path,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<()>> + Send;
 }
 

@@ -3,13 +3,15 @@ use std::{
     net::{IpAddr, Ipv6Addr},
     ops::Bound,
     sync::Arc,
+    time::Duration,
 };
 
+use async_read_progress::TokioAsyncReadProgressExt;
 use fsync::{
     self,
     loc::inst,
     path::{Path, PathBuf},
-    Error, Fsync, Location, Metadata, OpRes, Operation, PathError, StorageDir,
+    Error, Fsync, Location, Metadata, Operation, PathError, Progress, StorageDir,
 };
 use futures::{
     future,
@@ -26,6 +28,7 @@ use tokio::sync::RwLock;
 use crate::{
     storage,
     tree::{self, DiffTree},
+    SharedProgress,
 };
 
 #[derive(Debug)]
@@ -35,6 +38,7 @@ pub struct Service<L, R> {
     tree: DiffTree,
     conflicts: RwLock<BTreeSet<PathBuf>>,
     abort_handle: RwLock<Option<AbortHandle>>,
+    progresses: Arc<RwLock<Vec<(PathBuf, SharedProgress)>>>,
 }
 
 impl<L, R> Service<L, R>
@@ -63,6 +67,7 @@ where
             tree,
             conflicts: RwLock::new(conflicts),
             abort_handle: RwLock::new(None),
+            progresses: Arc::new(RwLock::new(vec![])),
         })
     }
 }
@@ -101,6 +106,7 @@ impl<L, R> Service<L, R> {
         src: &S,
         dest: &D,
         dir: StorageDir,
+        progress: &SharedProgress,
     ) -> fsync::Result<()>
     where
         S: storage::Storage,
@@ -109,22 +115,38 @@ impl<L, R> Service<L, R> {
         let path = metadata.path();
         debug_assert!(path.is_absolute() && !path.is_root());
         let is_conflict = if metadata.is_file() {
-            let read = src.read_file(path.to_owned(), None).await?;
+            let total = metadata.size().unwrap_or(0);
+            let progress2 = progress.clone();
+
+            let read = src.read_file(path.to_owned(), Some(progress)).await?;
+            log::debug!("read {path}");
+            let read = read.report_progress(Duration::from_millis(50), move |prog| {
+                log::debug!("progress: {} of {}", prog, total);
+                progress2.set(fsync::Progress::Progress {
+                    progress: prog as _,
+                    total,
+                });
+            });
+            log::debug!("reporting progress on {path}");
 
             // create parents
-            dest.mkdir(path.parent().unwrap(), true, None).await?;
+            dest.mkdir(path.parent().unwrap(), true, Some(progress))
+                .await?;
             let conflicts = self.tree.ensure_parents(path, dir.dest());
             for (path, is_conflict) in conflicts {
                 self.check_conflict(&path, is_conflict).await;
             }
 
-            let metadata = dest.create_file(&metadata, read, None).await.unwrap();
+            let metadata = dest
+                .create_file(&metadata, read, Some(progress))
+                .await
+                .unwrap();
             self.tree
                 .add_to_storage_check_conflict(path, metadata, dir.dest())
         } else {
             assert!(metadata.is_dir());
 
-            dest.mkdir(path, false, None).await?;
+            dest.mkdir(path, false, Some(progress)).await?;
             let metadata = Metadata::Directory {
                 path: path.to_path_buf(),
                 stat: None,
@@ -142,6 +164,7 @@ impl<L, R> Service<L, R> {
         src: &S,
         dest: &D,
         dir: StorageDir,
+        progress: &SharedProgress,
     ) -> fsync::Result<()>
     where
         S: storage::Storage,
@@ -149,13 +172,64 @@ impl<L, R> Service<L, R> {
     {
         let path = metadata.path();
 
-        let data = src.read_file(path.to_path_buf(), None).await?;
-        let written = dest.write_file(metadata, data, None).await?;
+        let total = metadata.size().unwrap_or(0);
+        let data = src.read_file(path.to_path_buf(), Some(progress)).await?;
+        let data = data.report_progress(Duration::from_millis(50), move |prog| {
+            progress.set(fsync::Progress::Progress {
+                progress: prog as _,
+                total,
+            });
+        });
+        let written = dest.write_file(metadata, data, Some(progress)).await?;
         let is_conflict = self
             .tree
             .add_to_storage_check_conflict(path, written, dir.dest());
         self.check_conflict(path, is_conflict).await;
         Ok(())
+    }
+}
+
+impl<L, R> Service<L, R>
+where
+    L: 'static,
+    R: 'static,
+{
+    /// Poll progresses until all progresses are done.
+    /// The progresses are polled every 100ms.
+    /// When a progress is done, it is removed from the list.
+    /// The loop exits when the list is empty.
+    async fn progress_poll_loop(progresses: Arc<RwLock<Vec<(PathBuf, SharedProgress)>>>) {
+        log::trace!("Entering progress poll loop");
+        let start = std::time::Instant::now();
+        loop {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
+            let mut progresses = progresses.write().await;
+            let len = progresses.len();
+            let mut removed = 0;
+            for i in (0..len).rev() {
+                if progresses[i].1.get().is_done() {
+                    log::info!("operation on {} is done", progresses[i].0);
+                    progresses.remove(i);
+                    removed += 1;
+                }
+            }
+            drop(progresses);
+
+            if removed == len {
+                break;
+            }
+        }
+        log::trace!("Exiting progress poll loop after {}µs", start.elapsed().as_micros());
+    }
+
+    async fn add_progress(&self, path: PathBuf, progress: SharedProgress) {
+        log::info!("Logging operation progress on {path}");
+        let mut progresses = self.progresses.write().await;
+        progresses.push((path, progress));
+        if progresses.len() == 1 {
+            tokio::spawn(Self::progress_poll_loop(self.progresses.clone()));
+        }
     }
 }
 
@@ -200,7 +274,12 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    pub async fn copy_or_mkdir(&self, path: &Path, dir: StorageDir) -> Result<(), Error> {
+    pub async fn copy_or_mkdir(
+        &self,
+        path: &Path,
+        dir: StorageDir,
+        progress: &SharedProgress,
+    ) -> Result<(), Error> {
         let node = self.check_node(path)?;
         match (node.entry(), dir) {
             (tree::Entry::Local(..), StorageDir::RemoteToLocal) => {
@@ -210,11 +289,11 @@ where
                 Err(PathError::Only(path.to_owned(), Location::Remote))?
             }
             (tree::Entry::Local(metadata), StorageDir::LocalToRemote) => {
-                self.do_copy_or_mkdir(metadata, &self.local, &self.remote, dir)
+                self.do_copy_or_mkdir(metadata, &self.local, &self.remote, dir, progress)
                     .await
             }
             (tree::Entry::Remote(metadata), StorageDir::RemoteToLocal) => {
-                self.do_copy_or_mkdir(metadata, &self.remote, &self.local, dir)
+                self.do_copy_or_mkdir(metadata, &self.remote, &self.local, dir, progress)
                     .await
             }
             (tree::Entry::Sync { .. }, _) => {
@@ -223,15 +302,21 @@ where
         }
     }
 
-    pub async fn replace(&self, path: &Path, dir: StorageDir) -> fsync::Result<()> {
+    pub async fn replace(
+        &self,
+        path: &Path,
+        dir: StorageDir,
+        progress: &SharedProgress,
+    ) -> fsync::Result<()> {
         let node = self.check_node(path)?;
         match (node.entry(), dir) {
             (tree::Entry::Sync { remote, .. }, StorageDir::RemoteToLocal) => {
-                self.do_replace(remote, &self.remote, &self.local, dir)
+                self.do_replace(remote, &self.remote, &self.local, dir, progress)
                     .await
             }
             (tree::Entry::Sync { local, .. }, StorageDir::LocalToRemote) => {
-                self.do_replace(local, &self.local, &self.remote, dir).await
+                self.do_replace(local, &self.local, &self.remote, dir, progress)
+                    .await
             }
             (tree::Entry::Local(local), _) => Err(PathError::Unexpected(
                 local.path().to_owned(),
@@ -244,30 +329,35 @@ where
         }
     }
 
-    pub async fn delete(&self, path: &Path, location: Location) -> fsync::Result<()> {
+    pub async fn delete(
+        &self,
+        path: &Path,
+        location: Location,
+        progress: &SharedProgress,
+    ) -> fsync::Result<()> {
         let node = self.check_node(path)?;
         match (node.entry(), location) {
             (tree::Entry::Local(..), Location::Local) => {
-                self.local().delete(path, None).await?;
+                self.local().delete(path, Some(progress)).await?;
                 self.tree.remove(path);
             }
             (tree::Entry::Remote(..), Location::Remote) => {
-                self.remote().delete(path, None).await?;
+                self.remote().delete(path, Some(progress)).await?;
                 self.tree.remove(path);
             }
             (tree::Entry::Sync { .. }, Location::Local) => {
-                self.local().delete(path, None).await?;
+                self.local().delete(path, Some(progress)).await?;
                 self.tree
                     .remove_from_storage(path, fsync::StorageLoc::Local);
             }
             (tree::Entry::Sync { .. }, Location::Remote) => {
-                self.remote().delete(path, None).await?;
+                self.remote().delete(path, Some(progress)).await?;
                 self.tree
                     .remove_from_storage(path, fsync::StorageLoc::Remote);
             }
             (tree::Entry::Sync { .. }, Location::Both) => {
-                self.local().delete(path, None).await?;
-                self.remote().delete(path, None).await?;
+                self.local().delete(path, Some(progress)).await?;
+                self.remote().delete(path, Some(progress)).await?;
                 self.tree.remove(path);
             }
             _ => Err(fsync::PathError::NotFound(
@@ -279,11 +369,54 @@ where
         Ok(())
     }
 
-    pub async fn operate(&self, operation: &Operation) -> fsync::Result<()> {
-        match operation {
-            Operation::Copy(path, dir) => self.copy_or_mkdir(path.as_ref(), *dir).await,
-            Operation::Replace(path, dir) => self.replace(path.as_ref(), *dir).await,
-            Operation::Delete(path, location) => self.delete(path.as_ref(), *location).await,
+    pub async fn operate(self: Arc<Self>, operation: Operation) -> fsync::Result<Progress> {
+        let progress = SharedProgress::new();
+
+        let path = operation.path().to_owned();
+
+        let join = {
+            let this = self.clone();
+            let progress = progress.clone();
+            tokio::spawn(async move {
+                let res = match operation {
+                    Operation::Copy(path, dir) => {
+                        this.copy_or_mkdir(path.as_ref(), dir, &progress).await
+                    }
+                    Operation::Replace(path, dir) => {
+                        this.replace(path.as_ref(), dir, &progress).await
+                    }
+                    Operation::Delete(path, location) => {
+                        this.delete(path.as_ref(), location, &progress).await
+                    }
+                };
+                match res {
+                    Ok(()) => {
+                        progress.set(Progress::Done);
+                        Ok(())
+                    }
+                    Err(err) => {
+                        progress.set(Progress::Err(err.clone()));
+                        Err(err)
+                    }
+                }
+            })
+        };
+
+        let sleep = tokio::time::sleep(Duration::from_millis(50));
+
+        tokio::select! {
+            res = join => match res {
+                Ok(Ok(())) => Ok(Progress::Done),
+                Ok(Err(e)) => Err(e),
+                Err(e) => {
+                    log::error!("Error in operation: {}", e);
+                    Err(fsync::Error::Other(e.to_string()))
+                }
+            },
+            _ = sleep => {
+                self.add_progress(path, progress.clone()).await;
+                Ok(progress.get())
+            }
         }
     }
 }
@@ -399,10 +532,11 @@ where
         res
     }
 
-    async fn operate(self, _: Context, action: fsync::Operation) -> fsync::Result<OpRes> {
-        let res = self.inner.operate(&action).await;
-        log::trace!(target: "RPC", "{action:#?} -> {res:#?}");
-        res.map(|()| OpRes::Done)
+    async fn operate(self, _: Context, operation: fsync::Operation) -> fsync::Result<Progress> {
+        log::trace!(target: "RPC", "{operation:#?}");
+        let res = self.inner.operate(operation).await;
+        log::trace!(target: "RPC", "operate -> {res:#?}");
+        res
     }
 
     async fn progress(self, _: Context, path: PathBuf) -> fsync::Result<Option<fsync::Progress>> {

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use fsync::Progress;
 use futures::prelude::*;
 use oauth2::{basic::BasicClient, HttpRequest, HttpResponse, TokenResponse};
 pub use oauth2::{AccessToken, RefreshToken, Scope};
@@ -10,13 +11,13 @@ mod server;
 mod token_cache;
 
 pub use self::token_cache::{CacheResult, TokenCache, TokenMap, TokenPersist};
-use crate::{error, OpState, PersistCache, SharedOpState};
+use crate::{error, PersistCache, SharedProgress};
 
 pub trait GetToken: Send + Sync + 'static {
     fn get_token(
         &self,
         scopes: Vec<Scope>,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<AccessToken>> + Send;
 }
 
@@ -61,12 +62,12 @@ impl Client {
         &self,
         refresh_token: RefreshToken,
         scopes: Vec<Scope>,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<AccessToken> {
         log::info!("Refreshing token for scopes {:?}", scopes);
 
-        if let Some(op_state) = op_state {
-            op_state.set(OpState::OAuth2Refresh).await;
+        if let Some(progress) = progress {
+            progress.set(Progress::OAuth2Refresh);
         }
 
         let token_response = self
@@ -89,9 +90,9 @@ impl Client {
     async fn pkce_and_cache(
         &self,
         scopes: Vec<Scope>,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<AccessToken> {
-        let resp = self.fetch_token_pkce(scopes, op_state).await?;
+        let resp = self.fetch_token_pkce(scopes, progress).await?;
         let mut cache = self.inner.cache.write().await;
         cache.put(&resp);
         Ok(resp.access_token().clone())
@@ -138,17 +139,17 @@ impl GetToken for Client {
     async fn get_token(
         &self,
         scopes: Vec<Scope>,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<AccessToken> {
         let cache = self.inner.cache.read().await.check(&scopes);
         match cache {
             CacheResult::Ok(access_token) => Ok(access_token),
             CacheResult::Expired(refresh_token, scopes) => {
-                self.refresh_token(refresh_token, scopes.clone(), op_state)
-                    .or_else(|_err| self.pkce_and_cache(scopes, op_state))
+                self.refresh_token(refresh_token, scopes.clone(), progress)
+                    .or_else(|_err| self.pkce_and_cache(scopes, progress))
                     .await
             }
-            CacheResult::None => self.pkce_and_cache(scopes, op_state).await,
+            CacheResult::None => self.pkce_and_cache(scopes, progress).await,
         }
     }
 }

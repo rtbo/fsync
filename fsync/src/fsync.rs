@@ -437,24 +437,44 @@ pub enum Operation {
     Delete(PathBuf, Location),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OpRes {
-    Done,
-    Progress,
-    Auth(String),
+impl Operation {
+    pub fn path(&self) -> &Path {
+        match self {
+            Operation::Copy(path, _) => path,
+            Operation::Replace(path, _) => path,
+            Operation::Delete(path, _) => path,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Progress {
-    pub total: u64,
-    pub done: u64,
+pub enum Progress {
+    Init,
+    OAuth2Browse(String),
+    OAuth2Exchange,
+    OAuth2Refresh,
+    Progress { progress: u64, total: u64 },
+    Done,
+    Err(crate::Error),
+}
+
+impl Progress {
+    pub fn is_done(&self) -> bool {
+        matches!(self, Self::Done)
+    }
+}
+
+impl Default for Progress {
+    fn default() -> Self {
+        Self::Init
+    }
 }
 
 #[tarpc::service]
 pub trait Fsync {
     async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<tree::Entry>>;
     async fn entry_node(path: PathBuf) -> crate::Result<Option<tree::EntryNode>>;
-    async fn operate(operation: Operation) -> crate::Result<OpRes>;
+    async fn operate(operation: Operation) -> crate::Result<Progress>;
     async fn progress(path: PathBuf) -> crate::Result<Option<Progress>>;
     async fn all_progress() -> crate::Result<Vec<(PathBuf, Progress)>>;
 }

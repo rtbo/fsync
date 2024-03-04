@@ -89,10 +89,12 @@ impl super::Navigator {
                         } else {
                             StorageDir::RemoteToLocal
                         };
-                        self.client
-                            .operate(ctx(), fsync::Operation::Copy(path, dir))
+                        let _progress = self
+                            .client
+                            .operate(ctx(), fsync::Operation::Copy(path.clone(), dir))
                             .await
                             .unwrap()?;
+                        // super::log_msg(&format!("Progress of {path}: {:?}", progress));
                         operated = true;
                     }
                 }

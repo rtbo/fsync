@@ -1,11 +1,9 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
-use fsync::path::PathBuf;
 use futures::{
     future::{self, BoxFuture},
     Future,
 };
-use tokio::sync::RwLock;
 
 pub mod service;
 pub mod storage;
@@ -14,44 +12,35 @@ pub mod tree;
 pub mod oauth2;
 
 #[derive(Debug, Clone)]
-pub enum OpState {
-    Init,
-    Indexing(PathBuf),
-    OAuth2Browse(String),
-    OAuth2Exchange,
-    OAuth2Refresh,
-    Progress { progress: u64, total: u64 },
-    Done,
-    Error(fsync::Error),
+pub struct SharedProgress {
+    inner: Arc<RwLock<fsync::Progress>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct SharedOpState {
-    inner: Arc<RwLock<OpState>>,
-}
-
-impl SharedOpState {
+impl SharedProgress {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(RwLock::new(OpState::Init)),
+            inner: Arc::new(RwLock::new(fsync::Progress::Init)),
         }
     }
 
     /// Get the state
-    pub async fn get(&self) -> OpState {
-        self.inner.read().await.clone()
+    pub fn get(&self) -> fsync::Progress {
+        self.inner
+            .read()
+            .expect("Lock shouldn't be poisoned")
+            .clone()
     }
 
-    /// Set the state 
-    pub async fn set(&self, state: OpState) {
-        *self.inner.write().await = state;
+    /// Set the state
+    pub fn set(&self, progress: fsync::Progress) {
+        *self.inner.write().expect("Lock shouldn't be poisoned") = progress;
     }
 
     /// Set the state and get previous one
-    pub async fn swap(&self, mut state: OpState) -> OpState {
-        let mut inner = self.inner.write().await;
-        std::mem::swap(&mut *inner, &mut state);
-        state
+    pub fn swap(&self, mut progress: fsync::Progress) -> fsync::Progress {
+        let mut inner = self.inner.write().expect("Lock shouldn't be poisoned");
+        std::mem::swap(&mut *inner, &mut progress);
+        progress
     }
 }
 

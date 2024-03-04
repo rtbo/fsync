@@ -1,19 +1,20 @@
 use std::net::SocketAddr;
 
 use chrono::Utc;
+use fsync::Progress;
 use oauth2::{
     basic::BasicTokenResponse, AuthorizationCode, CsrfToken, PkceCodeChallenge, RedirectUrl, Scope,
 };
 use tokio::{io, net};
 
 use super::{server, Client};
-use crate::{error, uri, OpState, SharedOpState};
+use crate::{error, uri, SharedProgress};
 
 impl Client {
     pub(super) async fn fetch_token_pkce(
         &self,
         scopes: Vec<Scope>,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<BasicTokenResponse> {
         log::info!("Starting PKCE flow for scopes {scopes:?}");
 
@@ -35,8 +36,8 @@ impl Client {
             .set_pkce_challenge(pkce_challenge)
             .url();
 
-        if let Some(op_state) = op_state {
-            op_state.set(OpState::OAuth2Exchange).await
+        if let Some(progress) = progress {
+            progress.set(Progress::OAuth2Exchange);
         }
 
         log::info!("Opening browser to {auth_url}.");
@@ -88,8 +89,8 @@ impl Client {
 
         log::trace!("exchanging code for token");
 
-        if let Some(op_state) = op_state {
-            op_state.set(OpState::OAuth2Exchange).await;
+        if let Some(progress) = progress {
+            progress.set(Progress::OAuth2Exchange);
         }
 
         let token_response = self

@@ -42,7 +42,8 @@ async fn copy_remote_to_local() {
 
     let path = PathBuf::from("/only-remote.txt");
     h.service
-        .operate(&Operation::Copy(path.clone(), StorageDir::RemoteToLocal))
+        .clone()
+        .operate(Operation::Copy(path.clone(), StorageDir::RemoteToLocal))
         .await
         .unwrap();
 
@@ -73,7 +74,8 @@ async fn copy_remote_to_local_deep() {
     let h = harness().await;
     let path = PathBuf::from("/only-remote/deep/file2.txt");
     h.service
-        .operate(&Operation::Copy(path.clone(), StorageDir::RemoteToLocal))
+        .clone()
+        .operate(Operation::Copy(path.clone(), StorageDir::RemoteToLocal))
         .await
         .unwrap();
     let content = h.local_file_content(&path).await.unwrap();
@@ -94,7 +96,8 @@ async fn copy_remote_to_local_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
-        .operate(&Operation::Copy(path, StorageDir::RemoteToLocal))
+        .clone()
+        .operate(Operation::Copy(path, StorageDir::RemoteToLocal))
         .await
         .unwrap_display();
 }
@@ -104,7 +107,8 @@ async fn copy_local_to_remote_deep() {
     let h = harness().await;
     let path = PathBuf::from("/only-local/deep/file2.txt");
     h.service
-        .operate(&Operation::Copy(path.clone(), StorageDir::LocalToRemote))
+        .clone()
+        .operate(Operation::Copy(path.clone(), StorageDir::LocalToRemote))
         .await
         .unwrap();
     let content = h.remote_file_content(&path).await.unwrap();
@@ -125,7 +129,8 @@ async fn copy_remote_to_local_fail_relative() {
     let h = harness().await;
     let path = PathBuf::from("only-remote.txt");
     h.service
-        .operate(&Operation::Copy(path, StorageDir::RemoteToLocal))
+        .clone()
+        .operate(Operation::Copy(path, StorageDir::RemoteToLocal))
         .await
         .unwrap_display();
 }
@@ -135,7 +140,8 @@ async fn copy_local_to_remote() {
     let h = harness().await;
     let path = PathBuf::from("/only-local.txt");
     h.service
-        .operate(&Operation::Copy(path.clone(), StorageDir::LocalToRemote))
+        .clone()
+        .operate(Operation::Copy(path.clone(), StorageDir::LocalToRemote))
         .await
         .unwrap();
     let content = h.remote_file_content(&path).await.unwrap();
@@ -148,7 +154,8 @@ async fn copy_local_to_remote_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
-        .operate(&Operation::Copy(path, StorageDir::LocalToRemote))
+        .clone()
+        .operate(Operation::Copy(path, StorageDir::LocalToRemote))
         .await
         .unwrap_display();
 }
@@ -158,7 +165,8 @@ async fn replace_local_by_remote() {
     let h = harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
-        .operate(&Operation::Replace(path.clone(), StorageDir::RemoteToLocal))
+        .clone()
+        .operate(Operation::Replace(path.clone(), StorageDir::RemoteToLocal))
         .await
         .unwrap();
     let local_content = h.local_file_content(&path).await.unwrap();
@@ -172,7 +180,8 @@ async fn replace_remote_by_local() {
     let h = harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
-        .operate(&Operation::Replace(path.clone(), StorageDir::LocalToRemote))
+        .clone()
+        .operate(Operation::Replace(path.clone(), StorageDir::LocalToRemote))
         .await
         .unwrap();
     let local_content = h.local_file_content(&path).await.unwrap();
@@ -186,7 +195,8 @@ async fn delete_local() {
     let h = harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
-        .operate(&Operation::Delete(path.clone(), Location::Local))
+        .clone()
+        .operate(Operation::Delete(path.clone(), Location::Local))
         .await
         .unwrap();
     let node = h.service.entry_node(&path).await.unwrap();
@@ -198,7 +208,8 @@ async fn delete_remote() {
     let h = harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
-        .operate(&Operation::Delete(path.clone(), Location::Remote))
+        .clone()
+        .operate(Operation::Delete(path.clone(), Location::Remote))
         .await
         .unwrap();
     let node = h.service.entry_node(&path).await.unwrap();
@@ -210,7 +221,8 @@ async fn delete_both() {
     let h = harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
-        .operate(&Operation::Delete(path.clone(), Location::Both))
+        .clone()
+        .operate(Operation::Delete(path.clone(), Location::Both))
         .await
         .unwrap();
     let node = h.service.entry_node(&path).await.unwrap();

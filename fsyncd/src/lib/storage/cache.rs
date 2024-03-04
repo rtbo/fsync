@@ -14,7 +14,7 @@ use tokio::{io, task::JoinSet};
 use tokio_stream::StreamExt;
 
 use super::id::{self, IdBuf};
-use crate::{PersistCache, SharedOpState};
+use crate::{PersistCache, SharedProgress};
 
 #[derive(Clone, Debug)]
 pub enum CachePersist {
@@ -161,7 +161,7 @@ where
     fn dir_entries(
         &self,
         parent_path: &Path,
-        _op_state: Option<&SharedOpState>,
+        _progress: Option<&SharedProgress>,
     ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         log::trace!("listing entries for {parent_path}");
         let parent = self.entries.get(parent_path);
@@ -184,7 +184,7 @@ where
     async fn read_file(
         &self,
         path: PathBuf,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<impl io::AsyncRead> {
         log::info!("read file {path}");
         let node = self.entries.get(&path);
@@ -195,7 +195,7 @@ where
             let id = node.id.clone();
             let res = self
                 .storage
-                .read_file(id.expect("File without Id"), op_state)
+                .read_file(id.expect("File without Id"), progress)
                 .await?;
             Ok(res)
         } else {
@@ -212,7 +212,7 @@ where
         &self,
         path: &Path,
         parents: bool,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
         let path = path.normalize()?;
@@ -232,7 +232,7 @@ where
                 } else {
                     let id = self
                         .storage
-                        .mkdir(parent_id.as_deref(), c.as_str(), op_state)
+                        .mkdir(parent_id.as_deref(), c.as_str(), progress)
                         .await?;
                     let metadata = Metadata::Directory {
                         path: cur.clone(),
@@ -266,7 +266,7 @@ where
                 let parent_id = entry.id.clone();
                 let id = self
                     .storage
-                    .mkdir(parent_id.as_deref(), path.file_name().unwrap(), op_state)
+                    .mkdir(parent_id.as_deref(), path.file_name().unwrap(), progress)
                     .await?;
                 entry.children.push(path.file_name().unwrap().to_string());
                 id
@@ -296,7 +296,7 @@ where
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<fsync::Metadata> {
         log::info!("creating file {}", metadata.path());
 
@@ -310,7 +310,7 @@ where
         })?;
         let (id, metadata) = self
             .storage
-            .create_file(parent.id.as_deref(), metadata, data, op_state)
+            .create_file(parent.id.as_deref(), metadata, data, progress)
             .await?;
         mem::drop(parent);
 
@@ -334,7 +334,7 @@ where
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
-        op_state: Option<&SharedOpState>,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<fsync::Metadata> {
         log::info!("writing file {}", metadata.path());
         debug_assert!(!metadata.path().is_root());
@@ -353,7 +353,7 @@ where
                 .as_deref()
                 .expect("Id should be set for non-root path");
             self.storage
-                .write_file(id, parent_id.as_deref(), metadata, data, op_state)
+                .write_file(id, parent_id.as_deref(), metadata, data, progress)
                 .await?
         };
         node.metadata = metadata.clone();
@@ -365,7 +365,7 @@ impl<S> super::Delete for CacheStorage<S>
 where
     S: super::id::Storage,
 {
-    async fn delete(&self, path: &Path, op_state: Option<&SharedOpState>) -> fsync::Result<()> {
+    async fn delete(&self, path: &Path, progress: Option<&SharedProgress>) -> fsync::Result<()> {
         debug_assert!(!path.is_root());
         log::info!("deleting file {}", path);
         let path = Self::check_path(path)?;
@@ -380,7 +380,7 @@ where
             }
             node.id.clone().expect("Non-root entry should have Id")
         };
-        self.storage.delete(&id, op_state).await?;
+        self.storage.delete(&id, progress).await?;
         self.entries.remove(&path);
         Ok(())
     }

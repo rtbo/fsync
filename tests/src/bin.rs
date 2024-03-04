@@ -1,6 +1,9 @@
 #![cfg(test)]
 
-use std::{sync::Once, time::SystemTime};
+use std::{
+    sync::{Arc, Once},
+    time::SystemTime,
+};
 
 use fsync::{path::Path, Metadata};
 use fsyncd::{
@@ -25,7 +28,7 @@ use futures::FutureExt;
 use stubs::{fs, id};
 
 pub struct Harness<L, R> {
-    pub service: Service<L, R>,
+    pub service: Arc<Service<L, R>>,
 }
 
 impl<L, R> Harness<L, R>
@@ -91,7 +94,7 @@ async fn harness_with(local: &[dataset::Entry], remote: &[dataset::Entry]) -> Ca
 
     let (local, remote) = tokio::try_join!(local, remote).unwrap();
 
-    let service = Service::new(local, remote).await.unwrap();
+    let service = Arc::new(Service::new(local, remote).await.unwrap());
 
     Harness { service }
 }
