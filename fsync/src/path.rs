@@ -732,6 +732,37 @@ impl Path {
         }
         Ok(res)
     }
+
+    /// Checks whether self is an ancestor of the other path
+    /// 
+    /// # Examples
+    /// ```
+    /// use fsync::path::{Path, PathBuf};
+    /// 
+    /// assert!(Path::new("/a/b").is_ancestor_of(Path::new("/a/b/c")));
+    /// assert!(Path::new("/a").is_ancestor_of(Path::new("/a/b/c")));
+    /// 
+    /// assert!(!Path::new("/a/b/c").is_ancestor_of(Path::new("/a/b/d")));
+    /// assert!(!Path::new("/a/b/c").is_ancestor_of(Path::new("/a/b")));
+    /// assert!(!Path::new("/a/b").is_ancestor_of(Path::new("/a/b")));
+    /// assert!(!Path::new("/b/a").is_ancestor_of(Path::new("/a/b/c")));
+    /// ```
+    pub fn is_ancestor_of<P: AsRef<Path>>(&self, other: P) -> bool {
+        let mut other = other.as_ref().components();
+        let mut otherc = other.next();
+        for selfc in self.components() {
+            if let Some(otherc) = otherc {
+                if selfc != otherc {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+            otherc = other.next();
+        }
+        return otherc.is_some();
+        
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
