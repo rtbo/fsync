@@ -475,6 +475,8 @@ pub trait Fsync {
     async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<tree::Entry>>;
     async fn entry_node(path: PathBuf) -> crate::Result<Option<tree::EntryNode>>;
     async fn operate(operation: Operation) -> crate::Result<Progress>;
+    /// Provide the progress of the operation on the given path.
     async fn progress(path: PathBuf) -> crate::Result<Option<Progress>>;
-    async fn all_progress() -> crate::Result<Vec<(PathBuf, Progress)>>;
+    /// Provide the progress of all operations of the given path and its descendants.
+    async fn progresses(path: PathBuf) -> crate::Result<Vec<(PathBuf, Progress)>>;
 }

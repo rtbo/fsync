@@ -267,6 +267,27 @@ impl<L, R> Service<L, R> {
             .collect();
         Ok(conflicts)
     }
+
+    pub async fn progress(&self, path: &Path) -> fsync::Result<Option<fsync::Progress>> {
+        let path = Self::check_path(path)?;
+        let progress = self.progresses.read().await.iter().find_map(|(p, prog)| {
+            if p == &path {
+                Some(prog.get())
+            } else {
+                None
+            }
+        });
+        Ok(progress)
+    }
+
+    pub async fn progresses(&self, path: &Path) -> fsync::Result<Vec<(PathBuf, fsync::Progress)>> {
+        let progresses = self.progresses.read().await.clone();
+        Ok(progresses
+            .into_iter()
+            .filter(|(p, _)| path.is_ancestor_of(p))
+            .map(|(path, prog)| (path, prog.get()))
+            .collect())
+    }
 }
 
 impl<L, R> Service<L, R>
@@ -533,20 +554,24 @@ where
     }
 
     async fn operate(self, _: Context, operation: fsync::Operation) -> fsync::Result<Progress> {
-        log::trace!(target: "RPC", "{operation:#?}");
-        let res = self.inner.operate(operation).await;
-        log::trace!(target: "RPC", "operate -> {res:#?}");
-        res
+        if log::log_enabled!(log::Level::Trace) {
+            let op = operation.clone();
+            let res = self.inner.operate(operation).await;
+            log::trace!(target: "RPC", "Fsync::operate({op:?}) -> {res:#?}");
+            res
+        } else {
+            self.inner.operate(operation).await
+        }
     }
 
     async fn progress(self, _: Context, path: PathBuf) -> fsync::Result<Option<fsync::Progress>> {
-        let res = Ok(None);
+        let res = self.inner.progress(&path).await;
         log::trace!(target: "RPC", "Fsync::progress(path: {path:?}) -> {res:#?}");
         res
     }
 
-    async fn all_progress(self, _: Context) -> fsync::Result<Vec<(PathBuf, fsync::Progress)>> {
-        let res = Ok(vec![]);
+    async fn progresses(self, _: Context, path: PathBuf) -> fsync::Result<Vec<(PathBuf, fsync::Progress)>> {
+        let res = self.inner.progresses(&path).await;
         log::trace!(target: "RPC", "Fsync::all_progress() -> {res:#?}");
         res
     }
