@@ -94,7 +94,7 @@ where
             let file_name = file_name.to_str().context("UTF-8 filename")?;
             let dst = dst.join(file_name);
             if fs_metadata.is_dir() {
-                storage.mkdir(&dst, false).await?;
+                storage.mkdir(&dst, false, None).await?;
                 _copy_dir_all_to_storage(storage, &fs_src, &dst).await?;
             } else {
                 let metadata = fsync::Metadata::Regular {
@@ -103,7 +103,7 @@ where
                     mtime: fs_metadata.modified()?.into(),
                 };
                 let data = tokio::fs::File::open(&fs_src).await?;
-                storage.create_file(&metadata, data).await?;
+                storage.create_file(&metadata, data, None).await?;
             }
         }
         Ok(())

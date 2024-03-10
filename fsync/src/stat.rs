@@ -13,7 +13,7 @@ pub struct Dir {
     pub data: i64,
     /// The number of directory entries in this directory
     pub dirs: i32,
-    /// The number of file entries in this directory 
+    /// The number of file entries in this directory
     pub files: i32,
 }
 

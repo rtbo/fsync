@@ -1,3 +1,5 @@
+use std::sync::{Arc, RwLock};
+
 use futures::{
     future::{self, BoxFuture},
     Future,
@@ -8,6 +10,39 @@ pub mod storage;
 pub mod tree;
 
 pub mod oauth2;
+
+#[derive(Debug, Clone)]
+pub struct SharedProgress {
+    inner: Arc<RwLock<fsync::Progress>>,
+}
+
+impl SharedProgress {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(fsync::Progress::Init)),
+        }
+    }
+
+    /// Get the state
+    pub fn get(&self) -> fsync::Progress {
+        self.inner
+            .read()
+            .expect("Lock shouldn't be poisoned")
+            .clone()
+    }
+
+    /// Set the state
+    pub fn set(&self, progress: fsync::Progress) {
+        *self.inner.write().expect("Lock shouldn't be poisoned") = progress;
+    }
+
+    /// Set the state and get previous one
+    pub fn swap(&self, mut progress: fsync::Progress) -> fsync::Progress {
+        let mut inner = self.inner.write().expect("Lock shouldn't be poisoned");
+        std::mem::swap(&mut *inner, &mut progress);
+        progress
+    }
+}
 
 pub mod uri {
     #[derive(Debug)]

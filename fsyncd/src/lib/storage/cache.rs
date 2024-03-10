@@ -14,7 +14,7 @@ use tokio::{io, task::JoinSet};
 use tokio_stream::StreamExt;
 
 use super::id::{self, IdBuf};
-use crate::PersistCache;
+use crate::{PersistCache, SharedProgress};
 
 #[derive(Clone, Debug)]
 pub enum CachePersist {
@@ -161,6 +161,7 @@ where
     fn dir_entries(
         &self,
         parent_path: &Path,
+        _progress: Option<&SharedProgress>,
     ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         log::trace!("listing entries for {parent_path}");
         let parent = self.entries.get(parent_path);
@@ -180,7 +181,11 @@ impl<S> super::ReadFile for CacheStorage<S>
 where
     S: super::id::ReadFile + Sync + Send,
 {
-    async fn read_file(&self, path: PathBuf) -> fsync::Result<impl io::AsyncRead> {
+    async fn read_file(
+        &self,
+        path: PathBuf,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<impl io::AsyncRead> {
         log::info!("read file {path}");
         let node = self.entries.get(&path);
         if let Some(node) = node {
@@ -188,7 +193,10 @@ where
                 fsync::io_bail!("{path} is not a file.");
             }
             let id = node.id.clone();
-            let res = self.storage.read_file(id.expect("File without Id")).await?;
+            let res = self
+                .storage
+                .read_file(id.expect("File without Id"), progress)
+                .await?;
             Ok(res)
         } else {
             fsync::other_bail!("No such entry in the cache: {path}");
@@ -200,7 +208,12 @@ impl<S> super::MkDir for CacheStorage<S>
 where
     S: super::id::MkDir + Send + Sync,
 {
-    async fn mkdir(&self, path: &Path, parents: bool) -> fsync::Result<()> {
+    async fn mkdir(
+        &self,
+        path: &Path,
+        parents: bool,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
         let path = path.normalize()?;
         if path.is_root() {
@@ -217,8 +230,14 @@ where
                 if let Some(entry) = self.entries.get(&cur) {
                     parent_id = entry.id.clone();
                 } else {
-                    let id = self.storage.mkdir(parent_id.as_deref(), c.as_str()).await?;
-                    let metadata = Metadata::Directory { path: cur.clone(), stat: None };
+                    let id = self
+                        .storage
+                        .mkdir(parent_id.as_deref(), c.as_str(), progress)
+                        .await?;
+                    let metadata = Metadata::Directory {
+                        path: cur.clone(),
+                        stat: None,
+                    };
                     {
                         let parent = cur.parent().unwrap();
                         let mut parent_entry = self.entries.get_mut(parent).unwrap();
@@ -247,12 +266,15 @@ where
                 let parent_id = entry.id.clone();
                 let id = self
                     .storage
-                    .mkdir(parent_id.as_deref(), path.file_name().unwrap())
+                    .mkdir(parent_id.as_deref(), path.file_name().unwrap(), progress)
                     .await?;
                 entry.children.push(path.file_name().unwrap().to_string());
                 id
             };
-            let metadata = Metadata::Directory { path: path.clone(), stat: None };
+            let metadata = Metadata::Directory {
+                path: path.clone(),
+                stat: None,
+            };
             self.entries.insert(
                 path.clone(),
                 CacheNode {
@@ -274,6 +296,7 @@ where
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<fsync::Metadata> {
         log::info!("creating file {}", metadata.path());
 
@@ -287,7 +310,7 @@ where
         })?;
         let (id, metadata) = self
             .storage
-            .create_file(parent.id.as_deref(), metadata, data)
+            .create_file(parent.id.as_deref(), metadata, data, progress)
             .await?;
         mem::drop(parent);
 
@@ -311,6 +334,7 @@ where
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<fsync::Metadata> {
         log::info!("writing file {}", metadata.path());
         debug_assert!(!metadata.path().is_root());
@@ -329,7 +353,7 @@ where
                 .as_deref()
                 .expect("Id should be set for non-root path");
             self.storage
-                .write_file(id, parent_id.as_deref(), metadata, data)
+                .write_file(id, parent_id.as_deref(), metadata, data, progress)
                 .await?
         };
         node.metadata = metadata.clone();
@@ -341,7 +365,7 @@ impl<S> super::Delete for CacheStorage<S>
 where
     S: super::id::Storage,
 {
-    async fn delete(&self, path: &Path) -> fsync::Result<()> {
+    async fn delete(&self, path: &Path, progress: Option<&SharedProgress>) -> fsync::Result<()> {
         debug_assert!(!path.is_root());
         log::info!("deleting file {}", path);
         let path = Self::check_path(path)?;
@@ -356,7 +380,7 @@ where
             }
             node.id.clone().expect("Non-root entry should have Id")
         };
-        self.storage.delete(&id).await?;
+        self.storage.delete(&id, progress).await?;
         self.entries.remove(&path);
         Ok(())
     }
@@ -404,7 +428,7 @@ where
     S: super::id::DirEntries + Send + Sync + 'static,
 {
     Box::pin(async move {
-        let dirent = storage.dir_entries(dir_id.as_deref(), &dir_path);
+        let dirent = storage.dir_entries(dir_id.as_deref(), &dir_path, None);
         tokio::pin!(dirent);
 
         let mut children: Vec<String> = Vec::new();

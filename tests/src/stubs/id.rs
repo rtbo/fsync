@@ -7,7 +7,7 @@ use fsyncd::{
         id::{self, IdBuf},
         CreateFile, Delete, DirEntries, MkDir, ReadFile, WriteFile,
     },
-    Shutdown,
+    SharedProgress, Shutdown,
 };
 use futures::prelude::*;
 use tokio::io;
@@ -48,25 +48,35 @@ impl id::DirEntries for Stub {
         &self,
         _parent_id: Option<&id::Id>,
         parent_path: &Path,
+        progress: Option<&SharedProgress>,
     ) -> impl Stream<Item = fsync::Result<(IdBuf, fsync::Metadata)>> + Send {
         self.inner
-            .dir_entries(parent_path)
+            .dir_entries(parent_path, progress)
             .map_ok(|md| (IdBuf::from(md.path().as_str()), md))
     }
 }
 
 impl id::ReadFile for Stub {
-    async fn read_file(&self, id: IdBuf) -> fsync::Result<impl io::AsyncRead + Send> {
+    async fn read_file(
+        &self,
+        id: IdBuf,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<impl io::AsyncRead + Send> {
         let path = PathBuf::from(id.into_string());
-        self.inner.read_file(path).await
+        self.inner.read_file(path, progress).await
     }
 }
 
 impl id::MkDir for Stub {
-    async fn mkdir(&self, parent_id: Option<&id::Id>, name: &str) -> fsync::Result<IdBuf> {
+    async fn mkdir(
+        &self,
+        parent_id: Option<&id::Id>,
+        name: &str,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<IdBuf> {
         let parent_path = parent_id.map(PathBuf::from).unwrap_or_else(PathBuf::root);
         let path = parent_path.join(name);
-        self.inner.mkdir(&path, false).await?;
+        self.inner.mkdir(&path, false, progress).await?;
         Ok(IdBuf::from(path.into_string()))
     }
 }
@@ -77,8 +87,9 @@ impl id::CreateFile for Stub {
         _parent_id: Option<&id::Id>,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
-        let metadata = self.inner.create_file(metadata, data).await?;
+        let metadata = self.inner.create_file(metadata, data, progress).await?;
         let id: String = metadata.path().normalize()?.into_string();
         Ok((IdBuf::from(id), metadata))
     }
@@ -91,16 +102,17 @@ impl id::WriteFile for Stub {
         _parent_id: Option<&id::Id>,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<fsync::Metadata> {
-        let metadata = self.inner.write_file(metadata, data).await?;
+        let metadata = self.inner.write_file(metadata, data, progress).await?;
         Ok(metadata)
     }
 }
 
 impl id::Delete for Stub {
-    async fn delete(&self, id: &id::Id) -> fsync::Result<()> {
+    async fn delete(&self, id: &id::Id, progress: Option<&SharedProgress>) -> fsync::Result<()> {
         let path = PathBuf::from(id.as_str());
-        self.inner.delete(&path).await
+        self.inner.delete(&path, progress).await
     }
 }
 

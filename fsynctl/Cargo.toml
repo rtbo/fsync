@@ -11,6 +11,7 @@ fsync = { path = "../fsync" }
 anyhow = { workspace = true }
 byte-unit = { workspace = true }
 clap = { workspace = true }
+crossterm = { workspace = true }
 futures = { workspace = true }
 inquire = { workspace = true }
 oauth2 = { workspace = true }
@@ -18,4 +19,3 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tarpc = { workspace = true }
 tokio = { workspace = true }
-crossterm = { version = "0.27.0", features = ["event-stream"] }

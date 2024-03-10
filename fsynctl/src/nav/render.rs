@@ -28,10 +28,30 @@ fn entry_print_path(entry: &Entry) -> String {
     }
 }
 
-fn entry_print_name(entry: &Entry) -> String {
-    let name = entry.path().file_name().unwrap_or_default().to_string();
-    if entry.is_safe_dir() {
-        format!("{name}/")
+fn entry_print_name(entry: &Entry, max_width: Option<u16>) -> String {
+    let name = {
+        let name = entry.path().file_name().unwrap_or_default().to_string();
+        if entry.is_safe_dir() {
+            format!("{name}/")
+        } else {
+            name
+        }
+    };
+    if let Some(max_width) = max_width {
+        elided(name, max_width)
+    } else {
+        name
+    }
+}
+
+fn elided(name: String, max_width: u16) -> String {
+    assert!(max_width >= 5);
+    if name.width() > max_width {
+        let start_width = max_width / 2 - 1;
+        let end_width = max_width - start_width - 3;
+        let start: String = name.chars().take(start_width as usize).collect();
+        let end: String = name.chars().rev().take(end_width as usize).collect();
+        format!("{start}...{end}")
     } else {
         name
     }
@@ -170,6 +190,16 @@ impl Rect {
         self.abs_pos(pos).move_to()
     }
 
+    pub fn with_height(&self, h: u16) -> Rect {
+        Rect {
+            top_left: self.top_left,
+            size: Size {
+                width: self.width(),
+                height: h,
+            },
+        }
+    }
+
     pub fn crop_left(&self, w: u16) -> Rect {
         Rect {
             top_left: Pos {
@@ -235,8 +265,59 @@ impl Width for String {
     }
 }
 
+impl<S: AsRef<str>> Width for Option<S> {
+    fn width(&self) -> u16 {
+        self.as_ref().map(|s| s.as_ref().width()).unwrap_or(0)
+    }
+}
+
+/// Animation ticks per second
+pub const ANIM_TPS: f32 = 30.0;
+
+/// Animated spinner
+#[derive(Default, Debug, Copy, Clone)]
+struct Spinner(f32);
+
+impl Spinner {
+    const SEQ: &'static [char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+    /// Rounds per second
+    const RPS: f32 = 1.0;
+    /// Ticks per round
+    const TPR: f32 = ANIM_TPS / Self::RPS;
+
+    fn tick(&mut self) {
+        debug_assert!(self.0 >= 0.0 && self.0 < 1.0);
+
+        let mut new_value = self.0 + 1.0 / Self::TPR;
+        if new_value >= 1.0 {
+            new_value -= 1.0;
+        }
+        self.0 = new_value;
+    }
+
+    fn get(&self) -> char {
+        debug_assert!(self.0 >= 0.0 && self.0 < 1.0);
+
+        let idx = (self.0 * Self::SEQ.len() as f32) as usize;
+        Self::SEQ[idx]
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct State {
+    spinner: Spinner,
+}
+
+impl State {
+    pub fn tick(&mut self) {
+        self.spinner.tick();
+    }
+}
+
 impl super::Navigator {
-    pub fn render(&self) -> anyhow::Result<()> {
+    /// Render the navigator and returns whether animation is required
+    pub async fn render(&self, state: &mut State) -> anyhow::Result<bool> {
         let mut out = io::stdout();
 
         let max_vp_height = self.size.height - 1;
@@ -277,8 +358,14 @@ impl super::Navigator {
             },
         };
 
+        let progress = self
+            .client
+            .progresses(super::ctx(), self.node.path().to_owned())
+            .await
+            .unwrap()?;
+
         if self.node.entry().is_safe_dir() {
-            self.render_dir(&viewport)?;
+            self.render_dir(&viewport, state, &progress).await?;
         } else {
             todo!()
         }
@@ -296,7 +383,13 @@ impl super::Navigator {
         self.render_stats(&footer_vp, &self.node.stat())?;
 
         out.flush()?;
-        Ok(())
+
+        if progress.is_empty() {
+            Ok(false)
+        } else {
+            state.tick();
+            Ok(true)
+        }
     }
 }
 
@@ -344,6 +437,71 @@ impl ChildrenScroll {
         }
 
         Ok(())
+    }
+}
+
+fn print_progress_bar(width: u16, progress: f32) -> String {
+    const CHARS: &[char] = &[' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
+    const WHOLE: char = '█';
+    const EMPTY: char = ' ';
+    const BREAKS: &[f32] = &[
+        0.125 * 0.5,
+        0.125 * 1.5,
+        0.125 * 2.5,
+        0.125 * 3.5,
+        0.125 * 4.5,
+        0.125 * 5.5,
+        0.125 * 6.5,
+        0.125 * 7.5,
+    ];
+    let progress = progress.clamp(0.0, 1.0);
+    let float_width = progress * width as f32;
+    let whole_width = float_width.floor();
+    let part = float_width - whole_width;
+    let empty_width = width - float_width.ceil() as u16;
+
+    let mut s = String::with_capacity(width as usize);
+    for _ in 0..whole_width as usize {
+        s.push(WHOLE);
+    }
+    if part > 0.0 {
+        let mut partialc = None;
+        for (i, &b) in BREAKS.iter().enumerate() {
+            if part < b {
+                partialc = Some(CHARS[i]);
+                break;
+            }
+        }
+        let partialc = partialc.unwrap_or(WHOLE);
+        s.push(partialc);
+    }
+    for _ in 0..empty_width as usize {
+        s.push(EMPTY);
+    }
+    debug_assert!(s.width() == width);
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::print_progress_bar;
+
+    #[test]
+    fn test_progress_bar() {
+        assert_eq!(print_progress_bar(10, 0.00000), "          ");
+        assert_eq!(print_progress_bar(10, 0.50000), "█████     ");
+        assert_eq!(print_progress_bar(10, 0.50624), "█████     ");
+        assert_eq!(print_progress_bar(10, 0.50626), "█████▏    ");
+        assert_eq!(print_progress_bar(10, 0.51250), "█████▏    ");
+        assert_eq!(print_progress_bar(10, 0.51874), "█████▏    ");
+        assert_eq!(print_progress_bar(10, 0.51876), "█████▎    ");
+        assert_eq!(print_progress_bar(10, 0.52500), "█████▎    ");
+        assert_eq!(print_progress_bar(10, 0.53124), "█████▎    ");
+        assert_eq!(print_progress_bar(10, 0.53126), "█████▍    ");
+        assert_eq!(print_progress_bar(10, 0.54374), "█████▍    ");
+        assert_eq!(print_progress_bar(10, 0.54376), "█████▌    ");
+        assert_eq!(print_progress_bar(10, 0.55624), "█████▌    ");
+        assert_eq!(print_progress_bar(10, 1.00000), "██████████");
     }
 }
 
@@ -397,17 +555,35 @@ impl super::Navigator {
         }
     }
 
-    fn render_dir(&self, viewport: &Rect) -> anyhow::Result<()> {
+    async fn render_dir(
+        &self,
+        viewport: &Rect,
+        state: &State,
+        progress: &[(fsync::path::PathBuf, fsync::Progress)],
+    ) -> anyhow::Result<()> {
         let tag = Tag::from(self.node.entry());
         let node = &self.node;
+        let spin = if progress.is_empty() {
+            ' '
+        } else {
+            state.spinner.get()
+        };
 
         let mut out = io::stdout();
 
         let path = entry_print_path(node.entry());
-        let pos = viewport.abs_pos(Pos { x: 0, y: 0 });
-        queue!(out, pos.move_to(), tag.print(), Print(" "), Print(&path),)?;
 
-        let mut w = path.len() as u16 + 2;
+        let pos = viewport.abs_pos(Pos { x: 0, y: 0 });
+        queue!(
+            out,
+            pos.move_to(),
+            tag.print(),
+            PrintStyledContent(spin.with(Color::Green)),
+            Print(" "),
+            Print(&path),
+        )?;
+
+        let mut w = path.width() as u16 + 3;
 
         if self.node.children_have_conflicts() {
             let cf = format!("    [{}]", node.children_conflicts());
@@ -442,7 +618,15 @@ impl super::Navigator {
 
         let mut pos = Pos { x: 0, y: 0 };
         for (idx, child) in self.children.iter().enumerate() {
-            pos.y += self.render_child_node(idx, child, pos, children_vp, scroll_offset)?;
+            pos.y += self.render_child_node(
+                idx,
+                child,
+                pos,
+                children_vp,
+                scroll_offset,
+                state,
+                progress,
+            )?;
         }
 
         if pos.y < children_vp.height() {
@@ -474,6 +658,8 @@ impl super::Navigator {
         pos: Pos,
         viewport: Rect,
         scroll_offset: i16,
+        state: &State,
+        progress: &[(fsync::path::PathBuf, fsync::Progress)],
     ) -> anyhow::Result<u16> {
         let height = self.compute_child_height(idx);
         let start_y = pos.y as i16 + scroll_offset;
@@ -486,14 +672,39 @@ impl super::Navigator {
         let is_detailed = Some(idx) == self.detailed_child;
 
         if start_y >= 0 && start_y < viewport.height() as i16 {
+            let vp = viewport.with_height(1);
+
             let mut w = 0;
             let tag = Tag::from(child.entry());
-            let abs_pos = viewport.abs_pos(Pos {
+
+            let mut spin = ' ';
+            let mut bar = None;
+            for prog in progress {
+                if child.path() == prog.0 || child.path().is_ancestor_of(&prog.0) {
+                    spin = state.spinner.get();
+                    match prog.1 {
+                        fsync::Progress::Progress { progress, total } => {
+                            let p = progress as f32 / total as f32;
+                            bar = Some(format!(" ║{}║ ", print_progress_bar(10, p)));
+                        }
+                        _ => (),
+                    }
+                    break;
+                }
+            }
+
+            let abs_pos = vp.abs_pos(Pos {
                 x: pos.x,
                 y: start_y as u16,
             });
-            queue!(out, abs_pos.move_to(), tag.print(), Print(" "))?;
-            w += 2;
+            queue!(
+                out,
+                abs_pos.move_to(),
+                tag.print(),
+                PrintStyledContent(spin.with(Color::Green)),
+                Print(" ")
+            )?;
+            w += 3;
 
             let path_col = if is_current {
                 let sign = if is_detailed { "v " } else { "> " };
@@ -505,44 +716,61 @@ impl super::Navigator {
             };
             w += 2;
 
-            let name = entry_print_name(child.entry());
-            queue!(out, PrintStyledContent(name.as_str().with(path_col)))?;
-            w += name.len() as u16;
+            let mut conflict_str = if child.children_have_conflicts() {
+                Some(format!(" [{}]", child.children_conflicts()))
+            } else {
+                None
+            };
 
-            if child.children_have_conflicts() {
-                let cf = format!("   [{}]", child.children_conflicts());
-                queue!(out, PrintStyledContent(cf.as_str().with(Color::Red),))?;
-                w += cf.len() as u16;
+            if vp.width() < w + conflict_str.width() + bar.width() {
+                bar = None;
             }
+            if vp.width() < w + conflict_str.width() + bar.width() {
+                conflict_str = None;
+            }
+            if vp.width() > w + conflict_str.width() + bar.width() {
+                let name_max_width = vp.width() - w - conflict_str.width() - bar.width();
 
-            // for long names, add spaces to ensure a space between the name and the title
-            queue!(out, Print("  "))?;
-            w += 2;
+                let name = entry_print_name(child.entry(), Some(name_max_width));
+                queue!(out, PrintStyledContent(name.as_str().with(path_col)))?;
+                w += name.width();
 
-            if w < viewport.width() {
-                queue!(
-                    out,
-                    Print(" ".repeat((viewport.width() - w) as usize).as_str(),)
-                )?;
+                if let Some(conflict_str) = conflict_str {
+                    queue!(
+                        out,
+                        PrintStyledContent(conflict_str.as_str().with(Color::Red))
+                    )?;
+                    w += conflict_str.width();
+                }
+
+                if w < vp.width() - bar.width() {
+                    queue!(
+                        out,
+                        Print(" ".repeat((vp.width() - w - bar.width()) as usize).as_str(),)
+                    )?;
+                }
+
+                if let Some(bar) = bar {
+                    queue!(out, PrintStyledContent(bar.as_str().with(Color::Green)))?;
+                }
             }
         }
 
         if is_detailed {
             let vp = Rect {
-                top_left: viewport.abs_pos(Pos{x: pos.x, y: start_y as u16 + 1}),
+                top_left: viewport.abs_pos(Pos {
+                    x: pos.x,
+                    y: start_y as u16 + 1,
+                }),
                 size: Size {
                     width: viewport.width(),
                     height: height - 1,
-                }   
+                },
             };
             let offset = 6u16;
             let blank = " ".repeat(offset as usize);
             for y in 0..vp.height() {
-                queue!(
-                    out,
-                    vp.move_to(Pos { x: 0, y: y as u16 }),
-                    Print(&blank),
-                )?;
+                queue!(out, vp.move_to(Pos { x: 0, y: y as u16 }), Print(&blank),)?;
             }
             let vp = vp.crop_left(offset);
             self.render_child_details(child, &vp)?;
@@ -551,11 +779,7 @@ impl super::Navigator {
         Ok(height)
     }
 
-    fn render_child_details(
-        &self,
-        child: &EntryNode,
-        viewport: &Rect,
-    ) -> anyhow::Result<()> {
+    fn render_child_details(&self, child: &EntryNode, viewport: &Rect) -> anyhow::Result<()> {
         let stat = child.stat();
         self.render_stats(&viewport, &stat)?;
         Ok(())
@@ -603,11 +827,7 @@ impl super::Navigator {
 
         let sep1 = " | ";
         let sep3 = "  ";
-        let sep = if viewport.height() == 1 {
-            sep1
-        } else {
-            sep3
-        };
+        let sep = if viewport.height() == 1 { sep1 } else { sep3 };
 
         let mut len_tag = LONG;
 

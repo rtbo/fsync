@@ -255,7 +255,10 @@ pub mod tree {
             let mut entry = entry;
             match &mut entry {
                 Entry::Local(local) => {
-                    debug_assert!(!local.has_stat(), "Entry should not have stat in EntryNode::new");
+                    debug_assert!(
+                        !local.has_stat(),
+                        "Entry should not have stat in EntryNode::new"
+                    );
                     debug_assert!(
                         children_stat.remote.is_null(),
                         "Remote stat should be null for local entry"
@@ -267,7 +270,10 @@ pub mod tree {
                     local.add_stat(&children_stat.local);
                 }
                 Entry::Remote(remote) => {
-                    debug_assert!(!remote.has_stat(), "Entry should not have stat in EntryNode::new");
+                    debug_assert!(
+                        !remote.has_stat(),
+                        "Entry should not have stat in EntryNode::new"
+                    );
                     debug_assert!(
                         children_stat.local.is_null(),
                         "Local stat should be null for remote entry"
@@ -279,8 +285,14 @@ pub mod tree {
                     remote.add_stat(&children_stat.remote);
                 }
                 Entry::Sync { local, remote, .. } => {
-                    debug_assert!(!local.has_stat(), "Entry should not have stat in EntryNode::new");
-                    debug_assert!(!remote.has_stat(), "Entry should not have stat in EntryNode::new");
+                    debug_assert!(
+                        !local.has_stat(),
+                        "Entry should not have stat in EntryNode::new"
+                    );
+                    debug_assert!(
+                        !remote.has_stat(),
+                        "Entry should not have stat in EntryNode::new"
+                    );
                     debug_assert!(
                         local.is_dir() || children_stat.local.is_null(),
                         "Stat should be null for non-dir entry"
@@ -425,9 +437,46 @@ pub enum Operation {
     Delete(PathBuf, Location),
 }
 
+impl Operation {
+    pub fn path(&self) -> &Path {
+        match self {
+            Operation::Copy(path, _) => path,
+            Operation::Replace(path, _) => path,
+            Operation::Delete(path, _) => path,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Progress {
+    Init,
+    OAuth2Browse(String),
+    OAuth2Exchange,
+    OAuth2Refresh,
+    Progress { progress: u64, total: u64 },
+    Done,
+    Err(crate::Error),
+}
+
+impl Progress {
+    pub fn is_done(&self) -> bool {
+        matches!(self, Self::Done)
+    }
+}
+
+impl Default for Progress {
+    fn default() -> Self {
+        Self::Init
+    }
+}
+
 #[tarpc::service]
 pub trait Fsync {
     async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<tree::Entry>>;
     async fn entry_node(path: PathBuf) -> crate::Result<Option<tree::EntryNode>>;
-    async fn operate(operation: Operation) -> crate::Result<()>;
+    async fn operate(operation: Operation) -> crate::Result<Progress>;
+    /// Provide the progress of the operation on the given path.
+    async fn progress(path: PathBuf) -> crate::Result<Option<Progress>>;
+    /// Provide the progress of all operations of the given path and its descendants.
+    async fn progresses(path: PathBuf) -> crate::Result<Vec<(PathBuf, Progress)>>;
 }

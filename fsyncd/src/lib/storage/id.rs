@@ -5,13 +5,14 @@ use futures::{Future, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::io;
 
-use crate::Shutdown;
+use crate::{SharedProgress, Shutdown};
 
 pub trait DirEntries {
     fn dir_entries(
         &self,
         parent_id: Option<&Id>,
         parent_path: &Path,
+        progress: Option<&SharedProgress>,
     ) -> impl Stream<Item = fsync::Result<(IdBuf, Metadata)>> + Send;
 }
 
@@ -19,6 +20,7 @@ pub trait ReadFile {
     fn read_file(
         &self,
         id: IdBuf,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<impl io::AsyncRead + Send>> + Send;
 }
 
@@ -27,6 +29,7 @@ pub trait MkDir {
         &self,
         parent_id: Option<&Id>,
         name: &str,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<IdBuf>> + Send;
 }
 
@@ -36,6 +39,7 @@ pub trait CreateFile {
         parent_id: Option<&Id>,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<(IdBuf, Metadata)>> + Send;
 }
 
@@ -46,6 +50,7 @@ pub trait WriteFile {
         parent_id: Option<&Id>,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
@@ -53,7 +58,11 @@ pub trait WriteFile {
 pub trait Delete {
     /// Deletes the file or folder referred to by `id`.
     /// If `id` refers to a non-empty folder, all the folder content is also deleted.
-    fn delete(&self, id: &Id) -> impl Future<Output = fsync::Result<()>> + Send;
+    fn delete(
+        &self,
+        id: &Id,
+        progress: Option<&SharedProgress>,
+    ) -> impl Future<Output = fsync::Result<()>> + Send;
 }
 
 /// A trait for an ID-based storage

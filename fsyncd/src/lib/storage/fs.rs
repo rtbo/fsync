@@ -6,7 +6,7 @@ use tokio::{
     io,
 };
 
-use crate::Shutdown;
+use crate::{SharedProgress, Shutdown};
 
 #[derive(Debug, Clone)]
 pub struct FileSystem {
@@ -60,6 +60,7 @@ impl super::DirEntries for FileSystem {
     fn dir_entries(
         &self,
         parent_path: &Path,
+        _progress: Option<&SharedProgress>,
     ) -> impl Stream<Item = fsync::Result<fsync::Metadata>> + Send {
         debug_assert!(parent_path.is_absolute());
         let fs_base = self.root.join(parent_path.without_root().as_str());
@@ -79,7 +80,11 @@ impl super::DirEntries for FileSystem {
 }
 
 impl super::ReadFile for FileSystem {
-    async fn read_file(&self, path: PathBuf) -> fsync::Result<impl io::AsyncRead> {
+    async fn read_file(
+        &self,
+        path: PathBuf,
+        _progress: Option<&SharedProgress>,
+    ) -> fsync::Result<impl io::AsyncRead> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
         log::trace!("reading {fs_path}");
@@ -88,7 +93,12 @@ impl super::ReadFile for FileSystem {
 }
 
 impl super::MkDir for FileSystem {
-    async fn mkdir(&self, path: &Path, parents: bool) -> fsync::Result<()> {
+    async fn mkdir(
+        &self,
+        path: &Path,
+        parents: bool,
+        _progress: Option<&SharedProgress>,
+    ) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
         log::info!("mkdir {}{}", if parents { "-p " } else { "" }, fs_path);
@@ -106,6 +116,7 @@ impl super::CreateFile for FileSystem {
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
+        _progress: Option<&SharedProgress>,
     ) -> fsync::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_absolute());
         let fs_path = self.root.join(metadata.path().without_root().as_str());
@@ -125,6 +136,7 @@ impl super::WriteFile for FileSystem {
         &self,
         metadata: &fsync::Metadata,
         data: impl io::AsyncRead + Send,
+        _progress: Option<&SharedProgress>,
     ) -> fsync::Result<fsync::Metadata> {
         debug_assert!(metadata.path().is_absolute());
         let fs_path = self.root.join(metadata.path().without_root().as_str());
@@ -140,7 +152,7 @@ impl super::WriteFile for FileSystem {
 }
 
 impl super::Delete for FileSystem {
-    async fn delete(&self, path: &Path) -> fsync::Result<()> {
+    async fn delete(&self, path: &Path, _progress: Option<&SharedProgress>) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
         let fs_path = self.root.join(path.without_root().as_str());
         log::info!("deleting {fs_path}");
@@ -180,7 +192,7 @@ async fn map_metadata(
     metadata: &std::fs::Metadata,
     _fs_path: &FsPath,
 ) -> fsync::Result<fsync::Metadata> {
-    assert!(!metadata.is_symlink(), "symlinks are not supported");  
+    assert!(!metadata.is_symlink(), "symlinks are not supported");
     let metadata = /* if metadata.is_symlink() {
         let target = tokio::fs::read_link(fs_path).await?;
         let target = PathBuf::try_from(target)?;

@@ -105,7 +105,12 @@ impl DiffTree {
         self.nodes.iter()
     }
 
-    pub fn add_to_storage_check_conflict(&self, path: &Path, metadata: fsync::Metadata, loc: StorageLoc) ->bool{
+    pub fn add_to_storage_check_conflict(
+        &self,
+        path: &Path,
+        metadata: fsync::Metadata,
+        loc: StorageLoc,
+    ) -> bool {
         self.op_entry_check_conflict(path, |entry| entry.with(metadata, loc))
     }
 
@@ -311,17 +316,14 @@ where
         })
     }
 
-    fn local(
-        &self,
-        entry: fsync::Metadata,
-    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
+    fn local(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let mut children_names = Vec::new();
             let mut children_stat = stat::Tree::null();
 
             if let fsync::Metadata::Directory { path, .. } = &entry {
                 let mut joinvec = Vec::new();
-                let children = self.local.dir_entries(&path);
+                let children = self.local.dir_entries(&path, None);
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -347,17 +349,14 @@ where
         })
     }
 
-    fn remote(
-        &self,
-        entry: fsync::Metadata,
-    ) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
+    fn remote(&self, entry: fsync::Metadata) -> BoxFuture<'_, anyhow::Result<stat::Tree>> {
         Box::pin(async move {
             let mut child_names = Vec::new();
             let mut children_stat = stat::Tree::null();
 
             if let fsync::Metadata::Directory { path, .. } = &entry {
                 let mut joinvec = Vec::new();
-                let children = self.remote.dir_entries(path);
+                let children = self.remote.dir_entries(path, None);
                 tokio::pin!(children);
 
                 while let Some(child) = children.next().await {
@@ -394,7 +393,7 @@ where
     if !entry.is_dir() {
         return Ok(vec![]);
     }
-    let children = storage.dir_entries(entry.path());
+    let children = storage.dir_entries(entry.path(), None);
     let mut children = children.try_collect::<Vec<_>>().await?;
 
     children.sort_unstable_by(|a, b| a.name().cmp(b.name()));

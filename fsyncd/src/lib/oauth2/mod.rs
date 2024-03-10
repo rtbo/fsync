@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use fsync::Progress;
 use futures::prelude::*;
 use oauth2::{basic::BasicClient, HttpRequest, HttpResponse, TokenResponse};
 pub use oauth2::{AccessToken, RefreshToken, Scope};
@@ -10,12 +11,13 @@ mod server;
 mod token_cache;
 
 pub use self::token_cache::{CacheResult, TokenCache, TokenMap, TokenPersist};
-use crate::{error, PersistCache};
+use crate::{error, PersistCache, SharedProgress};
 
 pub trait GetToken: Send + Sync + 'static {
     fn get_token(
         &self,
         scopes: Vec<Scope>,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<AccessToken>> + Send;
 }
 
@@ -60,12 +62,19 @@ impl Client {
         &self,
         refresh_token: RefreshToken,
         scopes: Vec<Scope>,
+        progress: Option<&SharedProgress>,
     ) -> fsync::Result<AccessToken> {
+        log::info!("Refreshing token for scopes {:?}", scopes);
+
+        if let Some(progress) = progress {
+            progress.set(Progress::OAuth2Refresh);
+        }
+
         let token_response = self
             .inner
             .oauth2
             .exchange_refresh_token(&refresh_token)
-            .add_scopes(scopes.clone())
+            .add_scopes(scopes)
             .request_async(|req| async { self.http(req).await })
             .await
             .map_err(error::auth)?;
@@ -78,9 +87,22 @@ impl Client {
         Ok(access)
     }
 
+    async fn pkce_and_cache(
+        &self,
+        scopes: Vec<Scope>,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<AccessToken> {
+        let resp = self.fetch_token_pkce(scopes, progress).await?;
+        let mut cache = self.inner.cache.write().await;
+        cache.put(&resp);
+        Ok(resp.access_token().clone())
+    }
+
     async fn http(&self, req: HttpRequest) -> reqwest::Result<HttpResponse> {
         let method = req.method.clone();
         let url = req.url.clone();
+
+        log::trace!("OAUTH2 HTTP request: {method} {url}");
 
         let resp = self
             .inner
@@ -92,11 +114,14 @@ impl Client {
             .await?;
 
         let status_code = resp.status();
+
+        log::trace!("OAUTH2 HTTP response: {status_code}");
+
         let headers = resp.headers().to_owned();
         let body = resp.bytes().await?.to_vec();
 
         if !status_code.is_success() {
-            println!("{} {} received error {status_code}", method, url);
+            log::warn!("{method} {url} received error {status_code}");
             if let Ok(body) = std::str::from_utf8(&body) {
                 println!("{body}");
             }
@@ -111,19 +136,20 @@ impl Client {
 }
 
 impl GetToken for Client {
-    async fn get_token(&self, scopes: Vec<Scope>) -> fsync::Result<AccessToken> {
+    async fn get_token(
+        &self,
+        scopes: Vec<Scope>,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<AccessToken> {
         let cache = self.inner.cache.read().await.check(&scopes);
         match cache {
             CacheResult::Ok(access_token) => Ok(access_token),
             CacheResult::Expired(refresh_token, scopes) => {
-                self.refresh_token(refresh_token, scopes).await
+                self.refresh_token(refresh_token, scopes.clone(), progress)
+                    .or_else(|_err| self.pkce_and_cache(scopes, progress))
+                    .await
             }
-            CacheResult::None => {
-                let resp = self.fetch_token_pkce(scopes).await?;
-                let mut cache = self.inner.cache.write().await;
-                cache.put(&resp);
-                Ok(resp.access_token().clone())
-            }
+            CacheResult::None => self.pkce_and_cache(scopes, progress).await,
         }
     }
 }

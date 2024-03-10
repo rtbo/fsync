@@ -5,7 +5,7 @@ use fsync::{
 use futures::{Future, Stream};
 use tokio::io;
 
-use crate::Shutdown;
+use crate::{SharedProgress, Shutdown};
 
 pub mod cache;
 pub mod drive;
@@ -13,19 +13,28 @@ pub mod fs;
 pub mod id;
 
 pub trait DirEntries {
-    fn dir_entries(&self, parent_path: &Path)
-        -> impl Stream<Item = fsync::Result<Metadata>> + Send;
+    fn dir_entries(
+        &self,
+        parent_path: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> impl Stream<Item = fsync::Result<Metadata>> + Send;
 }
 
 pub trait ReadFile {
     fn read_file(
         &self,
         path: PathBuf,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<impl io::AsyncRead + Send>> + Send;
 }
 
 pub trait MkDir {
-    fn mkdir(&self, path: &Path, parents: bool) -> impl Future<Output = fsync::Result<()>> + Send;
+    fn mkdir(
+        &self,
+        path: &Path,
+        parents: bool,
+        progress: Option<&SharedProgress>,
+    ) -> impl Future<Output = fsync::Result<()>> + Send;
 }
 
 pub trait CreateFile {
@@ -33,6 +42,7 @@ pub trait CreateFile {
         &self,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
@@ -41,6 +51,7 @@ pub trait WriteFile {
         &self,
         metadata: &Metadata,
         data: impl io::AsyncRead + Send,
+        progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
@@ -48,7 +59,11 @@ pub trait WriteFile {
 pub trait Delete {
     /// Deletes the file or folder pointed to by `path`.
     /// Only empty folders can be deleted.
-    fn delete(&self, path: &Path) -> impl Future<Output = fsync::Result<()>> + Send;
+    fn delete(
+        &self,
+        path: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> impl Future<Output = fsync::Result<()>> + Send;
 }
 
 /// A trait for path-based storage

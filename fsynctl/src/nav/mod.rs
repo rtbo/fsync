@@ -13,6 +13,7 @@ use fsync::{
 };
 use futures::{future, FutureExt, StreamExt};
 use tarpc::context;
+use tokio::time;
 
 use crate::utils;
 
@@ -104,30 +105,60 @@ async fn navigate(client: Arc<FsyncClient>, path: PathBuf) -> anyhow::Result<()>
     }
 
     let mut nav = Navigator::new(client, &path).await?;
-
+    let mut render_state = render::State::default();
     let mut reader = EventStream::new();
+    let mut last_frame = time::Instant::now();
+    let frame_dur = Duration::from_micros(((1.0 / render::ANIM_TPS as f64) * 1_000_000.0) as u64);
 
     loop {
-        nav.render()?;
+        let animate = nav.render(&mut render_state).await?;
 
-        // let delay = time::sleep(Duration::from_millis(500));
         let event = reader.next();
 
-        let res = tokio::select! {
-            // _ = delay => Continue,
-            maybe_event = event => {
-                match maybe_event {
-                    Some(Ok(event)) => {
-                        nav.handle_event(event).await?
+        let res = if animate {
+            let elapsed = time::Instant::now() - last_frame;
+            let duration = if elapsed >= frame_dur {
+                Duration::from_millis(0)
+            } else {
+                frame_dur - elapsed
+            };
+            let delay = time::sleep(duration);
+
+            tokio::select! {
+                _ = delay => Continue,
+                maybe_event = event => {
+                    match maybe_event {
+                        Some(Ok(event)) => nav.handle_event(event).await?,
+                        _ => Continue,
                     }
-                    _ => Continue,
                 }
+            }
+        } else {
+            match event.await {
+                Some(Ok(event)) => nav.handle_event(event).await?,
+                _ => Continue,
             }
         };
 
         if res == Exit {
             break;
         }
+
+        last_frame = time::Instant::now();
+
+        let (node, children) = node_and_children(&nav.client, &nav.path).await?;
+        nav.node = node;
+        nav.children = children;
+        if let Some(set_cur_child) = &nav.set_cur_child {
+            nav.cur_child = nav
+                .children
+                .iter()
+                .position(|n| n.name().unwrap() == set_cur_child)
+                .unwrap();
+        }
+        nav.set_cur_child = None;
+        nav.check_cur_node();
+        nav.check_cur_child();
     }
 
     Ok(())
@@ -154,9 +185,7 @@ async fn node_and_children(
     Ok((node, children?))
 }
 
-// use std::fs::File;
-// use std::io::Write;
-// use std::sync::Mutex;
+// use std::{fs::File, io::Write, sync::Mutex};
 
 // static LOG_FILE: Mutex<Option<File>> = Mutex::new(None);
 
@@ -181,10 +210,14 @@ struct Navigator {
     focus: bool,
     menu: Menu,
 
-    node: EntryNode,
-    children: Vec<EntryNode>,
+    path: PathBuf,
     cur_child: usize,
     detailed_child: Option<usize>,
+
+    // cache data
+    node: EntryNode,
+    children: Vec<EntryNode>,
+    set_cur_child: Option<String>,
 }
 
 impl Navigator {
@@ -198,13 +231,18 @@ impl Navigator {
             focus: true,
             menu: Menu::new(),
 
-            node,
-            children,
+            path: path.to_owned(),
             cur_child: 0,
             detailed_child: None,
+
+            node,
+            children,
+            set_cur_child: None,
         };
+
         nav.check_cur_node();
         nav.check_cur_child();
+
         Ok(nav)
     }
 
