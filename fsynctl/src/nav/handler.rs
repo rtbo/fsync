@@ -1,5 +1,5 @@
 use crossterm::event;
-use fsync::{path::Path, StorageDir};
+use fsync::StorageDir;
 
 use super::{menu::Action, render::Size};
 use crate::nav::ctx;
@@ -50,8 +50,6 @@ impl super::Navigator {
     async fn execute_action(&mut self, action: Action) -> anyhow::Result<HandlerResult> {
         use HandlerResult::*;
 
-        let mut operated = false;
-
         match action {
             Action::Exit => return Ok(Exit),
             Action::Down => {
@@ -74,10 +72,10 @@ impl super::Navigator {
                 }
             }
             Action::Enter => {
-                self.open_cur_child().await?;
+                self.open_cur_child();
             }
             Action::Back => {
-                self.open_parent().await?;
+                self.open_parent();
             }
             Action::Sync => {
                 let child = self.cur_child_node();
@@ -95,57 +93,26 @@ impl super::Navigator {
                             .await
                             .unwrap()?;
                         // super::log_msg(&format!("Progress of {path}: {:?}", progress));
-                        operated = true;
                     }
                 }
             }
             Action::SyncAll => {}
         }
 
-        if operated {
-            let path = self.node.entry().path().to_owned();
-            let (node, children) = super::node_and_children(&self.client, &path).await?;
-            self.node = node;
-            self.children = children;
-        }
-
         Ok(Continue)
     }
 
-    async fn open_entry(&mut self, path: &Path) -> anyhow::Result<()> {
-        let (node, children) = super::node_and_children(&self.client, &path).await?;
-        self.node = node;
-        self.children = children;
-        self.check_cur_node();
-        Ok(())
-    }
-
-    async fn open_parent(&mut self) -> anyhow::Result<()> {
+    fn open_parent(&mut self) {
         if self.node.path().is_root() {
-            return Ok(());
+            return;
         }
-        let cur_name = self.node.name().unwrap().to_owned();
-        let parent_path = self.node.path().parent().unwrap().to_owned();
-
-        self.open_entry(&parent_path).await?;
-        self.cur_child = self
-            .children
-            .iter()
-            .position(|n| n.name().unwrap() == &cur_name)
-            .unwrap();
-        self.check_cur_child();
-
-        Ok(())
+        self.set_cur_child = Some(self.node.name().unwrap().to_owned());
+        self.path = self.node.path().parent().unwrap().to_owned();
     }
 
-    async fn open_cur_child(&mut self) -> anyhow::Result<()> {
-        let path = self.children[self.cur_child].path().to_owned();
-
-        self.open_entry(&path).await?;
+    fn open_cur_child(&mut self) {
+        self.path = self.children[self.cur_child].path().to_owned();
         self.cur_child = 0;
-        self.check_cur_child();
-
-        Ok(())
     }
 
     pub fn check_cur_child(&mut self) {

@@ -117,7 +117,12 @@ async fn navigate(client: Arc<FsyncClient>, path: PathBuf) -> anyhow::Result<()>
 
         let res = if animate {
             let elapsed = time::Instant::now() - last_frame;
-            let delay = time::sleep(frame_dur - elapsed);
+            let duration = if elapsed >= frame_dur {
+                Duration::from_millis(0)
+            } else {
+                frame_dur - elapsed
+            };
+            let delay = time::sleep(duration);
 
             tokio::select! {
                 _ = delay => Continue,
@@ -140,6 +145,20 @@ async fn navigate(client: Arc<FsyncClient>, path: PathBuf) -> anyhow::Result<()>
         }
 
         last_frame = time::Instant::now();
+
+        let (node, children) = node_and_children(&nav.client, &nav.path).await?;
+        nav.node = node;
+        nav.children = children;
+        if let Some(set_cur_child) = &nav.set_cur_child {
+            nav.cur_child = nav
+                .children
+                .iter()
+                .position(|n| n.name().unwrap() == set_cur_child)
+                .unwrap();
+        }
+        nav.set_cur_child = None;
+        nav.check_cur_node();
+        nav.check_cur_child();
     }
 
     Ok(())
@@ -191,10 +210,14 @@ struct Navigator {
     focus: bool,
     menu: Menu,
 
-    node: EntryNode,
-    children: Vec<EntryNode>,
+    path: PathBuf,
     cur_child: usize,
     detailed_child: Option<usize>,
+
+    // cache data
+    node: EntryNode,
+    children: Vec<EntryNode>,
+    set_cur_child: Option<String>,
 }
 
 impl Navigator {
@@ -208,13 +231,18 @@ impl Navigator {
             focus: true,
             menu: Menu::new(),
 
-            node,
-            children,
+            path: path.to_owned(),
             cur_child: 0,
             detailed_child: None,
+
+            node,
+            children,
+            set_cur_child: None,
         };
+
         nav.check_cur_node();
         nav.check_cur_child();
+
         Ok(nav)
     }
 
