@@ -13,6 +13,7 @@ use fsync::{
 };
 use futures::{future, FutureExt, StreamExt};
 use tarpc::context;
+use tokio::time;
 
 use crate::utils;
 
@@ -104,30 +105,41 @@ async fn navigate(client: Arc<FsyncClient>, path: PathBuf) -> anyhow::Result<()>
     }
 
     let mut nav = Navigator::new(client, &path).await?;
-
+    let mut render_state = render::State::default();
     let mut reader = EventStream::new();
+    let mut last_frame = time::Instant::now();
+    let frame_dur = Duration::from_micros(((1.0 / render::ANIM_TPS as f64) * 1_000_000.0) as u64);
 
     loop {
-        nav.render()?;
+        let animate = nav.render(&mut render_state).await?;
 
-        // let delay = time::sleep(Duration::from_millis(500));
         let event = reader.next();
 
-        let res = tokio::select! {
-            // _ = delay => Continue,
-            maybe_event = event => {
-                match maybe_event {
-                    Some(Ok(event)) => {
-                        nav.handle_event(event).await?
+        let res = if animate {
+            let elapsed = time::Instant::now() - last_frame;
+            let delay = time::sleep(frame_dur - elapsed);
+
+            tokio::select! {
+                _ = delay => Continue,
+                maybe_event = event => {
+                    match maybe_event {
+                        Some(Ok(event)) => nav.handle_event(event).await?,
+                        _ => Continue,
                     }
-                    _ => Continue,
                 }
+            }
+        } else {
+            match event.await {
+                Some(Ok(event)) => nav.handle_event(event).await?,
+                _ => Continue,
             }
         };
 
         if res == Exit {
             break;
         }
+
+        last_frame = time::Instant::now();
     }
 
     Ok(())
