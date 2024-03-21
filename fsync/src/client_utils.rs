@@ -1,12 +1,10 @@
-use std::{
-    net::{IpAddr, Ipv6Addr}, sync::Arc
-};
+use std::net::{IpAddr, Ipv6Addr};
 
 use anyhow::Context;
 use futures::future;
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 
-use crate::{tree::EntryNode, path::Path, FsyncClient};
+use crate::{path::Path, tree::EntryNode, FsyncClient};
 
 pub fn ctx() -> context::Context {
     context::current()
@@ -64,15 +62,17 @@ impl Instance {
     ///
     /// # Panics
     /// Panic if this instance is not running.
-    pub async fn make_client(&self) -> anyhow::Result<Arc<FsyncClient>> {
+    pub async fn make_client(&self) -> anyhow::Result<FsyncClient> {
         let port = self.port.expect("This instance should be running");
         let addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), port);
         let mut transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default);
         transport.config_mut().max_frame_length(usize::MAX);
 
-        Ok(Arc::new(
-            FsyncClient::new(client::Config::default(), transport.await?).spawn(),
-        ))
+        Ok(FsyncClient::new(client::Config::default(), transport.await?).spawn())
+    }
+
+    pub fn into_name(self) -> String {
+        self.name
     }
 }
 
