@@ -734,14 +734,14 @@ impl Path {
     }
 
     /// Checks whether self is an ancestor of the other path
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use fsync::path::{Path, PathBuf};
-    /// 
+    ///
     /// assert!(Path::new("/a/b").is_ancestor_of(Path::new("/a/b/c")));
     /// assert!(Path::new("/a").is_ancestor_of(Path::new("/a/b/c")));
-    /// 
+    ///
     /// assert!(!Path::new("/a/b/c").is_ancestor_of(Path::new("/a/b/d")));
     /// assert!(!Path::new("/a/b/c").is_ancestor_of(Path::new("/a/b")));
     /// assert!(!Path::new("/a/b").is_ancestor_of(Path::new("/a/b")));
@@ -761,7 +761,6 @@ impl Path {
             otherc = other.next();
         }
         return otherc.is_some();
-        
     }
 }
 

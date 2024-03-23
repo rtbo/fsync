@@ -220,7 +220,10 @@ where
                 break;
             }
         }
-        log::trace!("Exiting progress poll loop after {}µs", start.elapsed().as_micros());
+        log::trace!(
+            "Exiting progress poll loop after {}µs",
+            start.elapsed().as_micros()
+        );
     }
 
     async fn add_progress(&self, path: PathBuf, progress: SharedProgress) {
@@ -570,7 +573,11 @@ where
         res
     }
 
-    async fn progresses(self, _: Context, path: PathBuf) -> fsync::Result<Vec<(PathBuf, fsync::Progress)>> {
+    async fn progresses(
+        self,
+        _: Context,
+        path: PathBuf,
+    ) -> fsync::Result<Vec<(PathBuf, fsync::Progress)>> {
         let res = self.inner.progresses(&path).await;
         log::trace!(target: "RPC", "Fsync::all_progress() -> {res:#?}");
         res
