@@ -12,6 +12,7 @@ tauri-build = { version = "1", features = [] }
 
 [dependencies]
 fsync = { path = "../../../fsync" }
+fsync-client = { path = "../../lib" }
 
 anyhow = { workspace = true }
 dirs = { workspace = true }

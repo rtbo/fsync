@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use fsync::{client_utils::Instance, path::FsPathBuf, FsyncClient};
+use fsync::{path::FsPathBuf, FsyncClient};
+use fsync_client::Instance;
 use serde::{Deserialize, Serialize};
 use tokio::{fs, sync::Mutex};
 

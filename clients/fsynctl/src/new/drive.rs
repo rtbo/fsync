@@ -1,9 +1,10 @@
 use std::str;
 
 use fsync::{
-    cipher, oauth2,
+    oauth2,
     path::{FsPathBuf, PathBuf},
 };
+use fsync_client::cipher;
 use inquire::{Editor, Select, Text};
 
 pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {

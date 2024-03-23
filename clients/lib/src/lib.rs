@@ -1,3 +1,6 @@
+mod instance;
+
 pub mod cipher;
-pub mod instance;
 pub mod utils;
+
+pub use instance::Instance;

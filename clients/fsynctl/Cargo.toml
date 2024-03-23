@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 fsync = { path = "../../fsync" }
+fsync-client = { path = "../lib" }
 
 anyhow = { workspace = true }
 byte-unit = { workspace = true }
