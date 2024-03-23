@@ -122,7 +122,7 @@ async fn cipher_app_secret() -> anyhow::Result<()> {
         let output = path.with_file_name("google_secret.cipher.b64");
         let secret = fsync::oauth2::load_google_secret(&path).await?;
         let secret = serde_json::to_string(&secret)?;
-        let encoded = fsync::cipher::cipher_text(&secret);
+        let encoded = cipher::cipher_text(&secret);
         tokio::fs::write(&output, &encoded).await?;
     }
     Ok(())
