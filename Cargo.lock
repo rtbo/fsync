@@ -1182,6 +1182,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "fsync-client"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "anyhow",
+ "base64 0.21.5",
+ "ctr",
+ "fsync",
+ "futures",
+ "rand 0.8.5",
+ "tarpc",
+]
+
+[[package]]
 name = "fsyncd"
 version = "0.1.0"
 dependencies = [
