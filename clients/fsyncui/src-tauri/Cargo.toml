@@ -11,7 +11,7 @@ edition = { workspace = true }
 tauri-build = { version = "1", features = [] }
 
 [dependencies]
-fsync = { path = "../../fsync" }
+fsync = { path = "../../../fsync" }
 
 anyhow = { workspace = true }
 dirs = { workspace = true }
