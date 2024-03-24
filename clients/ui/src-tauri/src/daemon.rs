@@ -7,13 +7,8 @@ use serde::{Deserialize, Serialize};
 use tokio::{fs, sync::Mutex};
 
 #[tauri::command]
-pub async fn connected(daemon: tauri::State<'_, Daemon>) -> Result<bool, ()> {
+pub async fn daemon_connected(daemon: tauri::State<'_, Daemon>) -> Result<bool, ()> {
     Ok(daemon.connected().await)
-}
-
-#[tauri::command]
-async fn _get_all_instances(daemon: tauri::State<'_, Daemon>) -> fsync::Result<Vec<String>> {
-    Ok(daemon._all_instances().await)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,16 +51,16 @@ impl Persistent {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct Inner {
-    client: Option<(String, FsyncClient)>,
-    all_instances: Vec<String>,
+    instance_name: String,
+    client: FsyncClient,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Daemon {
     // daemon instance name and client name
-    inner: Arc<Mutex<Inner>>,
+    inner: Arc<Mutex<Option<Inner>>>,
 }
 
 impl Daemon {
@@ -78,31 +73,26 @@ impl Daemon {
 
     pub async fn connected(&self) -> bool {
         let inner = self.inner.lock().await;
-        inner.client.is_some()
+        inner.is_some()
     }
 
     pub async fn _instance_name(&self) -> Option<String> {
         let inner = self.inner.lock().await;
-        inner.client.as_ref().map(|(name, _)| name.clone())
+        inner.as_ref().map(|inner| inner.instance_name.clone())
     }
 
     pub async fn _client(&self) -> Option<fsync::FsyncClient> {
         let inner = self.inner.lock().await;
-        inner.client.as_ref().map(|(_, client)| client.clone())
-    }
-
-    pub async fn _all_instances(&self) -> Vec<String> {
-        let inner = self.inner.lock().await;
-        inner.all_instances.clone()
+        inner.as_ref().map(|inner| inner.client.clone())
     }
 
     pub async fn connect(&self, name: Option<&str>) -> anyhow::Result<()> {
         let instances = Instance::get_all()?;
         let instance = match name {
-            Some(name) => instances.iter().filter(|i| i.name() == name).next(),
+            Some(name) => instances.into_iter().filter(|i| i.name() == name).next(),
             None => {
                 if instances.len() == 1 {
-                    instances.iter().next()
+                    instances.into_iter().next()
                 } else {
                     None
                 }
@@ -112,12 +102,13 @@ impl Daemon {
             instance.with_context(|| format!("Could not find running daemon instance"))?;
 
         let client = instance.make_client().await?;
-        let instance_name = instance.name().to_string();
-        let all_instances: Vec<String> = instances.into_iter().map(|i| i.into_name()).collect();
+        let instance_name = instance.into_name();
 
         let mut inner = self.inner.lock().await;
-        inner.client = Some((instance_name, client));
-        inner.all_instances = all_instances;
+        *inner = Some(Inner {
+            instance_name,
+            client,
+        });
 
         Ok(())
     }

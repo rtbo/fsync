@@ -5,6 +5,7 @@ use daemon::Daemon;
 use serde::Serialize;
 
 mod daemon;
+mod instances;
 
 #[derive(Debug, Clone, Serialize)]
 struct AutoConnectDone();
@@ -24,7 +25,10 @@ async fn main() {
 
     let app = tauri::Builder::default()
         .manage(daemon)
-        .invoke_handler(tauri::generate_handler![daemon::connected])
+        .invoke_handler(tauri::generate_handler![
+            instances::instances_get_all,
+            daemon::daemon_connected
+        ])
         .build(tauri::generate_context!())
         .expect("tauri builder should not fail");
 

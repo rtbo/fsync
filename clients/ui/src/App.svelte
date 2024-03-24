@@ -1,11 +1,12 @@
-<script lang="ts">
+<script>
   import { invoke } from "@tauri-apps/api/tauri";
   import { onMount } from "svelte";
+    import Connect from "./Connect.svelte";
 
   let connected = false;
 
   onMount(async () => {
-    connected = await invoke("connected");
+    connected = await invoke("daemon_connected");
   });
 </script>
 
@@ -17,6 +18,7 @@
       Connected
     {:else}
       Not connected
+      <Connect />
     {/if}
   </div>
 </main>

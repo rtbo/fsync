@@ -1254,6 +1254,7 @@ dependencies = [
  "dirs",
  "fsync",
  "fsync-client",
+ "futures",
  "serde",
  "serde_json",
  "tauri",

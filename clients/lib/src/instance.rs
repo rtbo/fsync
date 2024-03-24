@@ -14,7 +14,7 @@ impl Instance {
         &self.name
     }
 
-    pub fn is_running(&self) -> bool {
+    pub fn running(&self) -> bool {
         self.port.is_some()
     }
 
@@ -38,6 +38,10 @@ impl Instance {
                 continue;
             }
             let name = entry.file_name().to_owned();
+            let cfg_file = loc::inst::config_file(&name)?;
+            if !cfg_file.exists() {
+                continue;
+            }
             let mut port = None;
             let port_path = loc::inst::runtime_port_file(&name)?;
             if port_path.exists() && port_path.is_file() {
@@ -66,5 +70,13 @@ impl Instance {
 
     pub fn into_name(self) -> String {
         self.name
+    }
+
+    pub async fn load_config(&self) -> anyhow::Result<fsync::Config> {
+        use fsync::loc;
+
+        let path = loc::inst::config_file(self.name())?;
+        let cfg = fsync::Config::load_from_file(&path).await?;
+        Ok(cfg)
     }
 }
