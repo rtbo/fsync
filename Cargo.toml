@@ -3,8 +3,8 @@ members = [
     "fsync",
     "fsyncd",
     "clients/lib",
-    "clients/fsynctl",
-    "clients/fsyncui/src-tauri",
+    "clients/ctl",
+    "clients/ui/src-tauri",
     "tests",
 ]
 resolver = "2"
