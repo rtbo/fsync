@@ -1,6 +1,6 @@
 [package]
 name = "fsyncui"
-description = "A Tauri App"
+description = "File Synchronization Service"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }

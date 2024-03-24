@@ -19,7 +19,7 @@
     },
     "windows": [
       {
-        "title": "fsyncui",
+        "title": "FSync",
         "width": 800,
         "height": 600
       }
@@ -30,7 +30,7 @@
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "com.tauri.dev",
+      "identifier": "org.fsync",
       "icon": [
       ]
     }

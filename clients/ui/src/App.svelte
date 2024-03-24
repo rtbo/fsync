@@ -1,7 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/tauri";
   import { onMount } from "svelte";
-    import Connect from "./Connect.svelte";
+  import Connect from "./Connect.svelte";
 
   let connected = false;
 
@@ -10,15 +10,13 @@
   });
 </script>
 
-<main class="container">
-  <h1>Welcome to Fsync!</h1>
-
-  <div class="row">
+<main class="container mx-auto flex h-full">
     {#if connected}
       Connected
     {:else}
-      Not connected
-      <Connect />
+      <div class="mx-auto">
+        <p class="text-center text-xl my-12">Not connected</p>
+        <Connect />
+      </div>
     {/if}
-  </div>
 </main>

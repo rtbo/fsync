@@ -1,0 +1,36 @@
+{
+    "folders": [
+        {
+            "path": "fsync",
+            "name": "fsync core library",
+        },
+        {
+            "path": "fsyncd",
+            "name": "fsync daemon",
+        },
+        {
+            "path": "clients/lib",
+            "name": "client library",
+        },
+        {
+            "path": "clients/ctl",
+            "name": "fsynctl CLI client",
+        },
+        {
+            "path": "clients/ui",
+            "name": "Tauri+Svelte client",
+        },
+        {
+            "path": "tests",
+        },
+        {
+            "path": ".",
+            "name": "root",
+        },
+    ],
+    "settings": {
+        "files.associations": {
+            "*.css": "tailwindcss",
+        }
+    }
+}

@@ -15,12 +15,15 @@ impl Instances {
             .into_iter()
             .map(|i| async {
                 let daemon_running = i.running();
-                let provider = i.load_config().await?.provider.into();
+                let config = i.load_config().await?;
+                let provider = config.provider.into();
+                let local_dir = config.local_dir;
                 let name = i.into_name();
                 Ok::<_, anyhow::Error>(Instance {
                     name,
-                    provider,
                     daemon_running,
+                    provider,
+                    local_dir,
                 })
             });
         let insts = futures::future::try_join_all(insts).await?;
@@ -31,6 +34,7 @@ impl Instances {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Instance {
     name: String,
-    provider: fsync::Provider,
     daemon_running: bool,
+    provider: fsync::Provider,
+    local_dir: fsync::path::FsPathBuf,
 }
