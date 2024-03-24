@@ -102,7 +102,7 @@ impl fmt::Display for Location {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Provider {
     GoogleDrive,
     LocalFs,
@@ -114,6 +114,15 @@ impl fmt::Display for Provider {
             Provider::GoogleDrive => f.write_str("Google Drive"),
             Provider::LocalFs => f.write_str("Local FileSystem"),
         }
+    }
+}
+
+impl From<config::ProviderConfig> for Provider {
+    fn from(value: config::ProviderConfig) -> Self {
+        match value {
+            config::ProviderConfig::GoogleDrive(..) => Provider::GoogleDrive,
+            config::ProviderConfig::LocalFs(..) => Provider::LocalFs,
+        } 
     }
 }
 
