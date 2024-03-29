@@ -53,8 +53,8 @@ impl Persistent {
 
 #[derive(Debug, Clone)]
 struct Inner {
-    instance_name: String,
-    client: FsyncClient,
+    _instance_name: String,
+    _client: FsyncClient,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -78,16 +78,17 @@ impl Daemon {
 
     pub async fn _instance_name(&self) -> Option<String> {
         let inner = self.inner.lock().await;
-        inner.as_ref().map(|inner| inner.instance_name.clone())
+        inner.as_ref().map(|inner| inner._instance_name.clone())
     }
 
     pub async fn _client(&self) -> Option<fsync::FsyncClient> {
         let inner = self.inner.lock().await;
-        inner.as_ref().map(|inner| inner.client.clone())
+        inner.as_ref().map(|inner| inner._client.clone())
     }
 
     pub async fn connect(&self, name: Option<&str>) -> anyhow::Result<()> {
-        let instances = Instance::get_all()?;
+        let mut instances = Instance::get_all()?;
+        instances.retain(|i| i.running());
         let instance = match name {
             Some(name) => instances.into_iter().filter(|i| i.name() == name).next(),
             None => {
@@ -106,8 +107,8 @@ impl Daemon {
 
         let mut inner = self.inner.lock().await;
         *inner = Some(Inner {
-            instance_name,
-            client,
+            _instance_name: instance_name,
+            _client: client,
         });
 
         Ok(())
