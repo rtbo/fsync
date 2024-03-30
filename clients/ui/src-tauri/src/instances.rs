@@ -10,7 +10,7 @@ pub async fn instances_get_all() -> fsync::Result<Vec<Instance>> {
 }
 
 #[tauri::command]
-pub async fn instances_create_config(name: String, local_dir: PathBuf, opts: fsync_client::new::ProviderOpts) -> fsync::Result<()> {
+pub async fn instances_create(name: String, local_dir: PathBuf, opts: fsync_client::new::ProviderOpts) -> fsync::Result<()> {
     println!("{name}");
     println!("{local_dir:#?}");
     println!("{opts:#?}");

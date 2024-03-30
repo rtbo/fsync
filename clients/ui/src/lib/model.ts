@@ -7,11 +7,11 @@ export const providers: SelectOptionType<types.Provider>[] = [
   { value: 'fs', name: 'Local Filesystem' }
 ];
 
-export async function newCreateConfig(name: string, localDir: string, opts: types.ProviderOpts) {
+export async function instancesCreate(name: string, localDir: string, opts: types.ProviderOpts) {
   const args = {
     name,
     localDir,
     opts
   };
-  invoke('instances_create_config', args);
+  invoke('instances_create', args);
 }

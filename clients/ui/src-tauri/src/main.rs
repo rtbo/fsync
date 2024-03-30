@@ -27,7 +27,7 @@ async fn main() {
         .manage(daemon)
         .invoke_handler(tauri::generate_handler![
             instances::instances_get_all,
-            instances::instances_create_config,
+            instances::instances_create,
             daemon::daemon_connected
         ])
         .build(tauri::generate_context!())
