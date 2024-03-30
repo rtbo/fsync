@@ -1,40 +1,121 @@
 <script lang="ts">
-  import { providers } from '$lib/model';
-  import { Button, Label, Select } from 'flowbite-svelte';
+  import { providers, newCreateConfig } from '$lib/model';
+  import type types from '$lib/types';
+  import { Button, ButtonGroup, Input, Spinner, Label, Select } from 'flowbite-svelte';
+  import { open } from '@tauri-apps/api/dialog';
+  import { goto } from '$app/navigation';
 
-  let newProvider = 'drive';
+  let name = '';
+
+  let localDir = '';
+  async function chooseLocalDir() {
+    let res = await open({
+      title: 'Choose Local Directory',
+      directory: true,
+      multiple: false
+    });
+    if (typeof res === 'string') {
+      localDir = res;
+    }
+  }
+
+  let provider: types.Provider = 'drive';
 
   let driveSecret = 'builtin';
-  let driveSecrets = [
-    { value: 'builtin', name: 'Fsync Built-in client' },
-    { value: 'json', name: 'JSON client file' },
-    { value: 'creds', name: 'Client ID and Secret' }
-  ];
+  let driveSecrets = [{ value: 'builtin', name: 'Fsync Built-in client' }];
+
+  let fsRemoteDir = '';
+  async function chooseFsRemoteDir() {
+    let res = await open({
+      title: 'Choose Local Directory',
+      directory: true,
+      multiple: false
+    });
+    if (typeof res === 'string') {
+      fsRemoteDir = res;
+    }
+  }
+
+  let spinning = false;
+
+  function makeOpts(): types.ProviderOpts {
+    if (provider === 'drive') {
+      return {
+        drive: {
+          root: null,
+          secret: 'builtin'
+        }
+      };
+    } else {
+      // provider === 'fs'
+      return {
+        fs: fsRemoteDir
+      };
+    }
+  }
+
+  async function create() {
+    spinning = true;
+
+    await newCreateConfig(name, localDir, makeOpts());
+    goto('/connect');
+
+    spinning = false;
+  }
 </script>
 
-<div class="mx-auto my-auto flex flex-col">
+<div class="mx-auto my-auto">
   <h1 class="mb-7 text-3xl text-center">Create Instance</h1>
-  <div>
-    <Label>
-      Provider
-      <Select
-        placeholder="Choose a provider..."
-        class="mt-2"
-        items={providers}
-        bind:value={newProvider}
-      ></Select>
-    </Label>
-    {#if newProvider == 'GoogleDrive'}
-      <Label class="my-3">
-        How should FSync connect to Drive?
+  {#if spinning}
+    <div class="min-h-96 flex flex-col items-center">
+      <Spinner size="16" class="mt-24" />
+    </div>
+  {:else}
+    <div class="min-h-96">
+      <Label class="self-stretch mt-4">
+        Pick a name
+        <Input class="mt-2" bind:value={name}></Input>
+      </Label>
+      <Label for="local-dir" class="self-stretch mt-4">
+        Local directory
+        <ButtonGroup class="w-full mt-2">
+          <Input id="local-dir" bind:value={localDir} />
+          <Button color="blue" on:click={chooseLocalDir}>Browse</Button>
+        </ButtonGroup>
+      </Label>
+      <Label class="self-stretch mt-4">
+        Provider
         <Select
           placeholder="Choose a provider..."
           class="mt-2"
-          items={driveSecrets}
-          bind:value={driveSecret}
+          items={providers}
+          bind:value={provider}
         ></Select>
       </Label>
-    {/if}
-  </div>
-  <Button class="self-end mt-2">Create</Button>
+      <div class="min-w-96 min-h-28 mt-4">
+        {#if provider === 'drive'}
+          <Label class="w-full">
+            How should FSync connect to Drive?
+            <Select
+              placeholder="Choose a provider..."
+              class="mt-2"
+              items={driveSecrets}
+              bind:value={driveSecret}
+            ></Select>
+          </Label>
+        {:else if provider === 'fs'}
+          <Label for="remote-dir" class="self-stretch">
+            "Remote" directory
+            <ButtonGroup class="w-full mt-2">
+              <Input id="remote-dir" bind:value={fsRemoteDir} />
+              <Button color="blue" on:click={chooseFsRemoteDir}>Browse</Button>
+            </ButtonGroup>
+          </Label>
+        {/if}
+      </div>
+      <div class="w-full flex flex-col items-end">
+        <Button class="mt-2" on:click={create}>Create</Button>
+      </div>
+    </div>
+  {/if}
 </div>

@@ -26,4 +26,5 @@ serde_json = { workspace = true }
 tarpc = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
+typescript-type-def = { workspace = true }
 webbrowser = { workspace = true }

@@ -27,12 +27,15 @@ async fn main() {
         .manage(daemon)
         .invoke_handler(tauri::generate_handler![
             instances::instances_get_all,
+            instances::instances_create_config,
             daemon::daemon_connected
         ])
         .build(tauri::generate_context!())
         .expect("tauri builder should not fail");
 
     let _ = auto_connect.await;
+
+    println!("Running app!");
 
     app.run(|_, _| ());
 }

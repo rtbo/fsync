@@ -8,6 +8,9 @@ edition = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
+fsync = { path = "../../../fsync" }
+fsync-client = { path = "../../lib" }
+typescript-type-def = { workspace = true }
 tauri-build = { version = "1", features = [] }
 
 [dependencies]
@@ -20,8 +23,9 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+typescript-type-def = { workspace = true }
 
-tauri = { version = "1", features = ["shell-open"] }
+tauri = { version = "1", features = ["dialog-open"] }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

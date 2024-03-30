@@ -4,6 +4,7 @@ use std::{cmp, fmt, str, time};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use typescript_type_def::TypeDef;
 
 pub mod config;
 pub mod loc;
@@ -102,9 +103,11 @@ impl fmt::Display for Location {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TypeDef)]
 pub enum Provider {
+    #[serde(rename = "drive")]
     GoogleDrive,
+    #[serde(rename = "fs")]
     LocalFs,
 }
 

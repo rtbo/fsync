@@ -1,10 +1,17 @@
+import { invoke } from '@tauri-apps/api';
+import type types from './types';
+import type { SelectOptionType } from 'flowbite-svelte';
 
-export enum Provider {
-  DRIVE = 'GoogleDrive',
-  FS = 'LocalFs'
-}
-
-export const providers = [
-  {value: Provider.DRIVE, name: 'Google Drive'},
-  {value: Provider.FS, name: 'Local Filesystem'},
+export const providers: SelectOptionType<types.Provider>[] = [
+  { value: 'drive', name: 'Google Drive' },
+  { value: 'fs', name: 'Local Filesystem' }
 ];
+
+export async function newCreateConfig(name: string, localDir: string, opts: types.ProviderOpts) {
+  const args = {
+    name,
+    localDir,
+    opts
+  };
+  invoke('instances_create_config', args);
+}
