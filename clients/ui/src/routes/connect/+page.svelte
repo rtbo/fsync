@@ -1,17 +1,11 @@
 <script lang="ts">
   import { selectName } from '$lib/utils';
-  import { instanceGetAll, providers } from '$lib/api';
+  import { providers } from '$lib/api';
   import { Button, Card } from 'flowbite-svelte';
   import { PlusOutline } from 'flowbite-svelte-icons';
-  import type types from '$lib/types';
+    import type { PageData } from './$types';
 
-  let instances: types.Instance[] = [];
-
-  async function updateInstances() {
-    instances = await instanceGetAll();
-  }
-
-  updateInstances();
+  export let data: PageData;
 </script>
 
 <div class="mx-auto my-auto">
@@ -19,7 +13,7 @@
 
   <div class="flex flex-col mb-4">
     <div class="grid-cols-3 sm:grid-cols-1 space-y-4">
-      {#each instances as instance}
+      {#each data.instances as instance}
         <Card size="lg" padding="sm">
           <div class="flex flex-row">
             <div>
