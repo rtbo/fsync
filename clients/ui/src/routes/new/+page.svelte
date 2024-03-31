@@ -1,10 +1,11 @@
 <script lang="ts">
   import { providers, instanceCreate } from '$lib/api';
   import type types from '$lib/types';
-  import { Button, ButtonGroup, Input, Spinner, Label, Select } from 'flowbite-svelte';
+  import { Button, ButtonGroup, Input, Spinner, Label, Select, Popover } from 'flowbite-svelte';
   import { AngleLeftOutline, ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
   import { open } from '@tauri-apps/api/dialog';
   import { goto, afterNavigate } from '$app/navigation';
+  import { homeDir, join } from '@tauri-apps/api/path';
 
   let previousPage: string = '';
   afterNavigate(({ from }) => {
@@ -17,6 +18,12 @@
   let name = '';
 
   let localDir = '';
+  let localDirPlaceholder = '';
+
+  homeDir()
+    .then((dir) => join(dir, 'drive'))
+    .then((dir) => (localDirPlaceholder = dir));
+
   async function chooseLocalDir() {
     let res = await open({
       title: 'Choose Local Directory',
@@ -85,17 +92,22 @@
     </div>
   {:else}
     <div class="min-h-96">
-      <Label class="self-stretch mt-4">
+      <Label class="self-stretch mt-4" id="i-name">
         Pick a name
-        <Input class="mt-2" bind:value={name}></Input>
+        <Input class="mt-2" bind:value={name} placeholder="drive"></Input>
       </Label>
-      <Label for="local-dir" class="self-stretch mt-4">
+
+      <Label for="local-dir" class="self-stretch mt-4" id="i-local-dir">
         Local directory
         <ButtonGroup class="w-full mt-2">
-          <Input id="local-dir" bind:value={localDir} />
+          <Input id="local-dir" bind:value={localDir} placeholder={localDirPlaceholder} />
           <Button color="blue" on:click={chooseLocalDir}>Browse</Button>
         </ButtonGroup>
       </Label>
+      <Popover class="w-40 text-sm font-light" triggeredBy="#i-local-dir" placement="right">
+        Directory on the local filesystem that will be synchronized with the remote drive.
+      </Popover>
+
       <Label class="self-stretch mt-4">
         Provider
         <Select
