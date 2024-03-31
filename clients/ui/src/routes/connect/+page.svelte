@@ -2,6 +2,7 @@
   import { selectName } from '$lib/utils';
   import { instanceGetAll, providers } from '$lib/api';
   import { Button, Card } from 'flowbite-svelte';
+  import { PlusOutline } from 'flowbite-svelte-icons';
   import type types from '$lib/types';
 
   let instances: types.Instance[] = [];
@@ -14,45 +15,46 @@
 </script>
 
 <div class="mx-auto my-auto">
-  <h1 class="my-7 text-3xl text-center">Connect to instance</h1>
+  <h1 class="mb-7 text-3xl text-center">Connect to instance</h1>
 
-  <div class="flex flex-col">
-    {#await instancesPromise}
-      ...Loading
-    {:then instances}
-      <div class="grid-cols-3 sm:grid-cols-1">
-        {#each instances as instance}
-          <Card>
-            <div class="flex flex-row">
-              <div>
-                <h5
-                  class="mb-2 text-2xl font-bold font-mono tracking-tight text-gray-900 dark:text-white"
-                >
-                  {instance.name}
-                  {#if instance.running}
-                    <span class="text-sm font-sans font-normal tracking-normal opacity-75"
-                      >(running)</span
-                    >
-                  {/if}
-                </h5>
-                <p class="mb-3 font-normal text-gray-700 dark:text-gray-300">
-                  <span class="underline">path:</span>
+  <div class="flex flex-col mb-4">
+    <div class="grid-cols-3 sm:grid-cols-1 space-y-4">
+      {#each instances as instance}
+        <Card size="lg" padding="sm">
+          <div class="flex flex-row">
+            <div>
+              <h5
+                class="mb-2 text-2xl font-bold font-mono tracking-tight text-gray-900 dark:text-white"
+              >
+                {instance.name}
+                {#if instance.running}
+                  <span class="text-sm font-sans font-normal tracking-normal opacity-75"
+                    >(running)</span
+                  >
+                {/if}
+              </h5>
+              <p class="mb-3 font-normal text-gray-700 dark:text-gray-300">
+                <span class="underline">path:</span>
                 <span class="font-mono">{instance.localDir}</span>
-                </p>
-                <p class="mb-3 font-normal text-gray-700 dark:text-gray-300">
-                  <span class="underline">provider:</span>
-                  {selectName(instance.provider, providers)}
-                </p>
-              </div>
-              <Button class="w-fit ml-3 self-center">Connect</Button>
+              </p>
+              <p class="mb-3 font-normal text-gray-700 dark:text-gray-300">
+                <span class="underline">provider:</span>
+                {selectName(instance.provider, providers)}
+              </p>
             </div>
-          </Card>
-        {/each}
-      </div>
-
-      <hr class="my-8 h-0.5 border-t-0 bg-neutral-100 dark:bg-white/10" />
-    {/await}
-
-    <Button href="/new" class="self-center">Create New</Button>
+            {#if instance.running}
+              <Button class="w-fit ml-3 self-center">Connect</Button>
+            {:else}
+              <span class="text-sm font-sans font-normal tracking-normal opacity-75">
+                (not running)
+              </span>
+            {/if}
+          </div>
+        </Card>
+      {/each}
+    </div>
   </div>
+  <Button href="/new" pill={true} size="lg" class="!p-2 fixed end-8 bottom-8">
+    <PlusOutline class="w-8 h-8" />
+  </Button>
 </div>

@@ -2,8 +2,18 @@
   import { providers, instanceCreate } from '$lib/api';
   import type types from '$lib/types';
   import { Button, ButtonGroup, Input, Spinner, Label, Select } from 'flowbite-svelte';
+  import { AngleLeftOutline, ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
   import { open } from '@tauri-apps/api/dialog';
-  import { goto } from '$app/navigation';
+  import { goto, afterNavigate } from '$app/navigation';
+  import { base } from '$app/paths';
+
+  let previousPage: string = base;
+  afterNavigate(({ from }) => {
+    previousPage = from?.url.pathname || previousPage;
+  });
+  async function back() {
+    goto(previousPage);
+  }
 
   let name = '';
 
@@ -117,8 +127,14 @@
           </Label>
         {/if}
       </div>
-      <div class="w-full flex flex-col items-end">
-        <Button class="mt-2" on:click={create}>Create</Button>
+      <div class="w-full flex flex-row justify-around">
+        <Button class="mt-2" color="dark" on:click={back}>
+          <AngleLeftOutline />&nbsp; Back
+        </Button>
+        <Button class="mt-2" on:click={create}>
+          <ArrowUpRightFromSquareOutline />
+          &nbsp; Create
+        </Button>
       </div>
     </div>
   {/if}
