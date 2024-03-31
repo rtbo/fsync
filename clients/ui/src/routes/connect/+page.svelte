@@ -1,13 +1,16 @@
-<script>
+<script lang="ts">
   import { selectName } from '$lib/utils';
-  import { providers } from '$lib/model';
+  import { instanceGetAll, providers } from '$lib/api';
   import { Button, Card } from 'flowbite-svelte';
-  import { invoke } from '@tauri-apps/api';
+  import type types from '$lib/types';
 
-  let instancesPromise = invoke('instances_get_all').then((data) => {
-    console.log(data);
-    return data;
-  });
+  let instances: types.Instance[] = [];
+
+  async function updateInstances() {
+    instances = await instanceGetAll();
+  }
+
+  updateInstances();
 </script>
 
 <div class="mx-auto my-auto">
@@ -34,7 +37,7 @@
                 </h5>
                 <p class="mb-3 font-normal text-gray-700 dark:text-gray-300">
                   <span class="underline">path:</span>
-                  <span class="font-mono">{instance.local_dir}</span>
+                <span class="font-mono">{instance.localDir}</span>
                 </p>
                 <p class="mb-3 font-normal text-gray-700 dark:text-gray-300">
                   <span class="underline">provider:</span>

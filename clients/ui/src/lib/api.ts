@@ -7,11 +7,15 @@ export const providers: SelectOptionType<types.Provider>[] = [
   { value: 'fs', name: 'Local Filesystem' }
 ];
 
-export async function instancesCreate(name: string, localDir: string, opts: types.ProviderOpts) {
+export async function instanceGetAll(): Promise<types.Instance[]> {
+  return invoke('instance_get_all');
+}
+
+export async function instanceCreate(name: string, localDir: string, opts: types.ProviderOpts) {
   const args = {
     name,
     localDir,
     opts
   };
-  invoke('instances_create', args);
+  invoke('instance_create', args);
 }

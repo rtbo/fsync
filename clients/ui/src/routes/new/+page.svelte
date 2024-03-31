@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { providers, instancesCreate } from '$lib/model';
+  import { providers, instanceCreate } from '$lib/api';
   import type types from '$lib/types';
   import { Button, ButtonGroup, Input, Spinner, Label, Select } from 'flowbite-svelte';
   import { open } from '@tauri-apps/api/dialog';
@@ -58,7 +58,7 @@
     spinning = true;
 
     try {
-      await instancesCreate(name, localDir, makeOpts());
+      await instanceCreate(name, localDir, makeOpts());
       goto('/connect');
     } catch (e) {
       //
