@@ -5,14 +5,13 @@
   import { AngleLeftOutline, ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
   import { open } from '@tauri-apps/api/dialog';
   import { goto, afterNavigate } from '$app/navigation';
-  import { base } from '$app/paths';
 
-  let previousPage: string = base;
+  let previousPage: string = '';
   afterNavigate(({ from }) => {
     previousPage = from?.url.pathname || previousPage;
   });
   async function back() {
-    goto(previousPage);
+    goto(previousPage ?? '/');
   }
 
   let name = '';
