@@ -2,10 +2,26 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use daemon::Daemon;
+use fsync::path::FsPathBuf;
+use fsync_client::ts;
 use serde::Serialize;
 
 mod daemon;
-mod instances;
+
+#[tauri::command]
+async fn instance_get_all() -> fsync::Result<Vec<ts::Instance>> {
+    ts::Instance::get_all().await
+}
+
+#[tauri::command]
+async fn instance_create(
+    name: String,
+    local_dir: FsPathBuf,
+    opts: fsync_client::config::ProviderOpts,
+) -> fsync::Result<()> {
+    fsync_client::config::create(&name, &local_dir, &opts).await?;
+    Ok(())
+}
 
 #[derive(Debug, Clone, Serialize)]
 struct AutoConnectDone();
@@ -26,8 +42,8 @@ async fn main() {
     let app = tauri::Builder::default()
         .manage(daemon)
         .invoke_handler(tauri::generate_handler![
-            instances::instances_get_all,
-            instances::instances_create,
+            instance_get_all,
+            instance_create,
             daemon::daemon_connected
         ])
         .build(tauri::generate_context!())

@@ -2,7 +2,7 @@ use fsync::{
     loc::{inst, user},
     path::FsPathBuf,
 };
-use fsync_client::new::ProviderOpts;
+use fsync_client::config::ProviderOpts;
 use inquire::{
     validator::{ErrorMessage, Validation},
     Confirm, CustomUserError, Select, Text,
@@ -69,7 +69,7 @@ pub async fn main(args: Args) -> anyhow::Result<()> {
 
     let opts = prompt_provider_opts(provider).await?;
 
-    let create_res = fsync_client::new::create_config(&name, &local_dir, &opts).await;
+    let create_res = fsync_client::config::create(&name, &local_dir, &opts).await;
     match create_res {
         Ok(()) => {
             println!("Success!");

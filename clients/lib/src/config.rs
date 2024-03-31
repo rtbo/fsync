@@ -1,8 +1,9 @@
-use crate::drive;
 use fsync::loc::inst;
 use fsync::path::{FsPath, FsPathBuf};
 use serde::{Deserialize, Serialize};
 use typescript_type_def::TypeDef;
+
+pub mod drive;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
 pub enum ProviderOpts {
@@ -34,7 +35,7 @@ impl TryFrom<&ProviderOpts> for fsync::ProviderConfig {
     }
 }
 
-pub async fn create_config(
+pub async fn create(
     instance_name: &str,
     local_dir: &FsPath,
     opts: &ProviderOpts,
