@@ -1,7 +1,6 @@
 <script lang="ts">
   import { daemonNodeAndChildren } from '$lib/model';
   import type types from '$lib/types';
-  import { dirname } from '@tauri-apps/api/path';
   import { Input } from 'flowbite-svelte';
   import {
     ChevronLeftOutline,
@@ -77,9 +76,14 @@
     }
   }
 
-  async function goUp() {
+  let goUp = async () => {};
+  // avoid static import bug
+  // https://github.com/tauri-apps/tauri/issues/9324
+  import('@tauri-apps/api/path').then(({ dirname }) => {
+    goUp = async () => {
     navigate(await dirname(path));
-  }
+    };
+  });
 
   async function goHome() {
     navigate('/');
