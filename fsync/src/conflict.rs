@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use typescript_type_def::TypeDef;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Conflict {
     LocalNewer,
     LocalOlder,
