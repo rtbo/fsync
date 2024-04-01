@@ -26,7 +26,6 @@ typescript-type-def = { workspace = true }
 
 tauri = { version = "1", features = [
     "dialog-open",
-    "path-all",
 ] }
 
 [features]

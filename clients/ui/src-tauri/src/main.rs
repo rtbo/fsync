@@ -9,6 +9,11 @@ use serde::Serialize;
 mod daemon;
 
 #[tauri::command]
+fn error_message(error: fsync::Error) -> String {
+    error.to_string()
+}
+
+#[tauri::command]
 async fn instance_get_all() -> fsync::Result<Vec<ts::Instance>> {
     ts::Instance::get_all().await
 }
@@ -42,16 +47,20 @@ async fn main() {
     let app = tauri::Builder::default()
         .manage(daemon)
         .invoke_handler(tauri::generate_handler![
+            error_message,
+
             instance_get_all,
             instance_create,
-            daemon::daemon_connected
+
+            daemon::daemon_connected,
+            daemon::daemon_instance_name,
+            daemon::daemon_connect,
+            daemon::daemon_node_and_children,
         ])
         .build(tauri::generate_context!())
         .expect("tauri builder should not fail");
 
     let _ = auto_connect.await;
-
-    println!("Running app!");
 
     app.run(|_, _| ());
 }

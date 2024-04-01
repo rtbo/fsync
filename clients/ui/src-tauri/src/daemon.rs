@@ -1,14 +1,49 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use fsync::{path::FsPathBuf, FsyncClient};
-use fsync_client::Instance;
+use fsync::{
+    path::{FsPathBuf, Path, PathBuf},
+    FsyncClient,
+};
+use fsync_client::{ts, utils::node_and_children, Instance};
 use serde::{Deserialize, Serialize};
 use tokio::{fs, sync::Mutex};
 
 #[tauri::command]
 pub async fn daemon_connected(daemon: tauri::State<'_, Daemon>) -> Result<bool, ()> {
     Ok(daemon.connected().await)
+}
+
+#[tauri::command]
+pub async fn daemon_instance_name(daemon: tauri::State<'_, Daemon>) -> Result<Option<String>, ()> {
+    Ok(daemon.instance_name().await)
+}
+
+#[tauri::command]
+pub async fn daemon_connect(
+    daemon: tauri::State<'_, Daemon>,
+    name: Option<String>,
+) -> fsync::Result<()> {
+    daemon.connect(name.as_deref()).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn daemon_node_and_children(
+    daemon: tauri::State<'_, Daemon>,
+    path: Option<PathBuf>,
+) -> fsync::Result<ts::NodeAndChildren> {
+    let client = daemon
+        .client()
+        .await
+        .ok_or_else(|| fsync::other_error!("daemon not connected"))?;
+    let (node, children) =
+        node_and_children(&client, path.as_deref().unwrap_or(Path::root())).await?;
+    let node = node.into();
+    let children = children.into_iter().map(|node| node.into()).collect();
+    println!("{node:#?}");
+    println!("{children:#?}");
+    Ok(ts::NodeAndChildren { node, children })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,8 +88,8 @@ impl Persistent {
 
 #[derive(Debug, Clone)]
 struct Inner {
-    _instance_name: String,
-    _client: FsyncClient,
+    instance_name: String,
+    client: FsyncClient,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -76,17 +111,21 @@ impl Daemon {
         inner.is_some()
     }
 
-    pub async fn _instance_name(&self) -> Option<String> {
+    pub async fn instance_name(&self) -> Option<String> {
         let inner = self.inner.lock().await;
-        inner.as_ref().map(|inner| inner._instance_name.clone())
+        inner.as_ref().map(|inner| inner.instance_name.clone())
     }
 
-    pub async fn _client(&self) -> Option<fsync::FsyncClient> {
+    pub async fn client(&self) -> Option<fsync::FsyncClient> {
         let inner = self.inner.lock().await;
-        inner.as_ref().map(|inner| inner._client.clone())
+        inner.as_ref().map(|inner| inner.client.clone())
     }
 
-    pub async fn connect(&self, name: Option<&str>) -> anyhow::Result<()> {
+    pub async fn connect(&self, name: Option<&str>) -> fsync::Result<()> {
+        if self.connected().await && self.instance_name().await.as_deref() == name {
+            return Ok(());
+        }
+
         let mut instances = Instance::get_all()?;
         instances.retain(|i| i.running());
         let instance = match name {
@@ -107,8 +146,8 @@ impl Daemon {
 
         let mut inner = self.inner.lock().await;
         *inner = Some(Inner {
-            _instance_name: instance_name,
-            _client: client,
+            instance_name,
+            client,
         });
 
         Ok(())

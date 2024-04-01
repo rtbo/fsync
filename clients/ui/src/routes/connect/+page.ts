@@ -1,4 +1,4 @@
-import { instanceGetAll } from '$lib/api';
+import { instanceGetAll } from '$lib/model';
 import type types from '$lib/types';
 
 export const prerender = true

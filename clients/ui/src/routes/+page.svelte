@@ -1,12 +1,15 @@
 <script>
-  import { invoke } from '@tauri-apps/api/tauri';
   import { goto } from '$app/navigation';
+  import { daemonInstanceName } from '$lib/model';
 
-  invoke('daemon_connected').then((connected) => {
-    if (!connected) {
-      goto('connect');
-    }
-  });
+  goto('connect')
+  // daemonInstanceName().then(async (name) => {
+  //   if (!name) {
+  //     await ;
+  //   } else {
+  //     await goto('nav/' + name);
+  //   }
+  // });
 </script>
 
 <div></div>

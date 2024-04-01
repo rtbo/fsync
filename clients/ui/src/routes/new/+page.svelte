@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { providers, instanceCreate } from '$lib/api';
+  import { providers, instanceCreate } from '$lib/model';
   import type types from '$lib/types';
   import { Button, ButtonGroup, Input, Spinner, Label, Select, Popover } from 'flowbite-svelte';
   import { AngleLeftOutline, ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
@@ -84,69 +84,71 @@
   }
 </script>
 
-<div class="mx-auto my-auto">
-  <h1 class="mb-7 text-3xl text-center">Create Instance</h1>
-  {#if spinning}
-    <div class="min-h-96 flex flex-col items-center">
-      <Spinner size="16" class="mt-24" />
-    </div>
-  {:else}
-    <div class="min-h-96">
-      <Label class="self-stretch mt-4" id="i-name">
-        Pick a name
-        <Input class="mt-2" bind:value={name} placeholder="drive"></Input>
-      </Label>
-
-      <Label for="local-dir" class="self-stretch mt-4" id="i-local-dir">
-        Local directory
-        <ButtonGroup class="w-full mt-2">
-          <Input id="local-dir" bind:value={localDir} placeholder={localDirPlaceholder} />
-          <Button color="blue" on:click={chooseLocalDir}>Browse</Button>
-        </ButtonGroup>
-      </Label>
-      <Popover class="w-40 text-sm font-light" triggeredBy="#i-local-dir" placement="right">
-        Directory on the local filesystem that will be synchronized with the remote drive.
-      </Popover>
-
-      <Label class="self-stretch mt-4">
-        Provider
-        <Select
-          placeholder="Choose a provider..."
-          class="mt-2"
-          items={providers}
-          bind:value={provider}
-        ></Select>
-      </Label>
-      <div class="min-w-96 min-h-28 mt-4">
-        {#if provider === 'drive'}
-          <Label class="w-full">
-            How should FSync connect to Drive?
-            <Select
-              placeholder="Choose a provider..."
-              class="mt-2"
-              items={driveSecrets}
-              bind:value={driveSecret}
-            ></Select>
-          </Label>
-        {:else if provider === 'fs'}
-          <Label for="remote-dir" class="self-stretch">
-            "Remote" directory
-            <ButtonGroup class="w-full mt-2">
-              <Input id="remote-dir" bind:value={fsRemoteDir} />
-              <Button color="blue" on:click={chooseFsRemoteDir}>Browse</Button>
-            </ButtonGroup>
-          </Label>
-        {/if}
+<div class="container mx-auto flex h-screen">
+  <div class="mx-auto my-auto">
+    <h1 class="mb-7 text-3xl text-center">Create Instance</h1>
+    {#if spinning}
+      <div class="min-h-96 flex flex-col items-center">
+        <Spinner size="16" class="mt-24" />
       </div>
-      <div class="w-full flex flex-row justify-around">
-        <Button class="mt-2" color="dark" on:click={back}>
-          <AngleLeftOutline />&nbsp; Back
-        </Button>
-        <Button class="mt-2" on:click={create}>
-          <ArrowUpRightFromSquareOutline />
-          &nbsp; Create
-        </Button>
+    {:else}
+      <div class="min-h-96">
+        <Label class="self-stretch mt-4" id="i-name">
+          Pick a name
+          <Input class="mt-2" bind:value={name} placeholder="drive"></Input>
+        </Label>
+
+        <Label for="local-dir" class="self-stretch mt-4" id="i-local-dir">
+          Local directory
+          <ButtonGroup class="w-full mt-2">
+            <Input id="local-dir" bind:value={localDir} placeholder={localDirPlaceholder} />
+            <Button color="blue" on:click={chooseLocalDir}>Browse</Button>
+          </ButtonGroup>
+        </Label>
+        <Popover class="w-40 text-sm font-light" triggeredBy="#i-local-dir" placement="right">
+          Directory on the local filesystem that will be synchronized with the remote drive.
+        </Popover>
+
+        <Label class="self-stretch mt-4">
+          Provider
+          <Select
+            placeholder="Choose a provider..."
+            class="mt-2"
+            items={providers}
+            bind:value={provider}
+          ></Select>
+        </Label>
+        <div class="min-w-96 min-h-28 mt-4">
+          {#if provider === 'drive'}
+            <Label class="w-full">
+              How should FSync connect to Drive?
+              <Select
+                placeholder="Choose a provider..."
+                class="mt-2"
+                items={driveSecrets}
+                bind:value={driveSecret}
+              ></Select>
+            </Label>
+          {:else if provider === 'fs'}
+            <Label for="remote-dir" class="self-stretch">
+              "Remote" directory
+              <ButtonGroup class="w-full mt-2">
+                <Input id="remote-dir" bind:value={fsRemoteDir} />
+                <Button color="blue" on:click={chooseFsRemoteDir}>Browse</Button>
+              </ButtonGroup>
+            </Label>
+          {/if}
+        </div>
+        <div class="w-full flex flex-row justify-around">
+          <Button class="mt-2" color="dark" on:click={back}>
+            <AngleLeftOutline />&nbsp; Back
+          </Button>
+          <Button class="mt-2" on:click={create}>
+            <ArrowUpRightFromSquareOutline />
+            &nbsp; Create
+          </Button>
+        </div>
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
