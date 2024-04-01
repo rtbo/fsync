@@ -1,8 +1,9 @@
 use std::{cmp::Ordering, fmt};
 
 use serde::{Deserialize, Serialize};
+use typescript_type_def::TypeDef;
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, TypeDef)]
 pub enum Conflict {
     LocalNewer,
     LocalOlder,

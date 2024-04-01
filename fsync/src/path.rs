@@ -7,6 +7,7 @@ use std::{borrow, cmp, fmt, hash, iter::FusedIterator, ops, str};
 
 pub use camino::{Utf8Path as FsPath, Utf8PathBuf as FsPathBuf};
 use serde::{Deserialize, Serialize};
+use typescript_type_def::{type_expr, TypeDef};
 
 /// Error of normalization
 #[derive(Clone, Debug)]
@@ -1345,3 +1346,9 @@ impl_cmp_str!(<> PathBuf, str);
 // impl_cmp_str!(<'a> borrow::Cow<'a, Path>, str);
 // impl_cmp_str!(<'a, 'b> borrow::Cow<'a, Path>, &'b str);
 // impl_cmp_str!(<'a> borrow::Cow<'a, Path>, String);
+
+impl TypeDef for PathBuf {
+    const INFO: type_expr::TypeInfo = type_expr::TypeInfo::Native(type_expr::NativeTypeInfo {
+        r#ref: type_expr::TypeExpr::ident(type_expr::Ident("string")),
+    });
+}

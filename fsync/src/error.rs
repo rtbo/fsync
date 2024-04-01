@@ -2,13 +2,15 @@ use std::{error, fmt, io, string::FromUtf8Error};
 
 use camino::FromPathBufError;
 use serde::{Deserialize, Serialize};
+use typescript_type_def::TypeDef;
 
 use crate::{
     path::{NormalizeError, PathBuf},
     Location,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum PathError {
     NotFound(PathBuf, Option<Location>),
     Only(PathBuf, Location),
@@ -38,11 +40,16 @@ impl fmt::Display for PathError {
 impl error::Error for PathError {}
 
 /// An error type for RPC results
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Error {
     Path(PathError),
     Utf8(String),
-    IllegalSymlink { path: PathBuf, target: String },
+    IllegalSymlink {
+        #[type_def(type_of = "String")]
+        path: PathBuf,
+        target: String,
+    },
     Io(String),
     Auth(String),
     Api(String),

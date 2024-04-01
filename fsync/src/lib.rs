@@ -86,7 +86,8 @@ impl fmt::Display for StorageDir {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Location {
     Local,
     Remote,

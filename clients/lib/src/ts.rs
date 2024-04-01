@@ -1,12 +1,17 @@
+use fsync::{path::PathBuf, stat};
 use serde::{Deserialize, Serialize};
 use typescript_type_def::TypeDef;
 
 pub type Types = (
+    fsync::Error,
     fsync::Provider,
     Instance,
     crate::config::drive::SecretOpts,
     crate::config::drive::Opts,
     crate::config::ProviderOpts,
+    fsync::Metadata,
+    TreeEntry,
+    NodeAndChildren,
 );
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
@@ -42,4 +47,37 @@ impl Instance {
         let insts = futures::future::try_join_all(insts).await?;
         Ok(insts)
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeEntry {
+    pub path: PathBuf,
+    pub name: Option<String>,
+    pub entry: fsync::tree::Entry,
+    pub children: Vec<String>,
+    pub children_node_stat: stat::Node,
+}
+
+impl From<fsync::tree::EntryNode> for TreeEntry {
+    fn from(value: fsync::tree::EntryNode) -> Self {
+        let path = value.path().to_owned();
+        let name = path.file_name().map(|s| s.to_owned());
+        let (entry, children, children_node_stat) = value.into_parts();
+        TreeEntry {
+            path,
+            name,
+            entry,
+            children,
+            children_node_stat,
+        }
+    }
+}
+
+/// A struct gathering a node and its children
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeAndChildren {
+    pub node: TreeEntry,
+    pub children: Vec<TreeEntry>,
 }
