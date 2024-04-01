@@ -43,3 +43,31 @@ export async function daemonConnect(name?: string): Promise<void> {
 export async function daemonNodeAndChildren(path: string | null): Promise<types.NodeAndChildren> {
   return invoke('daemon_node_and_children', { path });
 }
+
+export function metadataEntryType(metadata: types.Metadata): types.EntryType {
+  if ('directory' in metadata) {
+    return 'directory';
+  } else {
+    return 'regular';
+  }
+}
+
+export function entryType(entry: types.Entry | types.TreeEntry): types.EntryType {
+  if ('entry' in entry) {
+    return entryType(entry.entry);
+  }
+
+  if ('local' in entry) {
+    return metadataEntryType(entry.local);
+  } else if ('remote' in entry) {
+    return metadataEntryType(entry.remote);
+  } else {
+    const sync = entry.sync;
+    const local = metadataEntryType(sync.local);
+    const remote = metadataEntryType(sync.remote);
+    if (local !== remote) {
+      return 'inconsistent';
+    }
+    return local;
+  }
+}

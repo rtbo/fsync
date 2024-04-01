@@ -10,6 +10,7 @@ pub type Types = (
     crate::config::drive::Opts,
     crate::config::ProviderOpts,
     fsync::Metadata,
+    EntryType,
     TreeEntry,
     NodeAndChildren,
 );
@@ -47,6 +48,17 @@ impl Instance {
         let insts = futures::future::try_join_all(insts).await?;
         Ok(insts)
     }
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
+pub enum EntryType {
+    /// Entry is a directory
+    Directory,
+    /// Entry is a regular file
+    Regular,
+    /// Entry type is not consistent accross remote and local storage
+    Inconsistent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
