@@ -10,7 +10,7 @@
         },
         {
             "path": "clients/lib",
-            "name": "client library",
+            "name": "fsync client library",
         },
         {
             "path": "clients/ctl",
