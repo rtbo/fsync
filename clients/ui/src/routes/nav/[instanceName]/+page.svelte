@@ -1,10 +1,14 @@
 <script lang="ts">
   import { daemonNodeAndChildren } from '$lib/model';
   import type types from '$lib/types';
+  import { dirname } from '@tauri-apps/api/path';
+  import { Input } from 'flowbite-svelte';
   import {
-    Input,
-  } from 'flowbite-svelte';
-  import { FolderOutline } from 'flowbite-svelte-icons';
+    ChevronLeftOutline,
+    ChevronRightOutline,
+    ChevronUpOutline,
+    HomeOutline
+  } from 'flowbite-svelte-icons';
 
   export let data: types.NodeAndChildren;
 
@@ -19,25 +23,71 @@
   async function updateForPath(path: string) {
     if (firstTime) {
       firstTime = false;
-    } else {
-      if (path !== '/') {
-        try {
-          let res = await daemonNodeAndChildren(path);
-          pathInputColor = 'base';
-          node = res?.node ?? {};
-          children = res?.children ?? [];
-        } catch (err) {
-          pathInputColor = 'red';
-          node = null;
-          children = [];
-        }
-      } else {
+      return;
+    }
+
+    if (path !== '/') {
+      try {
+        let res = await daemonNodeAndChildren(path);
         pathInputColor = 'base';
-        node = data.node;
-        children = data.children;
+        node = res?.node ?? {};
+        children = res?.children ?? [];
+      } catch (err) {
+        pathInputColor = 'red';
+        node = null;
+        children = [];
       }
+    } else {
+      pathInputColor = 'base';
+      node = data.node;
+      children = data.children;
     }
   }
+
+  // historyIndex points to the current path 
+  // pathHistory[.. historyIndex] is back history
+  // pathHistory[historyIndex + 1 ..] is next history
+  let pathHistory: string[] = [path];
+  let historyIndex = 0; 
+
+  function navigate(newPath: string) {
+    // delete next history
+    if (pathHistory.length > 0 && historyIndex < pathHistory.length - 1) {
+      pathHistory = pathHistory.slice(0, historyIndex + 1);
+    }
+    pathHistory = [...pathHistory, newPath];
+    historyIndex = pathHistory.length - 1;
+
+    console.log(pathHistory, historyIndex);
+
+    path = newPath;
+  }
+
+  function goBack() {
+    if (pathHistory.length > 0 && historyIndex > 0) {
+      historyIndex -= 1;
+      path = pathHistory[historyIndex];
+    }
+  }
+
+  function goNext() {
+    if (pathHistory.length > 0 && historyIndex < pathHistory.length - 1) {
+      historyIndex += 1;
+      path = pathHistory[historyIndex];
+    }
+  }
+
+  async function goUp() {
+    navigate(await dirname(path));
+  }
+
+  async function goHome() {
+    navigate('/');
+  }
+
+  $: backEnabled = pathHistory.length > 1 && historyIndex > 0;
+  $: nextEnabled = pathHistory.length > 1 && historyIndex < pathHistory.length - 1;
+  $: upEnabled = path !== '/';
 
   $: pathInputValue = path;
   let pathInputColor: 'base' | 'red' = 'base';
@@ -48,11 +98,41 @@
     class="bg-white dark:bg-gray-900 w-full z-20 top-0 start-0 border-b border-gray-200 dark:border-gray-600"
   >
     <div class="max-w-screen-xl flex flex-wrap items-center justify-start space-x-6 mx-auto p-4">
-      <div class="flex items-center space-x-3 rtl:space-x-reverse">
-        <FolderOutline size="lg"></FolderOutline>
-      </div>
+      <div class="flex items-center space-x-3 rtl:space-x-reverse">FS</div>
 
-      <form on:submit|preventDefault={() => (path = pathInputValue)}>
+      <button
+        on:click={goBack}
+        class={backEnabled ? 'cursor-pointer' : 'opacity-50'}
+        disabled={!backEnabled}
+      >
+        <ChevronLeftOutline size="lg" />
+      </button>
+
+      <button
+        on:click={goNext}
+        class={nextEnabled ? 'cursor-pointer' : 'opacity-50'}
+        disabled={!nextEnabled}
+      >
+        <ChevronRightOutline size="lg" />
+      </button>
+
+      <button
+        on:click={goUp}
+        class={upEnabled ? 'cursor-pointer' : 'opacity-50'}
+        disabled={!upEnabled}
+      >
+        <ChevronUpOutline size="lg" />
+      </button>
+
+      <button
+        class={upEnabled ? 'cursor-pointer' : 'opacity-50'}
+        on:click={goHome}
+        disabled={!upEnabled}
+      >
+        <HomeOutline size="lg" />
+      </button>
+
+      <form on:submit|preventDefault={() => navigate(pathInputValue)}>
         <Input bind:value={pathInputValue} color={pathInputColor} class="w-96 justify-self-start">
           <span slot="right">
             {pathInputValue === path ? '' : '...'}
@@ -78,7 +158,7 @@
       <tbody class="relative overflow-y-auto">
         {#each children as child, idx}
           {@const rowClass = idx < children.length - 1 ? 'border-b dark:border-gray-700' : ''}
-          <tr class="max-h-12 dark:bg-gray-800 {rowClass}" >
+          <tr class="max-h-12 dark:bg-gray-800 {rowClass}">
             <th
               scope="row"
               class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
