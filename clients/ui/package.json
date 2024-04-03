@@ -39,6 +39,7 @@
 	},
 	"type": "module",
 	"dependencies": {
+		"@material-symbols/font-400": "^0.17.1",
 		"@tauri-apps/api": "^1.5.3"
 	}
 }
