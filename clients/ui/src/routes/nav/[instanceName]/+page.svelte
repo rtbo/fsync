@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { daemonNodeAndChildren } from '$lib/model';
+  import { daemonNodeAndChildren, entryStatus, entryType } from '$lib/model';
   import type types from '$lib/types';
   import { Input } from 'flowbite-svelte';
   import {
     ChevronLeftOutline,
     ChevronRightOutline,
     ChevronUpOutline,
+    FileOutline,
+    FolderOutline,
     HomeOutline
   } from 'flowbite-svelte-icons';
 
@@ -43,11 +45,11 @@
     }
   }
 
-  // historyIndex points to the current path 
+  // historyIndex points to the current path
   // pathHistory[.. historyIndex] is back history
   // pathHistory[historyIndex + 1 ..] is next history
   let pathHistory: string[] = [path];
-  let historyIndex = 0; 
+  let historyIndex = 0;
 
   function navigate(newPath: string) {
     // delete next history
@@ -56,8 +58,6 @@
     }
     pathHistory = [...pathHistory, newPath];
     historyIndex = pathHistory.length - 1;
-
-    console.log(pathHistory, historyIndex);
 
     path = newPath;
   }
@@ -81,12 +81,32 @@
   // https://github.com/tauri-apps/tauri/issues/9324
   import('@tauri-apps/api/path').then(({ dirname }) => {
     goUp = async () => {
-    navigate(await dirname(path));
+      navigate(await dirname(path));
     };
   });
 
   async function goHome() {
     navigate('/');
+  }
+
+  async function childDoubleClick(child: types.TreeEntry, type: types.EntryType) {
+    if (type === 'directory') {
+      navigate(child.path);
+    }
+  }
+
+  function childStatusIcon(child: types.TreeEntry): [string, string] {
+    const status = entryStatus(child);
+    switch (status) {
+      case 'local':
+        return ['text-gray-800 dark:text-gray-200', 'file_save'];
+      case 'remote':
+        return ['text-cyan-600 dark:text-cyan-400', 'cloud'];
+      case 'sync':
+        return ['text-green-600 dark:text-green-400', 'check_circle'];
+      case 'conflict':
+        return ['text-red-600 dark:text-red-400', 'error'];
+    }
   }
 
   $: backEnabled = pathHistory.length > 1 && historyIndex > 0;
@@ -102,14 +122,14 @@
     class="bg-white dark:bg-gray-900 w-full z-20 top-0 start-0 border-b border-gray-200 dark:border-gray-600"
   >
     <div class="max-w-screen-xl flex flex-wrap items-center justify-start space-x-6 mx-auto p-4">
-      <div class="flex items-center space-x-3 rtl:space-x-reverse">FS</div>
+      <a href="/connect" class="flex items-center space-x-3 rtl:space-x-reverse"> FS </a>
 
       <button
         on:click={goBack}
         class={backEnabled ? 'cursor-pointer' : 'opacity-50'}
         disabled={!backEnabled}
       >
-        <ChevronLeftOutline size="lg" />
+        <span class="material-symbols-outlined"> chevron_left </span>
       </button>
 
       <button
@@ -117,7 +137,7 @@
         class={nextEnabled ? 'cursor-pointer' : 'opacity-50'}
         disabled={!nextEnabled}
       >
-        <ChevronRightOutline size="lg" />
+        <span class="material-symbols-outlined"> chevron_right </span>
       </button>
 
       <button
@@ -125,7 +145,7 @@
         class={upEnabled ? 'cursor-pointer' : 'opacity-50'}
         disabled={!upEnabled}
       >
-        <ChevronUpOutline size="lg" />
+        <span class="material-symbols-outlined"> expand_less </span>
       </button>
 
       <button
@@ -133,7 +153,7 @@
         on:click={goHome}
         disabled={!upEnabled}
       >
-        <HomeOutline size="lg" />
+        <span class="material-symbols-outlined"> home </span>
       </button>
 
       <form on:submit|preventDefault={() => navigate(pathInputValue)}>
@@ -152,24 +172,34 @@
         class="sticky top-0 text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400"
       >
         <tr>
-          <th scope="col" class="sticky top-0 px-6 py-3"> Name </th>
-          <th scope="col" class="sticky top-0 px-6 py-3"> Status </th>
-          <th scope="col" class="sticky top-0 px-6 py-3"> Local </th>
-          <th scope="col" class="sticky top-0 px-6 py-3"> Remote </th>
+          <th scope="col" class="sticky top-0 px-2 py-3"> <span class="sr-only">Type</span> </th>
+          <th scope="col" class="sticky top-0 pl-0 pr-6 py-3"> Name </th>
+          <th scope="col" class="sticky top-0 px-6 py-3 text-center"> Status </th>
+          <th scope="col" class="sticky top-0 px-6 py-3"> Size </th>
+          <th scope="col" class="sticky top-0 px-6 py-3"> Modified </th>
           <th scope="col" class="sticky top-0 px-6 py-3"> <span class="sr-only">Actions</span> </th>
         </tr>
       </thead>
       <tbody class="relative overflow-y-auto">
         {#each children as child, idx}
-          {@const rowClass = idx < children.length - 1 ? 'border-b dark:border-gray-700' : ''}
-          <tr class="max-h-12 dark:bg-gray-800 {rowClass}">
+          {@const borderClass = idx < children.length - 1 ? 'border-b dark:border-gray-700' : ''}
+          {@const etyp = entryType(child)}
+          {@const [statusClass, statusIcon] = childStatusIcon(child)}
+          {@const typeIcon = etyp === 'directory' ? 'folder' : 'draft'}
+          <tr class="h-12 dark:bg-gray-800 {borderClass}">
+            <td class="px-2 pt-1 text-center align-middle text-gray-900 dark:text-white">
+              <span class="material-symbols-outlined font-medium">{typeIcon}</span>
+            </td>
             <th
               scope="row"
-              class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
+              class="pl-0 pr-6 text-left align-middle font-medium text-gray-900 whitespace-nowrap dark:text-white"
+              on:dblclick={() => childDoubleClick(child, etyp)}
             >
               {child.name}
             </th>
-            <td class="px-6 py-4"> </td>
+            <td class="px-6 text-center align-middle pt-1 font-medium">
+              <span class="material-symbols-outlined font-medium {statusClass}">{statusIcon}</span>
+            </td>
             <td class="px-6 py-4"> </td>
             <td class="px-6 py-4"> </td>
             <td class="px-6 py-4"> </td>

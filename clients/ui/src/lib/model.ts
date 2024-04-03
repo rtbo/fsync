@@ -71,3 +71,25 @@ export function entryType(entry: types.Entry | types.TreeEntry): types.EntryType
     return local;
   }
 }
+
+export type EntryStatus = 'local' | 'remote' | 'sync' | 'conflict';
+
+export function entryStatus(entry: types.Entry | types.TreeEntry): EntryStatus {
+  if ('entry' in entry) {
+    return entryStatus(entry.entry);
+  }
+
+  if ('local' in entry) {
+    return 'local';
+  } else if ('remote' in entry) {
+    return 'remote';
+  } else {
+    // sync
+    const sync = entry.sync;
+    if (sync.conflict) {
+      return 'conflict';
+    } else {
+      return 'sync';
+    }
+  }
+}

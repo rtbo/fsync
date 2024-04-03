@@ -1,3 +1,5 @@
+@import 'material-symbols';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -22,5 +24,12 @@
 		:root {
 			@apply bg-gray-50 text-gray-900;
 		}
+	}
+}
+
+@layer utilities {
+	/* Material symbols utilites */
+	.ms-wght-100 {
+
 	}
 }
