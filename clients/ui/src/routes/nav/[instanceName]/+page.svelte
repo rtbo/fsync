@@ -186,13 +186,14 @@
           {@const etyp = entryType(child)}
           {@const [statusClass, statusIcon] = childStatusIcon(child)}
           {@const typeIcon = etyp === 'directory' ? 'folder' : 'draft'}
+          {@const nameClass = etyp === 'directory' ? 'cursor-pointer' : ''}
           <tr class="h-12 dark:bg-gray-800 {borderClass}">
             <td class="px-2 pt-1 text-center align-middle text-gray-900 dark:text-white">
               <span class="material-symbols-outlined font-medium">{typeIcon}</span>
             </td>
             <th
               scope="row"
-              class="pl-0 pr-6 text-left align-middle font-medium text-gray-900 whitespace-nowrap dark:text-white"
+              class="pl-0 pr-6 text-left align-middle font-medium text-gray-900 whitespace-nowrap dark:text-white {nameClass}"
               on:dblclick={() => childDoubleClick(child, etyp)}
             >
               {child.name}
