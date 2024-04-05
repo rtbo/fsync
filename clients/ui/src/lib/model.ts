@@ -7,9 +7,9 @@ export const providers: SelectOptionType<types.Provider>[] = [
   { value: 'fs', name: 'Local Filesystem' }
 ];
 
-export async function errorMessage(error: types.Error): Promise<string> {
+export async function errorMessage(err: types.Error): Promise<string> {
   return await invoke('error_message', {
-    error
+    err
   });
 }
 
@@ -23,15 +23,16 @@ export async function instanceCreate(name: string, localDir: string, opts: types
     localDir,
     opts
   };
-  invoke('instance_create', args);
+  console.log('creating instance with ', args);
+  return invoke('instance_create', args);
 }
 
 export async function daemonConnected(): Promise<boolean> {
   return invoke('daemon_connected');
 }
 
-export async function daemonInstanceName(): Promise<boolean> {
-  return invoke('daemon_connected');
+export async function daemonInstanceName(): Promise<string> {
+  return invoke('daemon_instance_name');
 }
 
 export async function daemonConnect(name?: string): Promise<void> {

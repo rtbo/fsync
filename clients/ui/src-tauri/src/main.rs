@@ -9,8 +9,8 @@ use serde::Serialize;
 mod daemon;
 
 #[tauri::command]
-fn error_message(error: fsync::Error) -> String {
-    error.to_string()
+fn error_message(err: fsync::Error) -> String {
+    err.to_string()
 }
 
 #[tauri::command]
