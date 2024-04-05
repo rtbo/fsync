@@ -40,6 +40,9 @@ pub async fn create(
     local_dir: &FsPath,
     opts: &ProviderOpts,
 ) -> anyhow::Result<()> {
+    if instance_name.is_empty() {
+        anyhow::bail!("Instance name can't be empty");
+    }
     let config_dir = inst::config_dir(instance_name)?;
     println!("Creating configuration directory: {config_dir}");
     tokio::fs::create_dir_all(config_dir).await?;
