@@ -46,7 +46,6 @@ pub enum Error {
     Path(PathError),
     Utf8(String),
     IllegalSymlink {
-        #[type_def(type_of = "String")]
         path: PathBuf,
         target: String,
     },
@@ -120,6 +119,25 @@ impl From<anyhow::Error> for Error {
 impl From<String> for Error {
     fn from(value: String) -> Self {
         Self::Other(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn serialize_other_error() {
+        let err = Error::Other("An error message".into());
+        let json_err = serde_json::to_string(&err).unwrap();
+        assert_eq!(json_err, r#"{"other":"An error message"}"#);
+    }
+
+    #[test]
+    fn deserialize_other_error() {
+        let json_err = r#"{"other":"An error message"}"#;
+        let err: Error = serde_json::from_str(json_err).unwrap();
+        assert_eq!(err.to_string(), "An error message");
     }
 }
 
