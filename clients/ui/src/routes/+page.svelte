@@ -2,14 +2,18 @@
   import { goto } from '$app/navigation';
   import { daemonInstanceName } from '$lib/model';
 
-  goto('connect')
-  // daemonInstanceName().then(async (name) => {
-  //   if (!name) {
-  //     await ;
-  //   } else {
-  //     await goto('nav/' + name);
-  //   }
-  // });
+  daemonInstanceName()
+    .then(async (name) => {
+      if (!name) {
+        await goto('/connect');
+      } else {
+        await goto('/nav/' + name);
+      }
+    })
+    .catch(async (err) => {
+      console.error(err);
+      await goto('/connect');
+    });
 </script>
 
 <div></div>
