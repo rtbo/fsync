@@ -31,6 +31,9 @@
     "settings": {
         "files.associations": {
             "*.css": "tailwindcss",
+        },
+        "workbench.editor.customLabels.patterns": {
+            "**/src/routes/**/*": "${dirname}.${extname}"
         }
     }
 }
