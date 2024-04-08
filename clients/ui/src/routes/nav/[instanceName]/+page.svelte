@@ -1,15 +1,10 @@
 <script lang="ts">
-  import { daemonNodeAndChildren, entryStatus, entryType } from '$lib/model';
+  import { MatSymIcon, NavEntryRow } from '$lib/comps';
+  import {
+    daemonNodeAndChildren,
+  } from '$lib/model';
   import type types from '$lib/types';
   import { Input } from 'flowbite-svelte';
-  import {
-    ChevronLeftOutline,
-    ChevronRightOutline,
-    ChevronUpOutline,
-    FileOutline,
-    FolderOutline,
-    HomeOutline
-  } from 'flowbite-svelte-icons';
 
   export let data: types.NodeAndChildren;
 
@@ -89,24 +84,9 @@
     navigate('/');
   }
 
-  async function childDoubleClick(child: types.TreeEntry, type: types.EntryType) {
-    if (type === 'directory') {
-      navigate(child.path);
-    }
-  }
-
-  function childStatusIcon(child: types.TreeEntry): [string, string] {
-    const status = entryStatus(child);
-    switch (status) {
-      case 'local':
-        return ['text-gray-800 dark:text-gray-200', 'file_save'];
-      case 'remote':
-        return ['text-cyan-600 dark:text-cyan-400', 'cloud'];
-      case 'sync':
-        return ['text-green-600 dark:text-green-400', 'check_circle'];
-      case 'conflict':
-        return ['text-red-600 dark:text-red-400', 'error'];
-    }
+  async function ackMutation() {
+    data = await daemonNodeAndChildren('/');
+    await updateForPath(path);
   }
 
   $: backEnabled = pathHistory.length > 1 && historyIndex > 0;
@@ -114,6 +94,7 @@
   $: upEnabled = path !== '/';
 
   $: pathInputValue = path;
+
   let pathInputColor: 'base' | 'red' = 'base';
 </script>
 
@@ -129,7 +110,7 @@
         class={backEnabled ? 'cursor-pointer' : 'opacity-50'}
         disabled={!backEnabled}
       >
-        <span class="material-symbols-outlined"> chevron_left </span>
+        <MatSymIcon> chevron_left </MatSymIcon>
       </button>
 
       <button
@@ -137,7 +118,7 @@
         class={nextEnabled ? 'cursor-pointer' : 'opacity-50'}
         disabled={!nextEnabled}
       >
-        <span class="material-symbols-outlined"> chevron_right </span>
+        <MatSymIcon> chevron_right </MatSymIcon>
       </button>
 
       <button
@@ -145,7 +126,7 @@
         class={upEnabled ? 'cursor-pointer' : 'opacity-50'}
         disabled={!upEnabled}
       >
-        <span class="material-symbols-outlined"> expand_less </span>
+        <MatSymIcon> expand_less </MatSymIcon>
       </button>
 
       <button
@@ -153,7 +134,7 @@
         on:click={goHome}
         disabled={!upEnabled}
       >
-        <span class="material-symbols-outlined"> home </span>
+        <MatSymIcon> home </MatSymIcon>
       </button>
 
       <form on:submit|preventDefault={() => navigate(pathInputValue)}>
@@ -181,30 +162,14 @@
         </tr>
       </thead>
       <tbody class="relative overflow-y-auto">
-        {#each children as child, idx}
+        {#each children as entry, idx}
           {@const borderClass = idx < children.length - 1 ? 'border-b dark:border-gray-700' : ''}
-          {@const etyp = entryType(child)}
-          {@const [statusClass, statusIcon] = childStatusIcon(child)}
-          {@const typeIcon = etyp === 'directory' ? 'folder' : 'draft'}
-          {@const nameClass = etyp === 'directory' ? 'cursor-pointer' : ''}
-          <tr class="h-12 dark:bg-gray-800 {borderClass}">
-            <td class="px-2 pt-1 text-center align-middle text-gray-900 dark:text-white">
-              <span class="material-symbols-outlined font-medium">{typeIcon}</span>
-            </td>
-            <th
-              scope="row"
-              class="pl-0 pr-6 text-left align-middle font-medium text-gray-900 whitespace-nowrap dark:text-white {nameClass}"
-              on:dblclick={() => childDoubleClick(child, etyp)}
-            >
-              {child.name}
-            </th>
-            <td class="px-6 text-center align-middle pt-1 font-medium">
-              <span class="material-symbols-outlined font-medium {statusClass}">{statusIcon}</span>
-            </td>
-            <td class="px-6 py-4"> </td>
-            <td class="px-6 py-4"> </td>
-            <td class="px-6 py-4"> </td>
-          </tr>
+          <NavEntryRow
+            {entry}
+            class={borderClass}
+            on:mutation={ackMutation}
+            on:navigate={(e) => navigate(e.detail.path)}
+          />
         {/each}
       </tbody>
     </table>
