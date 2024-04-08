@@ -57,6 +57,8 @@ async fn main() {
             daemon::daemon_connect,
             daemon::daemon_node_and_children,
             daemon::daemon_operate,
+            daemon::daemon_progress,
+            daemon::daemon_progresses,
         ])
         .build(tauri::generate_context!())
         .expect("tauri builder should not fail");

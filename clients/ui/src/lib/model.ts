@@ -51,6 +51,18 @@ export async function daemonOperate(operation: types.Operation): Promise<types.P
   });
 }
 
+export async function daemonProgress(path: string): Promise<types.Progress | null> {
+  return invoke('daemon_progress', {
+    path
+  });
+}
+
+export async function daemonProgresses(path: string): Promise<types.PathProgress[]> {
+  return invoke('daemon_progresses', {
+    path
+  });
+}
+
 export function metadataEntryType(metadata: types.Metadata): types.EntryType {
   if ('directory' in metadata) {
     return 'directory';

@@ -60,6 +60,37 @@ pub async fn daemon_operate(
     client.operate(ctx(), operation).await.unwrap()
 }
 
+#[tauri::command]
+pub async fn daemon_progress(
+    daemon: tauri::State<'_, Daemon>,
+    path: PathBuf,
+) -> fsync::Result<Option<fsync::Progress>> {
+    let client = daemon
+        .client()
+        .await
+        .ok_or_else(|| fsync::other_error!("daemon not connected"))?;
+    client
+        .progress(ctx(), path)
+        .await
+        .unwrap()
+}
+
+#[tauri::command]
+pub async fn daemon_progresses(
+    daemon: tauri::State<'_, Daemon>,
+    path: PathBuf,
+) -> fsync::Result<Vec<ts::PathProgress>> {
+    let client = daemon
+        .client()
+        .await
+        .ok_or_else(|| fsync::other_error!("daemon not connected"))?;
+    client
+        .progresses(ctx(), path)
+        .await
+        .unwrap()
+        .map(|v| v.into_iter().map(|p| p.into()).collect())
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Persistent {
     instance_name: String,
