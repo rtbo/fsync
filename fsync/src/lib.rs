@@ -24,7 +24,8 @@ pub use crate::{
 pub mod path;
 pub mod stat;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum StorageLoc {
     Local,
     Remote,
@@ -48,7 +49,8 @@ impl fmt::Display for StorageLoc {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum StorageDir {
     LocalToRemote,
     RemoteToLocal,

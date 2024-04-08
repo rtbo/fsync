@@ -442,7 +442,8 @@ pub mod tree {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Operation {
     Copy(PathBuf, StorageDir),
     Replace(PathBuf, StorageDir),
@@ -459,7 +460,8 @@ impl Operation {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Progress {
     Init,
     OAuth2Browse(String),

@@ -5,6 +5,11 @@ use typescript_type_def::TypeDef;
 pub type Types = (
     fsync::Error,
     fsync::Provider,
+    fsync::StorageDir,
+    fsync::StorageLoc,
+    fsync::Operation,
+    fsync::Progress,
+    PathProgress,
     Instance,
     crate::config::drive::SecretOpts,
     crate::config::drive::Opts,
@@ -92,4 +97,18 @@ impl From<fsync::tree::EntryNode> for TreeEntry {
 pub struct NodeAndChildren {
     pub node: TreeEntry,
     pub children: Vec<TreeEntry>,
+}
+
+/// A progress struct
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
+pub struct PathProgress {
+    path: PathBuf,
+    progress: fsync::Progress,
+}
+
+impl From<(PathBuf, fsync::Progress)> for PathProgress {
+    fn from((path, progress): (PathBuf, fsync::Progress)) -> Self {
+        Self { path, progress }
+    }
 }
