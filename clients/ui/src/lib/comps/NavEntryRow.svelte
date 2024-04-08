@@ -3,7 +3,8 @@
   import type types from '$lib/types';
   import { createEventDispatcher } from 'svelte';
   import MatSymIcon from './MatSymIcon.svelte';
-  import { Progressbar } from 'flowbite-svelte';
+  import { Progressbar, Spinner } from 'flowbite-svelte';
+    import { createProgressesStore } from '$lib/progress';
 
   let addedClass = '';
   export { addedClass as class };
@@ -31,23 +32,7 @@
 
   const dispatch = createEventDispatcher();
 
-  let progress: types.PathProgress[] = [];
-  let progressInterval: number | undefined = undefined;
-
-  function listenProgress() {
-    if (progressInterval === undefined) {
-      progressInterval = setInterval(async () => {
-        progress = await daemonProgresses(entry.path);
-        if (progress.length === 0) {
-          clearInterval(progressInterval);
-          progressInterval = undefined;
-          dispatch('mutation');
-        }
-      }, 200);
-    }
-  }
-
-  function computeProgressPercent(p: types.PathProgress[]): number | null {
+  function computeProgressPercent(p: types.PathProgress[]): number | null | 'spin' {
     if (p.length === 0) {
       return null;
     }
@@ -60,9 +45,25 @@
         total += ppp.total;
       }
     });
+    if (total === 0) {
+      return 'spin';
+    }
     return 100 * (done / total);
   }
 
+  // let inProgress = false;
+
+  // function checkProgressDone(p: types.PathProgress[]) {
+  //   if (p.length === 0 && inProgress) {
+  //     inProgress = false;
+  //     console.log('progress done', entry.path);
+  //     dispatch('mutation');
+  //   }
+  //   inProgress = p.length !== 0;
+  // }
+
+
+  export let progress: types.PathProgress[];
   $: progressPercent = computeProgressPercent(progress);
 
   function childDoubleClick() {
@@ -80,7 +81,10 @@
     if (prog === 'done') {
       dispatch('mutation');
     } else {
-      listenProgress();
+      dispatch('progress', {
+        path: entry.path,
+        progress: prog,
+      });
     }
   }
 </script>
@@ -102,7 +106,9 @@
   <td class="px-6 py-4"> </td>
   <td class="px-6 py-4"> </td>
   <td class="px-6 pt-1">
-    {#if progressPercent !== null}
+    {#if progressPercent === 'spin'}
+      <Spinner />
+    {:else if progressPercent !== null}
       <Progressbar progress={progressPercent} />
     {:else if status === 'local'}
       <button on:click={() => copy('localToRemote')}>

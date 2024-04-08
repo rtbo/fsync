@@ -3,6 +3,7 @@
   import {
     daemonNodeAndChildren,
   } from '$lib/model';
+    import { createProgressesStore } from '$lib/progress';
   import type types from '$lib/types';
   import { Input } from 'flowbite-svelte';
 
@@ -12,6 +13,8 @@
 
   let node: types.TreeEntry | null = data.node;
   let children: types.TreeEntry[] = data.children;
+
+  $: progress = createProgressesStore(path, ackMutation);
 
   $: updateForPath(path);
 
@@ -167,6 +170,8 @@
           <NavEntryRow
             {entry}
             class={borderClass}
+            progress={$progress.filter((p) => p.path.startsWith(entry.path))}
+            on:progress={(e) => progress.add(e.detail)}
             on:mutation={ackMutation}
             on:navigate={(e) => navigate(e.detail.path)}
           />
