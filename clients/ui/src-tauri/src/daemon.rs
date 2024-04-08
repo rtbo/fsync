@@ -5,7 +5,11 @@ use fsync::{
     path::{FsPathBuf, Path, PathBuf},
     FsyncClient,
 };
-use fsync_client::{ts, utils::node_and_children, Instance};
+use fsync_client::{
+    ts,
+    utils::{ctx, node_and_children},
+    Instance,
+};
 use serde::{Deserialize, Serialize};
 use tokio::{fs, sync::Mutex};
 
@@ -41,9 +45,19 @@ pub async fn daemon_node_and_children(
         node_and_children(&client, path.as_deref().unwrap_or(Path::root())).await?;
     let node = node.into();
     let children = children.into_iter().map(|node| node.into()).collect();
-    println!("{node:#?}");
-    println!("{children:#?}");
     Ok(ts::NodeAndChildren { node, children })
+}
+
+#[tauri::command]
+pub async fn daemon_operate(
+    daemon: tauri::State<'_, Daemon>,
+    operation: fsync::Operation,
+) -> fsync::Result<fsync::Progress> {
+    let client = daemon
+        .client()
+        .await
+        .ok_or_else(|| fsync::other_error!("daemon not connected"))?;
+    client.operate(ctx(), operation).await.unwrap()
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -45,6 +45,12 @@ export async function daemonNodeAndChildren(path: string | null): Promise<types.
   return invoke('daemon_node_and_children', { path });
 }
 
+export async function daemonOperate(operation: types.Operation): Promise<types.Progress> {
+  return invoke('daemon_operate', {
+    operation
+  });
+}
+
 export function metadataEntryType(metadata: types.Metadata): types.EntryType {
   if ('directory' in metadata) {
     return 'directory';
