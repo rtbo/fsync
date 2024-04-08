@@ -287,7 +287,7 @@ impl<L, R> Service<L, R> {
         let progresses = self.progresses.read().await.clone();
         Ok(progresses
             .into_iter()
-            .filter(|(p, _)| path.is_ancestor_of(p))
+            .filter(|(p, _)| path == p || path.is_ancestor_of(p))
             .map(|(path, prog)| (path, prog.get()))
             .collect())
     }
@@ -579,7 +579,7 @@ where
         path: PathBuf,
     ) -> fsync::Result<Vec<(PathBuf, fsync::Progress)>> {
         let res = self.inner.progresses(&path).await;
-        log::trace!(target: "RPC", "Fsync::all_progress() -> {res:#?}");
+        log::trace!(target: "RPC", "Fsync::progresses({path:#?}) -> {res:#?}");
         res
     }
 }
