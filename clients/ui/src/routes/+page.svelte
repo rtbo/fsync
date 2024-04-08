@@ -4,7 +4,7 @@
 
   daemonInstanceName()
     .then(async (name) => {
-      if (!name) {
+      if (!name || name === '') {
         await goto('/connect');
       } else {
         await goto('/nav/' + name);
