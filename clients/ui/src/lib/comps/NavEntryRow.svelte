@@ -131,9 +131,12 @@
   }
 </script>
 
-<tr class="h-12 dark:bg-gray-800 {addedClass}">
-  <td class="px-2 pt-1 text-center align-middle text-gray-900 dark:text-white">
-    <span class="material-symbols-outlined font-medium">{typeIcon}</span>
+<tr class="h-12 dark:bg-gray-800 select-none {addedClass}">
+  <td
+    class="px-2 pt-1 text-center align-middle text-gray-900 dark:text-white {nameClass}"
+    on:dblclick={() => childDoubleClick()}
+  >
+    <MatSymIcon class="font-medium">{typeIcon}</MatSymIcon>
   </td>
   <th
     scope="row"
@@ -143,7 +146,7 @@
     {entry.name}
   </th>
   <td class="px-6 text-center align-middle pt-1 font-medium">
-    <span class="material-symbols-outlined font-medium {statusClass}">{statusIcon}</span>
+    <MatSymIcon class="font-medium {statusClass}">{statusIcon}</MatSymIcon>
   </td>
   <td class="px-2 py-0">
     <div class="text-start align-middle">
@@ -168,7 +171,7 @@
       {:else if mtime === null}
         <span></span>
       {:else}
-        {@const {local, remote} = displayDiffMtime(mtime.local, mtime.remote)}
+        {@const { local, remote } = displayDiffMtime(mtime.local, mtime.remote)}
         <p class="text-sm">
           <MatSymIcon class="align-middle font-extralight mr-1 text-xl/5">hard_drive</MatSymIcon>
           <span class="align-middle">{local}</span>
