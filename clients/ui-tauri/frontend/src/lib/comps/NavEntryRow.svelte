@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { daemonOperate, daemonProgresses, entryStatus, entryType, type EntryStatus } from '$lib/model';
+  import { daemonOperate } from '$lib/ipc';
+  import { entryStatus, entryType, type EntryStatus } from '$lib/model';
   import type types from '$lib/types';
   import { createEventDispatcher } from 'svelte';
   import MatSymIcon from './MatSymIcon.svelte';
   import { Progressbar, Spinner } from 'flowbite-svelte';
-    import { createProgressesStore } from '$lib/progress';
 
   let addedClass = '';
   export { addedClass as class };

@@ -1,6 +1,6 @@
 <script>
   import { goto } from '$app/navigation';
-  import { daemonInstanceName } from '$lib/model';
+  import { daemonInstanceName } from '$lib/ipc';
 
   daemonInstanceName()
     .then(async (name) => {

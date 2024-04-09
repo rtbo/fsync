@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { providers, instanceCreate, errorMessage } from '$lib/model';
+  import { instanceCreate, errorMessage } from '$lib/ipc';
+  import { providers } from '$lib/model';
   import type types from '$lib/types';
   import {
     Button,

@@ -1,5 +1,5 @@
-import { daemonConnect, daemonNodeAndChildren } from '$lib/model.js';
-import type types from '$lib/types.js';
+import { daemonConnect, daemonNodeAndChildren } from '$lib/ipc';
+import type types from '$lib/types';
 
 export const prerender = true;
 export const ssr = false;

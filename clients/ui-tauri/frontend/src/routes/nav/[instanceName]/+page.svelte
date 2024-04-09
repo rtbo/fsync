@@ -1,9 +1,7 @@
 <script lang="ts">
   import { MatSymIcon, NavEntryRow } from '$lib/comps';
-  import {
-    daemonNodeAndChildren,
-  } from '$lib/model';
-    import { createProgressesStore } from '$lib/progress';
+  import { daemonNodeAndChildren, } from '$lib/ipc';
+  import { createProgressesStore } from '$lib/progress';
   import type types from '$lib/types';
   import { Input } from 'flowbite-svelte';
 

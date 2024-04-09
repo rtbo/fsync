@@ -1,5 +1,5 @@
 import type types from './types';
-import { daemonProgresses } from './model';
+import { daemonProgresses } from './ipc';
 
 type Subscriber = (progress: types.PathProgress[]) => void;
 type Cb = () => void;
