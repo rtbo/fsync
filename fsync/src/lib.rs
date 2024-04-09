@@ -4,8 +4,8 @@ use std::{cmp, fmt, str, time};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use typescript_type_def::TypeDef;
 
-pub mod cipher;
 pub mod config;
 pub mod loc;
 pub mod oauth2;
@@ -24,7 +24,8 @@ pub use crate::{
 pub mod path;
 pub mod stat;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum StorageLoc {
     Local,
     Remote,
@@ -48,7 +49,8 @@ impl fmt::Display for StorageLoc {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum StorageDir {
     LocalToRemote,
     RemoteToLocal,
@@ -86,7 +88,8 @@ impl fmt::Display for StorageDir {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Location {
     Local,
     Remote,
@@ -103,9 +106,11 @@ impl fmt::Display for Location {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TypeDef)]
 pub enum Provider {
+    #[serde(rename = "drive")]
     GoogleDrive,
+    #[serde(rename = "fs")]
     LocalFs,
 }
 
@@ -115,6 +120,15 @@ impl fmt::Display for Provider {
             Provider::GoogleDrive => f.write_str("Google Drive"),
             Provider::LocalFs => f.write_str("Local FileSystem"),
         }
+    }
+}
+
+impl From<config::ProviderConfig> for Provider {
+    fn from(value: config::ProviderConfig) -> Self {
+        match value {
+            config::ProviderConfig::GoogleDrive(..) => Provider::GoogleDrive,
+            config::ProviderConfig::LocalFs(..) => Provider::LocalFs,
+        } 
     }
 }
 

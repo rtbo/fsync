@@ -1,13 +1,15 @@
 use std::ops;
 
 use serde::{Deserialize, Serialize};
+use typescript_type_def::TypeDef;
 
 use crate::StorageLoc;
 
 /// Stats for a directory.
 /// This is recursive stats for all children of a directory,
 /// including grand-children and so forth
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TypeDef)]
+#[serde(rename = "DirStat")]
 pub struct Dir {
     /// The data in the directory, in bytes
     pub data: i64,
@@ -91,7 +93,8 @@ impl ops::SubAssign for Dir {
 
 /// Stats for a Node in the tree structure.
 /// That is, the stats for both local and remote files and directories
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, TypeDef)]
+#[serde(rename = "NodeStat")]
 pub struct Node {
     pub nodes: i32,
     pub sync: i32,
@@ -172,7 +175,8 @@ impl ops::SubAssign for Node {
 
 /// Stats for the whole diff tree structure.
 /// That is, the stats for both local and remote files and directories
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TypeDef)]
+#[serde(rename = "TreeStat")]
 pub struct Tree {
     pub local: Dir,
     pub remote: Dir,

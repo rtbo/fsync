@@ -42,7 +42,9 @@ impl Config {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ProviderConfig {
+    #[serde(rename = "drive")]
     GoogleDrive(drive::Config),
+    #[serde(rename = "fs")]
     LocalFs(FsPathBuf),
 }
 

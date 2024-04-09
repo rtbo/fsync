@@ -2,13 +2,15 @@ use std::{error, fmt, io, string::FromUtf8Error};
 
 use camino::FromPathBufError;
 use serde::{Deserialize, Serialize};
+use typescript_type_def::TypeDef;
 
 use crate::{
     path::{NormalizeError, PathBuf},
     Location,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum PathError {
     NotFound(PathBuf, Option<Location>),
     Only(PathBuf, Location),
@@ -38,11 +40,15 @@ impl fmt::Display for PathError {
 impl error::Error for PathError {}
 
 /// An error type for RPC results
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Error {
     Path(PathError),
     Utf8(String),
-    IllegalSymlink { path: PathBuf, target: String },
+    IllegalSymlink {
+        path: PathBuf,
+        target: String,
+    },
     Io(String),
     Auth(String),
     Api(String),
@@ -113,6 +119,25 @@ impl From<anyhow::Error> for Error {
 impl From<String> for Error {
     fn from(value: String) -> Self {
         Self::Other(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn serialize_other_error() {
+        let err = Error::Other("An error message".into());
+        let json_err = serde_json::to_string(&err).unwrap();
+        assert_eq!(json_err, r#"{"other":"An error message"}"#);
+    }
+
+    #[test]
+    fn deserialize_other_error() {
+        let json_err = r#"{"other":"An error message"}"#;
+        let err: Error = serde_json::from_str(json_err).unwrap();
+        assert_eq!(err.to_string(), "An error message");
     }
 }
 

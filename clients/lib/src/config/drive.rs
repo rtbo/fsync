@@ -1,60 +1,22 @@
-use std::str;
+use fsync::{oauth2, path::{FsPathBuf, PathBuf}};
+use serde::{Serialize, Deserialize};
+use typescript_type_def::TypeDef;
 
-use fsync::{
-    cipher, oauth2,
-    path::{FsPathBuf, PathBuf},
-};
-use inquire::{Editor, Select, Text};
+use crate::cipher;
 
-pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
-    let root = Text::new("Choose a root in your Google Drive (\"/\" for the entire drive)")
-        .with_default("/")
-        .prompt_skippable()?;
-
-    let root = root.map(PathBuf::from);
-
-    let options = &[
-        "Use fsync built-in application secret",
-        "Provide path to client_secret.json",
-        "Paste content of client_secret.json",
-        "Enter Google Drive application credentials",
-    ];
-    let ans = Select::new(
-        "Google Drive applidation secret is required",
-        options.to_vec(),
-    )
-    .prompt()?;
-    let ind = options.iter().position(|e| *e == ans).unwrap();
-    let secret = match ind {
-        0 => SecretOpts::Fsync,
-        1 => SecretOpts::JsonPath(
-            Text::new("Enter path to client_scret.json")
-                .prompt()?
-                .into(),
-        ),
-        2 => SecretOpts::JsonContent(Editor::new("Enter content of client_secret.json").prompt()?),
-        3 => {
-            let client_id = Text::new("Client Id").prompt()?;
-            let client_secret = Text::new("Client Secret").prompt()?;
-            SecretOpts::Credentials {
-                client_id,
-                client_secret,
-            }
-        }
-        _ => panic!("Did not recognize answer: {ans}"),
-    };
-
-    Ok(super::ProviderOpts::GoogleDrive(Opts { root, secret }))
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename = "DriveSecretOpts")]
+#[serde(rename_all = "camelCase")]
 pub enum SecretOpts {
     /// Use built-in google-drive app
-    Fsync,
+    Builtin,
+
     /// Use custom google-drive app (path to client_secret.json)
-    JsonPath(FsPathBuf),
+    JsonPath(#[type_def(type_of = "String")] FsPathBuf),
+
     /// Use custom google-drive app (content of client_secret.json)
     JsonContent(String),
+
     /// Use custom google-drive app (client credentials)
     Credentials {
         client_id: String,
@@ -64,7 +26,7 @@ pub enum SecretOpts {
 
 #[test]
 fn test_get_appsecret() -> anyhow::Result<()> {
-    let secret = SecretOpts::Fsync.get()?;
+    let secret = SecretOpts::Builtin.get()?;
     assert_eq!(
         secret.token_url.as_str(),
         "https://oauth2.googleapis.com/token"
@@ -79,7 +41,7 @@ fn test_get_appsecret() -> anyhow::Result<()> {
 impl SecretOpts {
     pub fn get(&self) -> anyhow::Result<oauth2::Secret> {
         match self {
-            SecretOpts::Fsync => {
+            SecretOpts::Builtin => {
                 const CIPHERED_SECRET: &str = concat!(
                     "gRtV+sbymbR9o9QD06bNtV8a+WpfCh223NAjZTTfuMJ+zUBUdzkF1Sr1DCgeAJfYXgd7lt+hww0sK",
                     "bSfB9V26yzgFT4cD/iE+zEbBoPihf/c4A4LKiOxhi/cTubfPdKJFTfFyUzB79vgkcSQqjh79CzEQ/",
@@ -121,15 +83,16 @@ async fn cipher_app_secret() -> anyhow::Result<()> {
         let output = path.with_file_name("google_secret.cipher.b64");
         let secret = fsync::oauth2::load_google_secret(&path).await?;
         let secret = serde_json::to_string(&secret)?;
-        let encoded = fsync::cipher::cipher_text(&secret);
+        let encoded = cipher::cipher_text(&secret);
         tokio::fs::write(&output, &encoded).await?;
     }
     Ok(())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename = "DriveOpts")]
 pub struct Opts {
-    pub root: Option<PathBuf>,
+    pub root: Option<String>,
     pub secret: SecretOpts,
 }
 
@@ -139,6 +102,6 @@ impl TryFrom<&Opts> for fsync::config::drive::Config {
         let root = value.root.clone();
         let secret = value.secret.get()?;
 
-        Ok(fsync::config::drive::Config { root, secret })
+        Ok(fsync::config::drive::Config { root: root.map(PathBuf::from), secret })
     }
 }

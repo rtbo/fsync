@@ -1,20 +1,25 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use typescript_type_def::TypeDef;
 
 use crate::{
     path::{Path, PathBuf},
     stat, Location, StorageDir,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Metadata {
     Directory {
+        #[type_def(type_of = "String")]
         path: PathBuf,
         stat: Option<stat::Dir>,
     },
     Regular {
+        #[type_def(type_of = "String")]
         path: PathBuf,
         size: u64,
+        #[type_def(type_of = "String")]
         mtime: DateTime<Utc>,
     },
 }
@@ -98,10 +103,12 @@ pub mod tree {
     use std::mem;
 
     use serde::{Deserialize, Serialize};
+    use typescript_type_def::TypeDef;
 
     use crate::{path::Path, stat, Conflict, StorageLoc};
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+    #[serde(rename_all = "camelCase")]
     pub enum Entry {
         Local(super::Metadata),
         Remote(super::Metadata),
@@ -243,7 +250,8 @@ pub mod tree {
         }
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+    #[serde(rename_all = "camelCase")]
     pub struct EntryNode {
         entry: Entry,
         children: Vec<String>,
@@ -329,6 +337,10 @@ pub mod tree {
 
         pub fn into_entry(self) -> Entry {
             self.entry
+        }
+        
+        pub fn into_parts(self) -> (Entry, Vec<String>, stat::Node) {
+            (self.entry, self.children, self.children_node_stat)
         }
 
         pub fn children(&self) -> &[String] {
@@ -430,7 +442,8 @@ pub mod tree {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Operation {
     Copy(PathBuf, StorageDir),
     Replace(PathBuf, StorageDir),
@@ -447,7 +460,8 @@ impl Operation {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
 pub enum Progress {
     Init,
     OAuth2Browse(String),

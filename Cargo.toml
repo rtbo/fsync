@@ -1,5 +1,12 @@
 [workspace]
-members = ["fsync", "fsyncd", "fsynctl", "tests"]
+members = [
+    "fsync",
+    "fsyncd",
+    "clients/lib",
+    "clients/ctl",
+    "clients/ui-tauri",
+    "tests",
+]
 resolver = "2"
 
 [workspace.package]
@@ -51,6 +58,7 @@ tokio = { version = "1.33.0", features = [
 ] }
 tokio-stream = { version = "0.1", features = ["fs"] }
 tokio-util = { version = "0.7.10", features = ["compat"] }
+typescript-type-def = { version = "0.5.11" }
 url = "2.5.0"
 webbrowser = "0.8.12"
 windows-service = "0.6.0"

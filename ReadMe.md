@@ -4,9 +4,11 @@ File synchronization service
 
 ## Project structure
 
-- `fsync`: common library
-- `fsyncd`: deamon executable
-- `fsynctl`: CLI interface
+- `fsync`: Core library
+- `fsyncd`: Deamon executable
+- `clients/lib`: Client library
+- `clients/ctl`: `fsynctl` CLI client
+- `clients/ui-tauri`: `fsyncui` Tauri + Svelte user interface
 
 ## Minimum Rust version
 
