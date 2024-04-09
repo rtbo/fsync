@@ -17,12 +17,8 @@
             "name": "fsynctl CLI client",
         },
         {
-            "path": "clients/ui-tauri",
+            "path": "clients/ui",
             "name": "Tauri client",
-        },
-        {
-            "path": "clients/ui-tauri/frontend",
-            "name": "Tauri client frontend",
         },
         {
             "path": "tests",

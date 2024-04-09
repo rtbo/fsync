@@ -4,7 +4,7 @@ members = [
     "fsyncd",
     "clients/lib",
     "clients/ctl",
-    "clients/ui-tauri",
+    "clients/ui/src-tauri",
     "tests",
 ]
 resolver = "2"

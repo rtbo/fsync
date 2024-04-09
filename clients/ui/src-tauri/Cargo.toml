@@ -8,13 +8,13 @@ edition = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-fsync-client = { path = "../lib" }
+fsync-client = { path = "../../lib" }
 typescript-type-def = { workspace = true }
 tauri-build = { version = "1", features = [] }
 
 [dependencies]
-fsync = { path = "../../fsync" }
-fsync-client = { path = "../lib" }
+fsync = { path = "../../../fsync" }
+fsync-client = { path = "../../lib" }
 
 anyhow = { workspace = true }
 dirs = { workspace = true }

@@ -6,7 +6,8 @@ use typescript_type_def::{write_definition_file, DefinitionFileOptions};
 fn main() {
     // building ts definitions
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("frontend")
+        .parent()
+        .unwrap()
         .join("src")
         .join("lib")
         .join("types.d.ts");
