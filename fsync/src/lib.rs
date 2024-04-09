@@ -1,6 +1,6 @@
 #![allow(async_fn_in_trait)]
 
-use std::{cmp, fmt, str, time};
+use std::{cmp, fmt, str};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -132,16 +132,9 @@ impl From<config::ProviderConfig> for Provider {
     }
 }
 
-pub const MTIME_TOL: time::Duration = time::Duration::from_secs(1);
-
+/// Compares with second granularity as some providers do not provide milliseconds granularity
 pub fn compare_mtime(lhs: DateTime<Utc>, rhs: DateTime<Utc>) -> cmp::Ordering {
-    if lhs + MTIME_TOL < rhs {
-        cmp::Ordering::Less
-    } else if lhs - MTIME_TOL > rhs {
-        cmp::Ordering::Greater
-    } else {
-        cmp::Ordering::Equal
-    }
+    lhs.timestamp().cmp(&rhs.timestamp())
 }
 
 pub fn compare_mtime_opt(

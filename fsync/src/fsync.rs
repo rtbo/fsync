@@ -11,17 +11,41 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub enum Metadata {
     Directory {
-        #[type_def(type_of = "String")]
         path: PathBuf,
         stat: Option<stat::Dir>,
     },
     Regular {
-        #[type_def(type_of = "String")]
         path: PathBuf,
         size: u64,
-        #[type_def(type_of = "String")]
+        #[type_def(type_of = "i64")]
+        #[serde(with = "ms_since_epoch")]
         mtime: DateTime<Utc>,
     },
+}
+
+/// Serialize a `DateTime` in milliseconds since the Unix epoch (to fit with Javascript representation).
+/// The milliseconds are rounded down to the nearest second however.
+/// This is because some provider do not provide millisecond granularity in the timestamps.
+mod ms_since_epoch {
+    use chrono::{DateTime, TimeZone, Utc};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(1000 * date.timestamp() as u64)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let millis = u64::deserialize(deserializer)?;
+        let naive = chrono::NaiveDateTime::from_timestamp_millis(millis as i64).unwrap();
+        let utc = Utc;
+        Ok(utc.from_utc_datetime(&naive))
+    }
 }
 
 impl Metadata {
