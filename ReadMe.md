@@ -8,7 +8,7 @@ File synchronization service
 - `fsyncd`: Deamon executable
 - `clients/lib`: Client library
 - `clients/ctl`: `fsynctl` CLI client
-- `clients/ui`: `fsyncui` Tauri + Svelte user interface
+- `clients/ui-tauri`: `fsyncui` Tauri + Svelte user interface
 
 ## Minimum Rust version
 

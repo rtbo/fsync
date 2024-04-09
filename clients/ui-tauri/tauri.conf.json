@@ -3,7 +3,7 @@
     "beforeBuildCommand": "pnpm run build",
     "beforeDevCommand": "pnpm run dev",
     "devPath": "http://localhost:5173",
-    "distDir": "../build"
+    "distDir": "build"
   },
   "package": {
     "productName": "fsyncui",
