@@ -15,7 +15,7 @@
   function entryStatusIcon(status: EntryStatus): [string, string] {
     switch (status) {
       case 'local':
-        return ['text-gray-800 dark:text-gray-200', 'hard_drive'];
+        return ['text-gray-800 dark:text-gray-400', 'hard_drive'];
       case 'remote':
         return ['text-cyan-600 dark:text-cyan-400', 'cloud'];
       case 'sync':
