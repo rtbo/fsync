@@ -1,6 +1,6 @@
 <script lang="ts">
   import { daemonOperate } from '$lib/ipc';
-  import { entryStatus, entryType, type EntryStatus, entrySize } from '$lib/model';
+  import { entryStatus, entryType, type EntryStatus, entrySize, entryMtime } from '$lib/model';
   import type types from '$lib/types';
   import { createEventDispatcher } from 'svelte';
   import MatSymIcon from './MatSymIcon.svelte';
@@ -31,6 +31,47 @@
   $: status = entryStatus(entry);
   $: [statusClass, statusIcon] = entryStatusIcon(status);
   $: size = entrySize(entry);
+  $: mtime = entryMtime(entry);
+
+  function displayMtime(mtime: number | null): string {
+    if (mtime === null) {
+      return '';
+    }
+    const now = new Date(Date.now());
+    const date = new Date(mtime);
+
+    const today =
+      now.getDate() == date.getDate() &&
+      now.getMonth() == date.getMonth() &&
+      now.getFullYear() == date.getFullYear();
+    if (today) {
+      return date.toLocaleTimeString();
+    }
+    return date.toLocaleDateString();
+  }
+
+  function displayDiffMtime(
+    local: number | null,
+    remote: number | null
+  ): { local: string; remote: String } {
+    if (local === null || remote === null) {
+      return { local: displayMtime(local), remote: displayMtime(remote) };
+    }
+
+    const localDate = new Date(local);
+    const remoteDate = new Date(remote);
+
+    const sameDay =
+      localDate.getDate() === remoteDate.getDate() &&
+      localDate.getMonth() === remoteDate.getMonth() &&
+      localDate.getFullYear() === remoteDate.getFullYear();
+
+    if (sameDay) {
+      return { local: localDate.toLocaleString(), remote: remoteDate.toLocaleString() };
+    } else {
+      return { local: displayMtime(local), remote: displayMtime(remote) };
+    }
+  }
 
   const dispatch = createEventDispatcher();
 
@@ -120,7 +161,25 @@
       {/if}
     </div>
   </td>
-  <td class="px-6 py-2"> </td>
+  <td class="px-2 py-0">
+    <div class="text-start align-middle">
+      {#if typeof mtime === 'number'}
+        <span class="ml-7">{displayMtime(mtime)}</span>
+      {:else if mtime === null}
+        <span></span>
+      {:else}
+        {@const {local, remote} = displayDiffMtime(mtime.local, mtime.remote)}
+        <p class="text-sm">
+          <MatSymIcon class="align-middle font-extralight mr-1 text-xl/5">hard_drive</MatSymIcon>
+          <span class="align-middle">{local}</span>
+        </p>
+        <p class="text-sm">
+          <MatSymIcon class="align-middle font-extralight mr-1 text-xl/5">cloud</MatSymIcon>
+          <span class="align-middle">{remote}</span>
+        </p>
+      {/if}
+    </div>
+  </td>
   <td class="px-6 pt-1">
     {#if progressPercent === 'spin'}
       <Spinner />

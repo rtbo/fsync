@@ -93,3 +93,42 @@ export function entrySize(entry: types.Entry | types.TreeEntry): EntrySize {
     };
   }
 }
+
+export type EntryMtime =
+  | number
+  | null
+  | {
+      local: number | null;
+      remote: number | null;
+    };
+
+export function metadataMtime(metadata: types.Metadata): number | null {
+  if ('directory' in metadata) {
+    return null;
+  } else {
+    return metadata.regular.mtime;
+  }
+}
+
+export function entryMtime(entry: types.Entry | types.TreeEntry): EntryMtime {
+  if ('entry' in entry) {
+    return entryMtime(entry.entry);
+  }
+
+  if ('local' in entry) {
+    return metadataMtime(entry.local);
+  }
+  if ('remote' in entry) {
+    return metadataMtime(entry.remote);
+  }
+  const local = metadataMtime(entry.sync.local);
+  const remote = metadataMtime(entry.sync.remote);
+  if (local === remote) {
+    return local;
+  } else {
+    return {
+      local,
+      remote
+    };
+  }
+}
