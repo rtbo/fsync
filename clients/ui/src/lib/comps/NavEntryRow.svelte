@@ -107,14 +107,14 @@
   <td class="px-2 py-0">
     <div class="text-start align-middle">
       {#if typeof size === 'number'}
-        <span class="ml-8">{prettyBytes(size)}</span>
+        <span class="ml-7">{prettyBytes(size)}</span>
       {:else}
         <p class="text-sm">
-          <MatSymIcon class="align-middle font-light mr-1">hard_drive</MatSymIcon>
+          <MatSymIcon class="align-middle font-extralight mr-1 text-xl/5">hard_drive</MatSymIcon>
           <span class="align-middle">{prettyBytes(size.local)}</span>
         </p>
         <p class="text-sm">
-          <MatSymIcon class="align-middle font-light mr-1">cloud</MatSymIcon>
+          <MatSymIcon class="align-middle font-extralight mr-1 text-xl/5">cloud</MatSymIcon>
           <span class="align-middle">{prettyBytes(size.remote)}</span>
         </p>
       {/if}

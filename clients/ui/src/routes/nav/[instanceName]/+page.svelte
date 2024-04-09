@@ -157,7 +157,7 @@
           <th scope="col" class="sticky top-0 px-2 py-3"> <span class="sr-only">Type</span> </th>
           <th scope="col" class="sticky top-0 pl-0 pr-6 py-3"> Name </th>
           <th scope="col" class="sticky top-0 px-6 py-3 text-center"> Status </th>
-          <th scope="col" class="sticky top-0 px-6 py-3 min-w-28 w-28 text-center"> Size </th>
+          <th scope="col" class="sticky top-0 px-2 py-3 min-w-28 w-28 text-start"> <span class="ml-7"> Size </span> </th>
           <th scope="col" class="sticky top-0 px-6 py-3"> Modified </th>
           <th scope="col" class="sticky top-0 px-6 py-3"> <span class="sr-only">Actions</span> </th>
         </tr>
