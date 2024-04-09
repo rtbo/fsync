@@ -1,10 +1,11 @@
 <script lang="ts">
   import { daemonOperate } from '$lib/ipc';
-  import { entryStatus, entryType, type EntryStatus } from '$lib/model';
+  import { entryStatus, entryType, type EntryStatus, entrySize } from '$lib/model';
   import type types from '$lib/types';
   import { createEventDispatcher } from 'svelte';
   import MatSymIcon from './MatSymIcon.svelte';
   import { Progressbar, Spinner } from 'flowbite-svelte';
+  import prettyBytes from 'pretty-bytes';
 
   let addedClass = '';
   export { addedClass as class };
@@ -14,7 +15,7 @@
   function entryStatusIcon(status: EntryStatus): [string, string] {
     switch (status) {
       case 'local':
-        return ['text-gray-800 dark:text-gray-200', 'file_save'];
+        return ['text-gray-800 dark:text-gray-200', 'hard_drive'];
       case 'remote':
         return ['text-cyan-600 dark:text-cyan-400', 'cloud'];
       case 'sync':
@@ -29,6 +30,7 @@
   $: nameClass = etyp === 'directory' ? 'cursor-pointer' : '';
   $: status = entryStatus(entry);
   $: [statusClass, statusIcon] = entryStatusIcon(status);
+  $: size = entrySize(entry);
 
   const dispatch = createEventDispatcher();
 
@@ -62,14 +64,13 @@
   //   inProgress = p.length !== 0;
   // }
 
-
   export let progress: types.PathProgress[];
   $: progressPercent = computeProgressPercent(progress);
 
   function childDoubleClick() {
     if (etyp === 'directory') {
       dispatch('navigate', {
-        path: entry.path,
+        path: entry.path
       });
     }
   }
@@ -83,7 +84,7 @@
     } else {
       dispatch('progress', {
         path: entry.path,
-        progress: prog,
+        progress: prog
       });
     }
   }
@@ -103,8 +104,23 @@
   <td class="px-6 text-center align-middle pt-1 font-medium">
     <span class="material-symbols-outlined font-medium {statusClass}">{statusIcon}</span>
   </td>
-  <td class="px-6 py-4"> </td>
-  <td class="px-6 py-4"> </td>
+  <td class="px-2 py-0">
+    <div class="text-start align-middle">
+      {#if typeof size === 'number'}
+        <span class="ml-8">{prettyBytes(size)}</span>
+      {:else}
+        <p class="text-sm">
+          <MatSymIcon class="align-middle font-light mr-1">hard_drive</MatSymIcon>
+          <span class="align-middle">{prettyBytes(size.local)}</span>
+        </p>
+        <p class="text-sm">
+          <MatSymIcon class="align-middle font-light mr-1">cloud</MatSymIcon>
+          <span class="align-middle">{prettyBytes(size.remote)}</span>
+        </p>
+      {/if}
+    </div>
+  </td>
+  <td class="px-6 py-2"> </td>
   <td class="px-6 pt-1">
     {#if progressPercent === 'spin'}
       <Spinner />

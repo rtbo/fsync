@@ -55,3 +55,41 @@ export function entryStatus(entry: types.Entry | types.TreeEntry): EntryStatus {
     }
   }
 }
+
+export type EntrySize =
+  | number
+  | {
+      local: number;
+      remote: number;
+    };
+
+export function metadataSize(metadata: types.Metadata): number {
+  if ('directory' in metadata) {
+    return metadata.directory.stat?.data ?? 0;
+  } else {
+    return metadata.regular.size;
+  }
+}
+
+export function entrySize(entry: types.Entry | types.TreeEntry): EntrySize {
+  if ('entry' in entry) {
+    return entrySize(entry.entry);
+  }
+
+  if ('local' in entry) {
+    return metadataSize(entry.local);
+  }
+  if ('remote' in entry) {
+    return metadataSize(entry.remote);
+  }
+  const local = metadataSize(entry.sync.local);
+  const remote = metadataSize(entry.sync.remote);
+  if (local === remote) {
+    return local;
+  } else {
+    return {
+      local,
+      remote
+    };
+  }
+}

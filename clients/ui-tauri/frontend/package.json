@@ -40,6 +40,7 @@
 	"type": "module",
 	"dependencies": {
 		"@tauri-apps/api": "^1.5.3",
-		"material-symbols": "^0.17.1"
+		"material-symbols": "^0.17.1",
+		"pretty-bytes": "^6.1.1"
 	}
 }
