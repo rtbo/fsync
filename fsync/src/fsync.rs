@@ -362,7 +362,7 @@ pub mod tree {
         pub fn into_entry(self) -> Entry {
             self.entry
         }
-        
+
         pub fn into_parts(self) -> (Entry, Vec<String>, stat::Node) {
             (self.entry, self.children, self.children_node_stat)
         }

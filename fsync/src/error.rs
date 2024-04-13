@@ -45,10 +45,7 @@ impl error::Error for PathError {}
 pub enum Error {
     Path(PathError),
     Utf8(String),
-    IllegalSymlink {
-        path: PathBuf,
-        target: String,
-    },
+    IllegalSymlink { path: PathBuf, target: String },
     Io(String),
     Auth(String),
     Api(String),

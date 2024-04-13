@@ -128,7 +128,7 @@ impl From<config::ProviderConfig> for Provider {
         match value {
             config::ProviderConfig::GoogleDrive(..) => Provider::GoogleDrive,
             config::ProviderConfig::LocalFs(..) => Provider::LocalFs,
-        } 
+        }
     }
 }
 

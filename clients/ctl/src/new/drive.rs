@@ -1,7 +1,6 @@
+pub use fsync_client::config::drive::Opts;
 use fsync_client::config::drive::SecretOpts;
 use inquire::{Editor, Select, Text};
-
-pub use fsync_client::config::drive::Opts;
 
 pub fn prompt_opts() -> anyhow::Result<super::ProviderOpts> {
     let root = Text::new("Choose a root in your Google Drive (\"/\" for the entire drive)")

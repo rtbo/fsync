@@ -48,10 +48,8 @@ async fn main() {
         .manage(daemon)
         .invoke_handler(tauri::generate_handler![
             error_message,
-
             instance_get_all,
             instance_create,
-
             daemon::daemon_connected,
             daemon::daemon_instance_name,
             daemon::daemon_connect,

@@ -1,5 +1,8 @@
-use fsync::{oauth2, path::{FsPathBuf, PathBuf}};
-use serde::{Serialize, Deserialize};
+use fsync::{
+    oauth2,
+    path::{FsPathBuf, PathBuf},
+};
+use serde::{Deserialize, Serialize};
 use typescript_type_def::TypeDef;
 
 use crate::cipher;
@@ -102,6 +105,9 @@ impl TryFrom<&Opts> for fsync::config::drive::Config {
         let root = value.root.clone();
         let secret = value.secret.get()?;
 
-        Ok(fsync::config::drive::Config { root: root.map(PathBuf::from), secret })
+        Ok(fsync::config::drive::Config {
+            root: root.map(PathBuf::from),
+            secret,
+        })
     }
 }

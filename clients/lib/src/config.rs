@@ -1,5 +1,7 @@
-use fsync::loc::inst;
-use fsync::path::{FsPath, FsPathBuf};
+use fsync::{
+    loc::inst,
+    path::{FsPath, FsPathBuf},
+};
 use serde::{Deserialize, Serialize};
 use typescript_type_def::TypeDef;
 

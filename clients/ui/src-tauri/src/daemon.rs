@@ -69,10 +69,7 @@ pub async fn daemon_progress(
         .client()
         .await
         .ok_or_else(|| fsync::other_error!("daemon not connected"))?;
-    client
-        .progress(ctx(), path)
-        .await
-        .unwrap()
+    client.progress(ctx(), path).await.unwrap()
 }
 
 #[tauri::command]
