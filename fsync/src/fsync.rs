@@ -403,7 +403,7 @@ pub mod tree {
         ///
         /// # Panics
         /// Panics if either the local or remote stat (as relevant) is invalid.
-        pub fn stat(&self) -> stat::Tree {
+        pub fn stats(&self) -> stat::Tree {
             match self.entry() {
                 Entry::Sync {
                     local,

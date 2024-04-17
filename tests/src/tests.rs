@@ -29,7 +29,7 @@ async fn entry() {
 async fn node_stat() {
     let h = harness().await;
     let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
-    let stat = root.stat();
+    let stat = root.stats();
     assert_eq!(stat.node, dataset::NODE_STAT);
 }
 
@@ -38,7 +38,7 @@ async fn copy_remote_to_local() {
     let h = harness().await;
 
     let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
-    let orig_stat = root.stat();
+    let orig_stat = root.stats();
 
     let path = PathBuf::from("/only-remote.txt");
     h.service
@@ -65,7 +65,7 @@ async fn copy_remote_to_local() {
     };
 
     let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
-    let new_stat = root.stat();
+    let new_stat = root.stats();
     assert_eq!(new_stat, orig_stat + added_stat);
 }
 

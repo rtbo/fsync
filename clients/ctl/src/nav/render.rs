@@ -380,7 +380,7 @@ impl super::Navigator {
                 height: 1,
             },
         };
-        self.render_stats(&footer_vp, &self.node.stat())?;
+        self.render_stats(&footer_vp, &self.node.stats())?;
 
         out.flush()?;
 
@@ -780,7 +780,7 @@ impl super::Navigator {
     }
 
     fn render_child_details(&self, child: &EntryNode, viewport: &Rect) -> anyhow::Result<()> {
-        let stat = child.stat();
+        let stat = child.stats();
         self.render_stats(&viewport, &stat)?;
         Ok(())
     }
