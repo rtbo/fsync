@@ -19,6 +19,8 @@
       case 'remote':
         return ['text-cyan-600 dark:text-cyan-400', 'cloud'];
       case 'sync':
+        return ['text-gray-800 dark:text-gray-400', 'check_circle'];
+      case 'sync-full':
         return ['text-green-600 dark:text-green-400', 'check_circle'];
       case 'conflict':
         return ['text-red-600 dark:text-red-400', 'error'];
