@@ -23,6 +23,8 @@
       case 'sync-full':
         return ['text-green-500 dark:text-green-400', 'check_circle'];
       case 'conflict':
+        return ['text-gray-500 dark:text-gray-400', 'error'];
+      case 'conflict-full':
         return ['text-red-600 dark:text-red-400', 'error'];
     }
   }
