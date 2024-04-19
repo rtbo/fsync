@@ -151,7 +151,7 @@
   <div class="relative overflow-x-auto flex-grow nav-table">
     <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
       <thead
-        class="sticky top-0 text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400"
+        class="sticky top-0 text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 z-10"
       >
         <tr>
           <th scope="col" class="sticky top-0 px-2 py-3"> <span class="sr-only">Type</span> </th>
@@ -162,7 +162,7 @@
           <th scope="col" class="sticky top-0 px-6 py-3"> <span class="sr-only">Actions</span> </th>
         </tr>
       </thead>
-      <tbody class="relative overflow-y-auto">
+      <tbody class="relative overflow-y-auto z-0">
         {#each children as entry, idx}
           {@const borderClass = idx < children.length - 1 ? 'border-b dark:border-gray-700' : ''}
           <NavEntryRow
