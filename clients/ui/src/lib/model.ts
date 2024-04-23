@@ -45,7 +45,10 @@ export function entryStatus(entry: types.TreeEntry): EntryStatus {
   } else {
     // sync
     const ns = entry.stats.node;
-    if (ee.sync.conflict || ns.conflicts == ns.nodes) {
+    const all_conflicts =
+      ns.conflicts == entry.stats.local.files &&
+      ns.conflicts == entry.stats.remote.files;
+    if (ee.sync.conflict || all_conflicts) {
       return 'conflict-full';
     } else if (ns.conflicts) {
       return 'conflict';
