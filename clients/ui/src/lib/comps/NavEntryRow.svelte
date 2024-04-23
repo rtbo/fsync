@@ -189,7 +189,7 @@
   </td>
   <td class="px-6 pt-1">
     {#if progressPercent === 'spin'}
-      <Spinner />
+      <Spinner size="6" />
     {:else if progressPercent !== null}
       <Progressbar progress={progressPercent} />
     {:else if status === 'local'}
