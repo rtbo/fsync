@@ -34,22 +34,26 @@ export function entryType(entry: types.Entry | types.TreeEntry): types.EntryType
   }
 }
 
-export type EntryStatus = 'local' | 'remote' | 'sync' | 'conflict';
+export type EntryStatus = 'local' | 'remote' | 'sync' | 'sync-full' | 'conflict' | 'conflict-full';
 
-export function entryStatus(entry: types.Entry | types.TreeEntry): EntryStatus {
-  if ('entry' in entry) {
-    return entryStatus(entry.entry);
-  }
-
-  if ('local' in entry) {
+export function entryStatus(entry: types.TreeEntry): EntryStatus {
+  const ee = entry.entry;
+  if ('local' in ee) {
     return 'local';
-  } else if ('remote' in entry) {
+  } else if ('remote' in ee) {
     return 'remote';
   } else {
     // sync
-    const sync = entry.sync;
-    if (sync.conflict) {
+    const ns = entry.stats.node;
+    const all_conflicts =
+      ns.conflicts == entry.stats.local.files &&
+      ns.conflicts == entry.stats.remote.files;
+    if (ee.sync.conflict || all_conflicts) {
+      return 'conflict-full';
+    } else if (ns.conflicts) {
       return 'conflict';
+    } else if (ns.nodes == ns.sync) {
+      return 'sync-full';
     } else {
       return 'sync';
     }

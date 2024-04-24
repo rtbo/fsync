@@ -15,12 +15,16 @@
   function entryStatusIcon(status: EntryStatus): [string, string] {
     switch (status) {
       case 'local':
-        return ['text-gray-800 dark:text-gray-400', 'hard_drive'];
+        return ['text-gray-500 dark:text-gray-400', 'hard_drive'];
       case 'remote':
-        return ['text-cyan-600 dark:text-cyan-400', 'cloud'];
+        return ['text-cyan-500 dark:text-cyan-400', 'cloud'];
       case 'sync':
-        return ['text-green-600 dark:text-green-400', 'check_circle'];
+        return ['text-gray-500 dark:text-gray-400', 'check_circle'];
+      case 'sync-full':
+        return ['text-green-500 dark:text-green-400', 'check_circle'];
       case 'conflict':
+        return ['text-gray-500 dark:text-gray-400', 'error'];
+      case 'conflict-full':
         return ['text-red-600 dark:text-red-400', 'error'];
     }
   }
@@ -185,7 +189,7 @@
   </td>
   <td class="px-6 pt-1">
     {#if progressPercent === 'spin'}
-      <Spinner />
+      <Spinner size="6" />
     {:else if progressPercent !== null}
       <Progressbar progress={progressPercent} />
     {:else if status === 'local'}

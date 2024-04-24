@@ -175,7 +175,7 @@ impl ops::SubAssign for Node {
 
 /// Stats for the whole diff tree structure.
 /// That is, the stats for both local and remote files and directories
-#[derive(Debug, Copy, Clone, PartialEq, Eq, TypeDef)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, TypeDef)]
 #[serde(rename = "TreeStat")]
 pub struct Tree {
     pub local: Dir,

@@ -1,4 +1,4 @@
-use fsync::{path::PathBuf, stat};
+use fsync::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use typescript_type_def::TypeDef;
 
@@ -73,20 +73,21 @@ pub struct TreeEntry {
     pub name: Option<String>,
     pub entry: fsync::tree::Entry,
     pub children: Vec<String>,
-    pub children_node_stat: stat::Node,
+    pub stats: fsync::stat::Tree,
 }
 
 impl From<fsync::tree::EntryNode> for TreeEntry {
     fn from(value: fsync::tree::EntryNode) -> Self {
         let path = value.path().to_owned();
         let name = path.file_name().map(|s| s.to_owned());
-        let (entry, children, children_node_stat) = value.into_parts();
+        let stats = value.stats();
+        let (entry, children, _) = value.into_parts();
         TreeEntry {
             path,
             name,
             entry,
             children,
-            children_node_stat,
+            stats,
         }
     }
 }

@@ -124,9 +124,9 @@ impl DiffTree {
         let (stat_diff, is_conflict) = {
             let mut node = self.nodes.get_mut(path).expect("this node should be valid");
 
-            let rem = node.stat();
+            let rem = node.stats();
             node.op_entry(op);
-            let add = node.stat();
+            let add = node.stats();
 
             (add - rem, node.entry().is_conflict())
         };
@@ -173,9 +173,9 @@ impl DiffTree {
                     stat: Some(dir_stat),
                 };
 
-                let bef = node.stat();
+                let bef = node.stats();
                 node.op_entry(move |entry| entry.with(md, loc));
-                let aft = node.stat();
+                let aft = node.stats();
 
                 let is_conflict = node.entry().is_conflict();
                 conflicts.push((path.to_path_buf(), is_conflict));
@@ -308,7 +308,7 @@ where
             let path = local.path().to_owned();
             let entry = Entry::new_sync(local, remote);
             let node = EntryNode::new(entry, children, children_stat);
-            let res = node.stat();
+            let res = node.stats();
 
             self.nodes.insert(path, node);
 
@@ -341,7 +341,7 @@ where
             let path = entry.path().to_owned();
             let entry = Entry::Local(entry);
             let node = EntryNode::new(entry, children_names, children_stat);
-            let res = node.stat();
+            let res = node.stats();
 
             self.nodes.insert(path, node);
 
@@ -374,7 +374,7 @@ where
             let path = entry.path().to_owned();
             let entry = Entry::Remote(entry);
             let node = EntryNode::new(entry, child_names, children_stat);
-            let res = node.stat();
+            let res = node.stats();
 
             self.nodes.insert(path, node);
 
