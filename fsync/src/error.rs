@@ -49,6 +49,7 @@ pub enum Error {
     Io(String),
     Auth(String),
     Api(String),
+    Bug(String),
     Other(String),
 }
 
@@ -63,6 +64,7 @@ impl fmt::Display for Error {
             Self::Auth(msg) => write!(f, "Authorization error: {msg}"),
             Self::Io(msg) => write!(f, "IO error: {msg}"),
             Self::Api(msg) => write!(f, "API error: {msg}"),
+            Self::Bug(msg) => write!(f, "Fsync bug error: {msg}"),
             Self::Other(msg) => f.write_str(msg),
         }
     }
