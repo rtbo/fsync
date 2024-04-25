@@ -492,6 +492,7 @@ pub enum Progress {
     OAuth2Exchange,
     OAuth2Refresh,
     Progress { progress: u64, total: u64 },
+    Compound,
     Done,
     Err(crate::Error),
 }
