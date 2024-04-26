@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, mem};
 
 use dashmap::DashMap;
 pub use fsync::tree::{Entry, EntryNode};
@@ -115,8 +115,15 @@ impl DiffTree {
     }
 
     pub fn remove_from_storage(&self, path: &Path, loc: StorageLoc) {
-        let is_conflict = self.op_entry_check_conflict(path, |entry| entry.without(loc));
-        debug_assert!(!is_conflict);
+        let node = self.nodes.get_mut(path);
+        if let Some(mut node) = node {
+            if node.is_sync() {
+                node.op_entry(|entry| entry.without(loc)); 
+            } else {
+                mem::drop(node);
+                self.nodes.remove(path);
+            }
+        }
     }
 
     /// Apply `op` to entry and return whether it is a conflict
