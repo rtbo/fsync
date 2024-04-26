@@ -1,10 +1,8 @@
 #![cfg(test)]
 
-use std::{
-    sync::{Arc, Once},
-    time::SystemTime,
-};
+use std::sync::{Arc, Once};
 
+use dataset::Dataset;
 use fsync::{path::Path, Metadata};
 use fsyncd::{
     service::Service,
@@ -74,22 +72,22 @@ type CacheHarness = Harness<fs::Stub, CacheStorage<id::Stub>>;
 static LOG_INIT: Once = Once::new();
 
 async fn harness() -> CacheHarness {
-    harness_with(dataset::LOCAL, dataset::REMOTE).await
+    harness_with(Dataset::default()).await
 }
 
-async fn harness_with(local: &[dataset::Entry], remote: &[dataset::Entry]) -> CacheHarness {
+async fn harness_with(dataset: Dataset) -> CacheHarness {
     LOG_INIT.call_once(env_logger::init);
 
-    let now = Some(SystemTime::now());
+    let now = dataset.mtime_ref;
 
     let dst = utils::temp_path(Some("fsync-fs"), None);
     tokio::fs::create_dir(&dst).await.unwrap();
 
     let local_root = dst.join("local");
-    let local = fs::Stub::new(&local_root, local, now);
+    let local = fs::Stub::new(&local_root, &dataset.local, now);
 
     let remote_root = dst.join("remote");
-    let remote = id::Stub::new(&remote_root, remote, now)
+    let remote = id::Stub::new(&remote_root, &dataset.remote, now)
         .then(|remote| async { CacheStorage::new(remote.unwrap(), CachePersist::Memory).await });
 
     let (local, remote) = tokio::try_join!(local, remote).unwrap();

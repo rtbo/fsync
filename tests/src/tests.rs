@@ -27,7 +27,7 @@ async fn node_stat() {
     let h = harness().await;
     let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
     let stat = root.stats();
-    assert_eq!(stat.node, dataset::NODE_STAT);
+    assert_eq!(stat.node, dataset::DEFAULT_NODE_STAT);
 }
 
 #[tokio::test]
