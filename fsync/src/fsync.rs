@@ -4,7 +4,7 @@ use typescript_type_def::TypeDef;
 
 use crate::{
     path::{Path, PathBuf},
-    stat, Location, StorageDir,
+    stat, Location,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TypeDef)]
@@ -481,21 +481,50 @@ pub mod tree {
     }
 }
 
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
+pub enum ResolutionMethod {
+    ReplaceOlderByNewer,
+    ReplaceNewerByOlder,
+    ReplaceLocalByRemote,
+    ReplaceRemoteByLocal,
+    DeleteOlder,
+    DeleteNewer,
+    DeleteLocal,
+    DeleteRemote,
+    CreateLocalCopy,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
 #[serde(rename_all = "camelCase")]
 pub enum Operation {
-    Copy(PathBuf, StorageDir),
-    Replace(PathBuf, StorageDir),
+    Sync(PathBuf),
+    Resolve(PathBuf, ResolutionMethod),
     Delete(PathBuf, Location),
+
+    SyncDeep(PathBuf),
+    ResolveDeep(PathBuf, ResolutionMethod),
+    DeleteDeep(PathBuf, Location),
 }
 
 impl Operation {
     pub fn path(&self) -> &Path {
         match self {
-            Operation::Copy(path, _) => path,
-            Operation::Replace(path, _) => path,
+            Operation::Sync(path) => path,
+            Operation::Resolve(path, _) => path,
             Operation::Delete(path, _) => path,
+
+            Operation::SyncDeep(path) => path,
+            Operation::ResolveDeep(path, _) => path,
+            Operation::DeleteDeep(path, _) => path,
         }
+    }
+
+    pub fn is_deep(&self) -> bool {
+        matches!(
+            self,
+            Operation::SyncDeep(..) | Operation::ResolveDeep(..) | Operation::DeleteDeep(..)
+        )
     }
 }
 

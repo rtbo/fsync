@@ -11,7 +11,8 @@ use fsync::{
     self,
     loc::inst,
     path::{Path, PathBuf},
-    Error, Fsync, Location, Metadata, Operation, PathError, Progress, StorageDir,
+    Error, Fsync, Location, Metadata, Operation, PathError, Progress, ResolutionMethod, StorageDir,
+    StorageLoc,
 };
 use futures::{
     future,
@@ -23,7 +24,7 @@ use tarpc::{
     server::{self, incoming::Incoming, Channel},
     tokio_serde::formats::Bincode,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 
 use crate::{
     storage,
@@ -100,7 +101,58 @@ impl<L, R> Service<L, R> {
         }
     }
 
-    async fn do_copy_or_mkdir<S, D>(
+    async fn do_ensure_parents<S>(
+        &self,
+        path: &Path,
+        storage: &S,
+        loc: StorageLoc,
+        progress: &SharedProgress,
+    ) -> fsync::Result<()>
+    where
+        S: storage::MkDir,
+    {
+        // create parents
+        storage
+            .mkdir(path.parent().unwrap(), true, Some(progress))
+            .await?;
+        let conflicts = self.tree.ensure_parents(path, loc);
+
+        for (path, is_conflict) in conflicts {
+            self.check_conflict(&path, is_conflict).await;
+        }
+
+        Ok(())
+    }
+
+    async fn do_copy<S>(
+        &self,
+        metadata_from: &fsync::Metadata,
+        to: &Path,
+        storage: &S,
+        loc: StorageLoc,
+        progress: &SharedProgress,
+    ) -> fsync::Result<()>
+    where
+        S: storage::MkDir + storage::CopyFile,
+    {
+        let path = metadata_from.path();
+        debug_assert!(path.is_absolute() && !path.is_root());
+        debug_assert!(metadata_from.is_file());
+
+        self.do_ensure_parents(path, storage, loc, progress).await?;
+
+        let metadata = storage
+            .copy_file(metadata_from.path(), to, Some(progress))
+            .await?;
+
+        let is_conflict = self.tree.add_to_storage_check_conflict(path, metadata, loc);
+
+        self.check_conflict(path, is_conflict).await;
+
+        Ok(())
+    }
+
+    async fn do_clone<S, D>(
         &self,
         metadata: &fsync::Metadata,
         src: &S,
@@ -109,51 +161,62 @@ impl<L, R> Service<L, R> {
         progress: &SharedProgress,
     ) -> fsync::Result<()>
     where
-        S: storage::Storage,
-        D: storage::Storage,
+        S: storage::ReadFile,
+        D: storage::MkDir + storage::CreateFile,
     {
         let path = metadata.path();
         debug_assert!(path.is_absolute() && !path.is_root());
-        let is_conflict = if metadata.is_file() {
-            let total = metadata.size().unwrap_or(0);
-            let progress2 = progress.clone();
+        debug_assert!(metadata.is_file());
+        let total = metadata.size().unwrap_or(0);
+        let progress2 = progress.clone();
 
-            let read = src.read_file(path.to_owned(), Some(progress)).await?;
-            log::debug!("read {path}");
-            let read = read.report_progress(Duration::from_millis(50), move |prog| {
-                log::debug!("progress: {} of {}", prog, total);
-                progress2.set(fsync::Progress::Progress {
-                    progress: prog as _,
-                    total,
-                });
+        let read = src.read_file(path.to_owned(), Some(progress)).await?;
+        log::debug!("read {path}");
+        let read = read.report_progress(Duration::from_millis(50), move |prog| {
+            log::debug!("progress: {} of {}", prog, total);
+            progress2.set(fsync::Progress::Progress {
+                progress: prog as _,
+                total,
             });
-            log::debug!("reporting progress on {path}");
+        });
+        log::debug!("reporting progress on {path}");
 
-            // create parents
-            dest.mkdir(path.parent().unwrap(), true, Some(progress))
-                .await?;
-            let conflicts = self.tree.ensure_parents(path, dir.dest());
-            for (path, is_conflict) in conflicts {
-                self.check_conflict(&path, is_conflict).await;
-            }
+        self.do_ensure_parents(path, dest, dir.dest(), progress)
+            .await?;
 
-            let metadata = dest
-                .create_file(&metadata, read, Some(progress))
-                .await
-                .unwrap();
-            self.tree
-                .add_to_storage_check_conflict(path, metadata, dir.dest())
-        } else {
-            assert!(metadata.is_dir());
+        let metadata = dest
+            .create_file(&metadata, read, Some(progress))
+            .await
+            .unwrap();
+        let is_conflict = self
+            .tree
+            .add_to_storage_check_conflict(path, metadata, dir.dest());
+        self.check_conflict(path, is_conflict).await;
+        Ok(())
+    }
 
-            dest.mkdir(path, false, Some(progress)).await?;
-            let metadata = Metadata::Directory {
-                path: path.to_path_buf(),
-                stat: None,
-            };
-            self.tree
-                .add_to_storage_check_conflict(path, metadata, dir.dest())
+    async fn do_mkdir<D>(
+        &self,
+        metadata: &fsync::Metadata,
+        dest: &D,
+        dir: StorageDir,
+        progress: &SharedProgress,
+    ) -> fsync::Result<()>
+    where
+        D: storage::MkDir,
+    {
+        let path = metadata.path();
+        debug_assert!(path.is_absolute() && !path.is_root());
+        debug_assert!(metadata.is_dir());
+
+        dest.mkdir(path, false, Some(progress)).await?;
+        let metadata = Metadata::Directory {
+            path: path.to_path_buf(),
+            stat: None,
         };
+        let is_conflict = self
+            .tree
+            .add_to_storage_check_conflict(path, metadata, dir.dest());
         self.check_conflict(path, is_conflict).await;
         Ok(())
     }
@@ -167,8 +230,8 @@ impl<L, R> Service<L, R> {
         progress: &SharedProgress,
     ) -> fsync::Result<()>
     where
-        S: storage::Storage,
-        D: storage::Storage,
+        S: storage::ReadFile,
+        D: storage::WriteFile,
     {
         let path = metadata.path();
 
@@ -185,6 +248,22 @@ impl<L, R> Service<L, R> {
             .tree
             .add_to_storage_check_conflict(path, written, dir.dest());
         self.check_conflict(path, is_conflict).await;
+        Ok(())
+    }
+
+    async fn do_delete<S>(
+        &self,
+        path: &Path,
+        storage: &S,
+        loc: StorageLoc,
+        progress: &SharedProgress,
+    ) -> fsync::Result<()>
+    where
+        S: storage::Delete,
+    {
+        storage.delete(path, Some(progress)).await?;
+        self.tree.remove_from_storage(path, loc);
+        self.check_conflict(path, false).await;
         Ok(())
     }
 }
@@ -298,62 +377,131 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    pub async fn copy_or_mkdir(
+    pub async fn sync_unit(&self, path: &Path, progress: &SharedProgress) -> Result<(), Error> {
+        let node = self.check_node(path)?;
+        match node.entry() {
+            tree::Entry::Local(metadata) => {
+                if metadata.is_dir() {
+                    self.do_mkdir(metadata, &self.remote, StorageDir::LocalToRemote, progress)
+                        .await
+                } else {
+                    self.do_clone(
+                        metadata,
+                        &self.local,
+                        &self.remote,
+                        StorageDir::LocalToRemote,
+                        progress,
+                    )
+                    .await
+                }
+            }
+            tree::Entry::Remote(metadata) => {
+                if metadata.is_dir() {
+                    self.do_mkdir(metadata, &self.local, StorageDir::RemoteToLocal, progress)
+                        .await
+                } else {
+                    self.do_clone(
+                        metadata,
+                        &self.remote,
+                        &self.local,
+                        StorageDir::RemoteToLocal,
+                        progress,
+                    )
+                    .await
+                }
+            }
+            tree::Entry::Sync { conflict: None, .. } => Ok(()),
+            tree::Entry::Sync { .. } => Err(fsync::Error::Conflict(path.to_owned())),
+        }
+    }
+
+    pub async fn resolve_unit(
         &self,
         path: &Path,
-        dir: StorageDir,
+        method: ResolutionMethod,
         progress: &SharedProgress,
     ) -> Result<(), Error> {
         let node = self.check_node(path)?;
-        match (node.entry(), dir) {
-            (tree::Entry::Local(..), StorageDir::RemoteToLocal) => {
-                Err(PathError::Only(path.to_owned(), Location::Local))?
-            }
-            (tree::Entry::Remote(..), StorageDir::LocalToRemote) => {
-                Err(PathError::Only(path.to_owned(), Location::Remote))?
-            }
-            (tree::Entry::Local(metadata), StorageDir::LocalToRemote) => {
-                self.do_copy_or_mkdir(metadata, &self.local, &self.remote, dir, progress)
+        match node.entry() {
+            tree::Entry::Sync {
+                local,
+                remote,
+                conflict: Some(conflict),
+            } => match (method, conflict) {
+                (ResolutionMethod::DeleteRemote, _)
+                | (ResolutionMethod::DeleteOlder, fsync::Conflict::LocalNewer)
+                | (ResolutionMethod::DeleteNewer, fsync::Conflict::LocalOlder) => {
+                    self.do_delete(path, &self.remote, StorageLoc::Remote, progress)
+                        .await
+                }
+                (ResolutionMethod::DeleteLocal, _)
+                | (ResolutionMethod::DeleteOlder, fsync::Conflict::LocalOlder)
+                | (ResolutionMethod::DeleteNewer, fsync::Conflict::LocalNewer) => {
+                    self.do_delete(path, &self.local, StorageLoc::Local, progress)
+                        .await
+                }
+                (ResolutionMethod::ReplaceRemoteByLocal, _)
+                | (ResolutionMethod::ReplaceOlderByNewer, fsync::Conflict::LocalNewer)
+                | (ResolutionMethod::ReplaceNewerByOlder, fsync::Conflict::LocalOlder) => {
+                    self.do_replace(
+                        local,
+                        &self.local,
+                        &self.remote,
+                        StorageDir::LocalToRemote,
+                        progress,
+                    )
                     .await
-            }
-            (tree::Entry::Remote(metadata), StorageDir::RemoteToLocal) => {
-                self.do_copy_or_mkdir(metadata, &self.remote, &self.local, dir, progress)
+                }
+                (ResolutionMethod::ReplaceLocalByRemote, _)
+                | (ResolutionMethod::ReplaceOlderByNewer, fsync::Conflict::LocalOlder)
+                | (ResolutionMethod::ReplaceNewerByOlder, fsync::Conflict::LocalNewer) => {
+                    self.do_replace(
+                        remote,
+                        &self.remote,
+                        &self.local,
+                        StorageDir::RemoteToLocal,
+                        progress,
+                    )
                     .await
-            }
-            (tree::Entry::Sync { .. }, _) => {
-                Err(PathError::Unexpected(path.to_owned(), Location::Both))?
-            }
+                }
+                (ResolutionMethod::CreateLocalCopy, _) => {
+                    self.do_copy(
+                        local,
+                        &copy_path(path),
+                        &self.local,
+                        StorageLoc::Local,
+                        progress,
+                    )
+                    .await?;
+                    self.do_replace(
+                        remote,
+                        &self.remote,
+                        &self.local,
+                        StorageDir::RemoteToLocal,
+                        progress,
+                    )
+                    .await
+                }
+                (_, fsync::Conflict::LocalBigger) | (_, fsync::Conflict::LocalSmaller) => {
+                    Err(fsync::Error::Unresolved(
+                        path.to_owned(),
+                        "local and remote have same mtime but different size. ".to_string(),
+                    ))
+                }
+                (_, fsync::Conflict::LocalDirRemoteFile) => Err(fsync::Error::Unresolved(
+                    path.to_owned(),
+                    "local is dir and remote is file. ".to_string(),
+                )),
+                (_, fsync::Conflict::LocalFileRemoteDir) => Err(fsync::Error::Unresolved(
+                    path.to_owned(),
+                    "local is file and remote is dir. ".to_string(),
+                )),
+            },
+            _ => Ok(()),
         }
     }
 
-    pub async fn replace(
-        &self,
-        path: &Path,
-        dir: StorageDir,
-        progress: &SharedProgress,
-    ) -> fsync::Result<()> {
-        let node = self.check_node(path)?;
-        match (node.entry(), dir) {
-            (tree::Entry::Sync { remote, .. }, StorageDir::RemoteToLocal) => {
-                self.do_replace(remote, &self.remote, &self.local, dir, progress)
-                    .await
-            }
-            (tree::Entry::Sync { local, .. }, StorageDir::LocalToRemote) => {
-                self.do_replace(local, &self.local, &self.remote, dir, progress)
-                    .await
-            }
-            (tree::Entry::Local(local), _) => Err(PathError::Unexpected(
-                local.path().to_owned(),
-                Location::Local,
-            ))?,
-            (tree::Entry::Remote(remote), _) => Err(PathError::Unexpected(
-                remote.path().to_owned(),
-                Location::Remote,
-            ))?,
-        }
-    }
-
-    pub async fn delete(
+    pub async fn delete_unit(
         &self,
         path: &Path,
         location: Location,
@@ -362,66 +510,100 @@ where
         let node = self.check_node(path)?;
         match (node.entry(), location) {
             (tree::Entry::Local(..), Location::Local) => {
-                self.local().delete(path, Some(progress)).await?;
-                self.tree.remove(path);
+                self.do_delete(path, &self.local, StorageLoc::Local, progress)
+                    .await
             }
             (tree::Entry::Remote(..), Location::Remote) => {
-                self.remote().delete(path, Some(progress)).await?;
-                self.tree.remove(path);
+                self.do_delete(path, &self.remote, StorageLoc::Remote, progress)
+                    .await
             }
             (tree::Entry::Sync { .. }, Location::Local) => {
-                self.local().delete(path, Some(progress)).await?;
-                self.tree
-                    .remove_from_storage(path, fsync::StorageLoc::Local);
+                self.do_delete(path, &self.local, StorageLoc::Local, progress)
+                    .await
             }
             (tree::Entry::Sync { .. }, Location::Remote) => {
-                self.remote().delete(path, Some(progress)).await?;
-                self.tree
-                    .remove_from_storage(path, fsync::StorageLoc::Remote);
+                self.do_delete(path, &self.remote, StorageLoc::Remote, progress)
+                    .await
             }
             (tree::Entry::Sync { .. }, Location::Both) => {
-                self.local().delete(path, Some(progress)).await?;
-                self.remote().delete(path, Some(progress)).await?;
+                let local = self.local().delete(path, Some(progress));
+                let remote = self.remote().delete(path, Some(progress));
+                futures::try_join!(local, remote)?;
                 self.tree.remove(path);
+                self.check_conflict(path, false).await;
+                Ok(())
             }
             _ => Err(fsync::PathError::NotFound(
                 path.to_path_buf(),
                 Some(location),
             ))?,
         }
-        self.check_conflict(path, false).await;
-        Ok(())
+    }
+
+    async fn operate_unit(
+        &self,
+        operation: &Operation,
+        tx: mpsc::Sender<(PathBuf, SharedProgress)>,
+    ) -> fsync::Result<()> {
+        let progress = SharedProgress::new();
+        tx.send((operation.path().to_owned(), progress.clone()))
+            .await
+            .expect("tx should not be closed");
+
+        let res = match operation {
+            Operation::Sync(path) | Operation::SyncDeep(path) => {
+                self.sync_unit(path.as_ref(), &progress).await
+            }
+            Operation::Resolve(path, method) | Operation::ResolveDeep(path, method) => {
+                self.resolve_unit(path.as_ref(), *method, &progress).await
+            }
+            Operation::Delete(path, location) | Operation::DeleteDeep(path, location) => {
+                self.delete_unit(path.as_ref(), *location, &progress).await
+            }
+        };
+        match res {
+            Ok(()) => {
+                progress.set(Progress::Done);
+                Ok(())
+            }
+            Err(err) => {
+                progress.set(Progress::Err(err.clone()));
+                Err(err)
+            }
+        }
+    }
+
+    async fn operate_deep(
+        &self,
+        operation: &Operation,
+        tx: mpsc::Sender<(PathBuf, SharedProgress)>,
+    ) -> fsync::Result<()> {
+        let path = operation.path();
+        let node = self.check_node(path)?;
+        if node.children().is_empty() {
+            return self.operate_unit(operation, tx).await;
+        }
+
+        let progress = SharedProgress::new();
+        tx.send((path.to_owned(), progress.clone()))
+            .await
+            .expect("tx should not be closed");
+
+        progress.set(Progress::Compound);
+
+        unimplemented!()
     }
 
     pub async fn operate(self: Arc<Self>, operation: Operation) -> fsync::Result<Progress> {
-        let progress = SharedProgress::new();
-
-        let path = operation.path().to_owned();
+        let (tx, mut rx) = mpsc::channel::<(PathBuf, SharedProgress)>(32);
 
         let join = {
             let this = self.clone();
-            let progress = progress.clone();
             tokio::spawn(async move {
-                let res = match operation {
-                    Operation::Copy(path, dir) => {
-                        this.copy_or_mkdir(path.as_ref(), dir, &progress).await
-                    }
-                    Operation::Replace(path, dir) => {
-                        this.replace(path.as_ref(), dir, &progress).await
-                    }
-                    Operation::Delete(path, location) => {
-                        this.delete(path.as_ref(), location, &progress).await
-                    }
-                };
-                match res {
-                    Ok(()) => {
-                        progress.set(Progress::Done);
-                        Ok(())
-                    }
-                    Err(err) => {
-                        progress.set(Progress::Err(err.clone()));
-                        Err(err)
-                    }
+                if operation.is_deep() {
+                    this.operate_deep(&operation, tx).await
+                } else {
+                    this.operate_unit(&operation, tx).await
                 }
             })
         };
@@ -430,17 +612,30 @@ where
 
         tokio::select! {
             res = join => match res {
-                Ok(Ok(())) => Ok(Progress::Done),
+                Ok(Ok(())) => {
+                    if cfg!(debug_assertions) {
+                        let (_, prog) = rx.try_recv().expect("should receive at least root progress");
+                        debug_assert!(matches!(prog.get(), Progress::Done));
+                    }
+                    Ok(Progress::Done)
+                },
                 Ok(Err(e)) => Err(e),
-                Err(e) => {
-                    log::error!("Error in operation: {}", e);
-                    Err(fsync::Error::Other(e.to_string()))
-                }
+                Err(err) => Err(fsync::Error::Bug(err.to_string())),
             },
             _ = sleep => {
-                self.add_progress(path, progress.clone()).await;
-                Ok(progress.get())
-            }
+
+                let (path, first_progress) = rx
+                    .try_recv()
+                    .expect("should receive at least root progress");
+                self.add_progress(path, first_progress.clone()).await;
+
+                tokio::spawn(async move {
+                    while let Some((path, progress)) = rx.recv().await {
+                        self.add_progress(path, progress).await;
+                    }
+                });
+                Ok(first_progress.get())
+            },
         }
     }
 }
@@ -584,11 +779,52 @@ where
     }
 }
 
+fn copy_path(path: &Path) -> PathBuf {
+    debug_assert!(!path.is_root());
+    let parent = path
+        .parent()
+        .expect("Expected path to be copied to have a parent");
+    let stem = path
+        .file_stem()
+        .expect("Expected path to be copied to have a name");
+    let ext = path.extension();
+
+    let cap = parent.as_str().len() + stem.len() + ext.map_or(0, |e| e.len() + 1) + 6;
+
+    let mut res = PathBuf::with_capacity(cap);
+    res.push(parent);
+    res.push(format!("{stem}-copy"));
+    if let Some(ext) = ext {
+        res.set_extension(ext);
+    }
+    res
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::BTreeSet, ops::Bound};
 
     use fsync::path::{Path, PathBuf};
+
+    #[test]
+    fn test_copy_path() {
+        use super::copy_path;
+
+        assert_eq!(
+            Path::new("/parent/stem-copy.ext"),
+            copy_path(&Path::new("/parent/stem.ext"))
+        );
+
+        assert_eq!(
+            Path::new("/parent/noext-copy"),
+            copy_path(&Path::new("/parent/noext"))
+        );
+
+        assert_eq!(
+            Path::new("/file_at_root-copy.ext"),
+            copy_path(&Path::new("/file_at_root.ext"))
+        );
+    }
 
     fn build_test_conflicts() -> BTreeSet<PathBuf> {
         let mut set = BTreeSet::new();

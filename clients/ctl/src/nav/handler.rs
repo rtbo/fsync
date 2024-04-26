@@ -1,5 +1,4 @@
 use crossterm::event;
-use fsync::StorageDir;
 
 use super::{menu::Action, render::Size};
 use crate::nav::ctx;
@@ -82,14 +81,9 @@ impl super::Navigator {
                 if let Some(child) = child {
                     let path = child.entry().path().to_owned();
                     if !child.is_sync() {
-                        let dir = if child.is_local_only() {
-                            StorageDir::LocalToRemote
-                        } else {
-                            StorageDir::RemoteToLocal
-                        };
                         let _progress = self
                             .client
-                            .operate(ctx(), fsync::Operation::Copy(path.clone(), dir))
+                            .operate(ctx(), fsync::Operation::Sync(path.clone()))
                             .await
                             .unwrap()?;
                         // super::log_msg(&format!("Progress of {path}: {:?}", progress));

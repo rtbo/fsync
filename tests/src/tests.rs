@@ -1,8 +1,5 @@
 use fsync::{
-    path::{Path, PathBuf},
-    stat,
-    tree::Entry,
-    Location, Operation, StorageDir,
+    path::{Path, PathBuf}, stat, tree::Entry, Location, Operation, ResolutionMethod, 
 };
 
 use crate::{dataset, harness, utils::UnwrapDisplay};
@@ -34,7 +31,7 @@ async fn node_stat() {
 }
 
 #[tokio::test]
-async fn copy_remote_to_local() {
+async fn sync_remote_to_local() {
     let h = harness().await;
 
     let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
@@ -43,7 +40,7 @@ async fn copy_remote_to_local() {
     let path = PathBuf::from("/only-remote.txt");
     h.service
         .clone()
-        .operate(Operation::Copy(path.clone(), StorageDir::RemoteToLocal))
+        .operate(Operation::Sync(path.clone()))
         .await
         .unwrap();
 
@@ -70,12 +67,12 @@ async fn copy_remote_to_local() {
 }
 
 #[tokio::test]
-async fn copy_remote_to_local_deep() {
+async fn sync_remote_to_local_deep() {
     let h = harness().await;
     let path = PathBuf::from("/only-remote/deep/file2.txt");
     h.service
         .clone()
-        .operate(Operation::Copy(path.clone(), StorageDir::RemoteToLocal))
+        .operate(Operation::Sync(path.clone()))
         .await
         .unwrap();
     let content = h.local_file_content(&path).await.unwrap();
@@ -92,23 +89,23 @@ async fn copy_remote_to_local_deep() {
 
 #[tokio::test]
 #[should_panic(expected = "No such entry: /not-a-file.txt")]
-async fn copy_remote_to_local_fail_missing() {
+async fn sync_remote_to_local_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
         .clone()
-        .operate(Operation::Copy(path, StorageDir::RemoteToLocal))
+        .operate(Operation::Sync(path))
         .await
         .unwrap_display();
 }
 
 #[tokio::test]
-async fn copy_local_to_remote_deep() {
+async fn sync_local_to_remote_deep() {
     let h = harness().await;
     let path = PathBuf::from("/only-local/deep/file2.txt");
     h.service
         .clone()
-        .operate(Operation::Copy(path.clone(), StorageDir::LocalToRemote))
+        .operate(Operation::Sync(path.clone()))
         .await
         .unwrap();
     let content = h.remote_file_content(&path).await.unwrap();
@@ -125,23 +122,23 @@ async fn copy_local_to_remote_deep() {
 
 #[tokio::test]
 #[should_panic(expected = "Expected an absolute path: only-remote.txt")]
-async fn copy_remote_to_local_fail_relative() {
+async fn sync_remote_to_local_fail_relative() {
     let h = harness().await;
     let path = PathBuf::from("only-remote.txt");
     h.service
         .clone()
-        .operate(Operation::Copy(path, StorageDir::RemoteToLocal))
+        .operate(Operation::Sync(path))
         .await
         .unwrap_display();
 }
 
 #[tokio::test]
-async fn copy_local_to_remote() {
+async fn sync_local_to_remote() {
     let h = harness().await;
     let path = PathBuf::from("/only-local.txt");
     h.service
         .clone()
-        .operate(Operation::Copy(path.clone(), StorageDir::LocalToRemote))
+        .operate(Operation::Sync(path.clone()))
         .await
         .unwrap();
     let content = h.remote_file_content(&path).await.unwrap();
@@ -150,44 +147,44 @@ async fn copy_local_to_remote() {
 
 #[tokio::test]
 #[should_panic(expected = "No such entry: /not-a-file.txt")]
-async fn copy_local_to_remote_fail_missing() {
+async fn sync_local_to_remote_fail_missing() {
     let h = harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
         .clone()
-        .operate(Operation::Copy(path, StorageDir::LocalToRemote))
+        .operate(Operation::Sync(path))
         .await
         .unwrap_display();
 }
 
 #[tokio::test]
-async fn replace_local_by_remote() {
+async fn resolve_keep_newer_local() {
     let h = harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
         .clone()
-        .operate(Operation::Replace(path.clone(), StorageDir::RemoteToLocal))
-        .await
-        .unwrap();
-    let local_content = h.local_file_content(&path).await.unwrap();
-    let remote_content = h.remote_file_content(&path).await.unwrap();
-    assert_eq!(&local_content, "/both.txt - remote");
-    assert_eq!(&remote_content, "/both.txt - remote");
-}
-
-#[tokio::test]
-async fn replace_remote_by_local() {
-    let h = harness().await;
-    let path = PathBuf::from("/both.txt");
-    h.service
-        .clone()
-        .operate(Operation::Replace(path.clone(), StorageDir::LocalToRemote))
+        .operate(Operation::Resolve(path.clone(), ResolutionMethod::ReplaceOlderByNewer))
         .await
         .unwrap();
     let local_content = h.local_file_content(&path).await.unwrap();
     let remote_content = h.remote_file_content(&path).await.unwrap();
     assert_eq!(&local_content, "/both.txt - local");
     assert_eq!(&remote_content, "/both.txt - local");
+}
+
+#[tokio::test]
+async fn resolve_keep_newer_remote() {
+    let h = harness().await;
+    let path = PathBuf::from("/both/both.txt");
+    h.service
+        .clone()
+        .operate(Operation::Resolve(path.clone(), ResolutionMethod::ReplaceOlderByNewer))
+        .await
+        .unwrap();
+    let local_content = h.local_file_content(&path).await.unwrap();
+    let remote_content = h.remote_file_content(&path).await.unwrap();
+    assert_eq!(&local_content, "/both/both.txt - remote");
+    assert_eq!(&remote_content, "/both/both.txt - remote");
 }
 
 #[tokio::test]
