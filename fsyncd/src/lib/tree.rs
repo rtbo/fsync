@@ -172,7 +172,7 @@ impl DiffTree {
         while let Some(path) = parent {
             let mut node = self.nodes.get_mut(path).expect("this node should be valid");
 
-            if node.entry().has_by_loc(loc) {
+            if node.entry().is_at_loc(loc) {
                 node.add_stat(&tree_stat);
             } else {
                 let md = fsync::Metadata::Directory {

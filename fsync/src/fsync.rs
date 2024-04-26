@@ -243,10 +243,17 @@ pub mod tree {
             )
         }
 
-        pub fn has_by_loc(&self, loc: StorageLoc) -> bool {
+        pub fn is_at_loc(&self, loc: StorageLoc) -> bool {
             match loc {
                 StorageLoc::Local => self.is_local_only() || self.is_sync(),
                 StorageLoc::Remote => self.is_remote_only() || self.is_sync(),
+            }
+        }
+
+        pub fn is_only_at_loc(&self, loc: StorageLoc) -> bool {
+            match loc {
+                StorageLoc::Local => self.is_local_only(),
+                StorageLoc::Remote => self.is_remote_only(),
             }
         }
 
@@ -385,6 +392,14 @@ pub mod tree {
 
         pub fn is_remote_only(&self) -> bool {
             self.entry.is_remote_only()
+        }
+
+        pub fn is_at_loc(&self, loc: StorageLoc) -> bool {
+            self.entry.is_at_loc(loc) 
+        }
+
+        pub fn is_only_at_loc(&self, loc: StorageLoc) -> bool {
+            self.entry.is_only_at_loc(loc) 
         }
 
         pub fn is_sync(&self) -> bool {
