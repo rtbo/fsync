@@ -54,6 +54,16 @@ pub trait WriteFile {
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
+pub trait CopyFile {
+    fn copy_file(
+        &self,
+        src_id: &Id,
+        dest_parent_id: Option<&Id>,
+        dest_path: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> impl Future<Output = fsync::Result<(IdBuf, Metadata)>> + Send;
+}
+
 /// A trait to delete files or folders
 pub trait Delete {
     /// Deletes the file or folder referred to by `id`.
@@ -73,6 +83,7 @@ pub trait Storage:
     + MkDir
     + CreateFile
     + WriteFile
+    + CopyFile
     + Delete
     + Shutdown
     + Send

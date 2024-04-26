@@ -3,9 +3,7 @@ use std::time::SystemTime;
 use fsync::path::{FsPath, Path, PathBuf};
 use fsyncd::{
     storage::{
-        fs::FileSystem,
-        id::{self, IdBuf},
-        CreateFile, Delete, DirEntries, MkDir, ReadFile, WriteFile,
+        fs::FileSystem, id::{self, IdBuf}, CopyFile, CreateFile, Delete, DirEntries, MkDir, ReadFile, WriteFile
     },
     SharedProgress, Shutdown,
 };
@@ -106,6 +104,21 @@ impl id::WriteFile for Stub {
     ) -> fsync::Result<fsync::Metadata> {
         let metadata = self.inner.write_file(metadata, data, progress).await?;
         Ok(metadata)
+    }
+}
+
+impl id::CopyFile for Stub {
+    async fn copy_file(
+        &self,
+        src_id: &id::Id,
+        _dest_parent_id: Option<&id::Id>,
+        dest_path: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
+        let src = PathBuf::from(src_id.as_str());
+        let metadata = self.inner.copy_file(&src, dest_path, progress).await?;
+        let id = IdBuf::from(dest_path.as_str());
+        Ok((id, metadata))
     }
 }
 

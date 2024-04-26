@@ -302,6 +302,44 @@ where
     }
 }
 
+impl<A> super::id::CopyFile for GoogleDrive<A>
+where
+    A: GetToken,
+{
+    async fn copy_file(
+        &self,
+        src_id: &Id,
+        dest_parent_id: Option<&Id>,
+        dest_path: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
+        let dest_file = api::File {
+            id: None,
+            name: Some(
+                dest_path
+                    .file_name()
+                    .expect("Expected dest_path to have a file name")
+                    .to_string(),
+            ),
+            modified_time: None,
+            size: None,
+            mime_type: None,
+            parents: dest_parent_id.map(|id| vec![id.to_id_buf()]),
+        };
+
+        let file = self.files_copy(src_id, &dest_file, progress).await?;
+        let id = file.id.clone().unwrap_or_default();
+        let metadata = map_file(
+            dest_path
+                .parent()
+                .expect("Expected dest_path to have a parent")
+                .to_owned(),
+            file,
+        )?;
+        Ok((id, metadata))
+    }
+}
+
 impl<A> super::id::Delete for GoogleDrive<A>
 where
     A: GetToken,
@@ -605,6 +643,27 @@ mod api {
             Ok(Some(tokio_util::compat::FuturesAsyncReadCompatExt::compat(
                 read,
             )))
+        }
+
+        pub async fn files_copy(
+            &self,
+            id: &Id,
+            file: &File,
+            progress: Option<&SharedProgress>,
+        ) -> fsync::Result<File> {
+            let scopes = &[Scope::Full];
+            let path = format!("/files/{id}/copy");
+            let mut query_params = vec![("fields", FILE_FIELDS)];
+            if self.shared {
+                query_params.push(("supportsAllDrives", "true"));
+            }
+            let res = self
+                .post_json_query(scopes, &path, query_params, file, progress)
+                .await?;
+            let res = check_response("POST", &path, res).await?;
+
+            let file: File = res.json().await.map_err(error::api)?;
+            Ok(file)
         }
 
         pub async fn files_create(

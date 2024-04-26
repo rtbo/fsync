@@ -92,6 +92,17 @@ impl storage::WriteFile for Stub {
     }
 }
 
+impl storage::CopyFile for Stub {
+    fn copy_file(
+            &self,
+            src: &Path,
+            dest: &Path,
+            progress: Option<&SharedProgress>,
+        ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
+        self.inner.copy_file(src, dest, progress)
+    }
+}
+
 impl storage::Delete for Stub {
     fn delete(
         &self,
