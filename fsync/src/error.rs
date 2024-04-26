@@ -48,6 +48,8 @@ pub enum Error {
     IllegalSymlink { path: PathBuf, target: String },
     Io(String),
     Auth(String),
+    Conflict(PathBuf),
+    Unresolved(PathBuf, String),
     Api(String),
     Bug(String),
     Other(String),
@@ -63,6 +65,12 @@ impl fmt::Display for Error {
             }
             Self::Auth(msg) => write!(f, "Authorization error: {msg}"),
             Self::Io(msg) => write!(f, "IO error: {msg}"),
+            Self::Conflict(path) => {
+                write!(f, "Could not complete operation due to conflict on {path}")
+            }
+            Self::Unresolved(path, msg) => {
+                write!(f, "Could not resolve conflict on {path}: {msg}")
+            }
             Self::Api(msg) => write!(f, "API error: {msg}"),
             Self::Bug(msg) => write!(f, "Fsync bug error: {msg}"),
             Self::Other(msg) => f.write_str(msg),
