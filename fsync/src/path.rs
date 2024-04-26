@@ -39,6 +39,23 @@ fn has_root(path: &[u8]) -> bool {
     !path.is_empty() && path[0] == b'/'
 }
 
+// basic workhorse for splitting stem and extension
+fn rsplit_file_at_dot(file: &str) -> (Option<&str>, Option<&str>) {
+    if file == ".." {
+        return (Some(file), None);
+    }
+
+    let mut iter = file.rsplitn(2, '.');
+    let after = iter.next();
+    let before = iter.next();
+    if before == Some("") {
+        (Some(file), None)
+    } else {
+        (before, after)
+    }
+}
+
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Component<'a> {
     RootDir,
@@ -681,6 +698,63 @@ impl Path {
         }
     }
 
+    /// Extracts the stem (non-extension) portion of [`self.file_name`].
+    ///
+    /// [`self.file_name`]: Path::file_name
+    ///
+    /// The stem is:
+    ///
+    /// * [`None`], if there is no file name;
+    /// * The entire file name if there is no embedded `.`;
+    /// * The entire file name if the file name begins with `.` and has no other `.`s within;
+    /// * Otherwise, the portion of the file name before the final `.`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fsync::path::Path;
+    ///
+    /// assert_eq!("foo", Path::new("foo.rs").file_stem().unwrap());
+    /// assert_eq!("foo.tar", Path::new("foo.tar.gz").file_stem().unwrap());
+    /// ```
+    ///
+    /// # See Also
+    /// This method is similar to [`Path::file_prefix`], which extracts the portion of the file name
+    /// before the *first* `.`
+    ///
+    /// [`Path::file_prefix`]: Path::file_prefix
+    ///
+    #[must_use]
+    pub fn file_stem(&self) -> Option<&str> {
+        self.file_name().map(rsplit_file_at_dot).and_then(|(before, after)| before.or(after))
+    }
+
+    /// Extracts the extension (without the leading dot) of [`self.file_name`], if possible.
+    ///
+    /// The extension is:
+    ///
+    /// * [`None`], if there is no file name;
+    /// * [`None`], if there is no embedded `.`;
+    /// * [`None`], if the file name begins with `.` and has no other `.`s within;
+    /// * Otherwise, the portion of the file name after the final `.`
+    ///
+    /// [`self.file_name`]: fsync::path::Path::file_name
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fsync::path::Path;
+    ///
+    /// assert_eq!("rs", Path::new("/foo.rs").extension().unwrap());
+    /// assert_eq!("gz", Path::new("/foo.tar.gz").extension().unwrap());
+    /// assert!(Path::new("foo").extension().is_none());
+    /// assert!(Path::new("/dir/.git").extension().is_none());
+    /// assert_eq!("json", Path::new("/dir/.config.json").extension().unwrap());
+    /// ```
+    #[must_use]
+    pub fn extension(&self) -> Option<&str> {
+        self.file_name().map(rsplit_file_at_dot).and_then(|(before, after)| before.and(after))
+    }
     /// Creates an owned [`PathBuf`] with `path` adjoined to `self`.
     ///
     /// If `path` is absolute, it replaces the current path.
@@ -703,6 +777,51 @@ impl Path {
         let mut buf = self.to_path_buf();
         buf.push(path);
         buf
+    }
+
+    /// Creates an owned [`PathBuf`] like `self` but with the given extension.
+    ///
+    /// See [`PathBuf::set_extension`] for more details.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fsync::path::{Path, PathBuf};
+    ///
+    /// let path = Path::new("foo.rs");
+    /// assert_eq!(path.with_extension("txt"), PathBuf::from("foo.txt"));
+    ///
+    /// let path = Path::new("foo.tar.gz");
+    /// assert_eq!(path.with_extension(""), PathBuf::from("foo.tar"));
+    /// assert_eq!(path.with_extension("xz"), PathBuf::from("foo.tar.xz"));
+    /// assert_eq!(path.with_extension("").with_extension("txt"), PathBuf::from("foo.txt"));
+    /// ```
+    pub fn with_extension<S: AsRef<str>>(&self, extension: S) -> PathBuf {
+        self._with_extension(extension.as_ref())
+    }
+
+    fn _with_extension(&self, extension: &str) -> PathBuf {
+        let self_len = self.as_str().len();
+        let self_bytes = self.as_str().as_bytes();
+
+        let (new_capacity, slice_to_copy) = match self.extension() {
+            None => {
+                // Enough capacity for the extension and the dot
+                let capacity = self_len + extension.len() + 1;
+                let whole_path = self_bytes.iter();
+                (capacity, whole_path)
+            }
+            Some(previous_extension) => {
+                let capacity = self_len + extension.len() - previous_extension.len();
+                let path_till_dot = self_bytes[..self_len - previous_extension.len()].iter();
+                (capacity, path_till_dot)
+            }
+        };
+
+        let mut new_path = PathBuf::with_capacity(new_capacity);
+        new_path.as_mut_vec().extend(slice_to_copy);
+        new_path.set_extension(extension);
+        new_path
     }
 
     /// Normalizes a path. That is, it removes '.' and '..' components, as well as separator duplicates.
@@ -827,6 +946,84 @@ impl PathBuf {
 
     pub fn into_string(self) -> String {
         self.inner
+    }
+
+    /// Updates [`self.extension`] to `Some(extension)` or to `None` if
+    /// `extension` is empty.
+    ///
+    /// Returns `false` and does nothing if [`self.file_name`] is [`None`],
+    /// returns `true` and updates the extension otherwise.
+    ///
+    /// If [`self.extension`] is [`None`], the extension is added; otherwise
+    /// it is replaced.
+    ///
+    /// If `extension` is the empty string, [`self.extension`] will be [`None`]
+    /// afterwards, not `Some("")`.
+    ///
+    /// # Caveats
+    ///
+    /// The new `extension` may contain dots and will be used in its entirety,
+    /// but only the part after the final dot will be reflected in
+    /// [`self.extension`].
+    ///
+    /// If the file stem contains internal dots and `extension` is empty, part
+    /// of the old file stem will be considered the new [`self.extension`].
+    ///
+    /// See the examples below.
+    ///
+    /// [`self.file_name`]: Path::file_name
+    /// [`self.extension`]: Path::extension
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fsync::path::{Path, PathBuf};
+    ///
+    /// let mut p = PathBuf::from("/feel/the");
+    ///
+    /// p.set_extension("force");
+    /// assert_eq!(Path::new("/feel/the.force"), p.as_path());
+    ///
+    /// p.set_extension("dark.side");
+    /// assert_eq!(Path::new("/feel/the.dark.side"), p.as_path());
+    ///
+    /// p.set_extension("cookie");
+    /// assert_eq!(Path::new("/feel/the.dark.cookie"), p.as_path());
+    ///
+    /// p.set_extension("");
+    /// assert_eq!(Path::new("/feel/the.dark"), p.as_path());
+    ///
+    /// p.set_extension("");
+    /// assert_eq!(Path::new("/feel/the"), p.as_path());
+    ///
+    /// p.set_extension("");
+    /// assert_eq!(Path::new("/feel/the"), p.as_path());
+    /// ```
+    pub fn set_extension<S: AsRef<str>>(&mut self, extension: S) -> bool {
+        self._set_extension(extension.as_ref())
+    }
+
+    fn _set_extension(&mut self, extension: &str) -> bool {
+        let file_stem = match self.file_stem() {
+            None => return false,
+            Some(f) => f,
+        };
+
+        // truncate until right after the file stem
+        let end_file_stem = file_stem[file_stem.len()..].as_ptr() as usize;
+        let start = self.inner.as_bytes().as_ptr() as usize;
+        let v = self.as_mut_vec();
+        v.truncate(end_file_stem.wrapping_sub(start));
+
+        // add the new extension, if any
+        let new = extension.as_bytes();
+        if !new.is_empty() {
+            v.reserve_exact(new.len() + 1);
+            v.push(b'.');
+            v.extend_from_slice(new);
+        }
+
+        true
     }
 
     /// Extends `self` with `path`.
