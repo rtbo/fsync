@@ -10,7 +10,7 @@ use fsyncd::{
 use futures::prelude::*;
 use tokio::io;
 
-use crate::dataset::{self, CreateDataset};
+use crate::dataset::{self, CreateFs};
 
 /// Stub that fakes an Id based Storage with filesystem
 /// Ids are paths that are:
@@ -24,11 +24,11 @@ pub struct Stub {
 impl Stub {
     pub async fn new(
         root: &FsPath,
-        dataset: &[dataset::Entry],
+        entries: &[dataset::Entry],
         now: Option<SystemTime>,
     ) -> anyhow::Result<Self> {
         tokio::fs::create_dir(&root).await.unwrap();
-        dataset.create_dataset(&root, now).await;
+        entries.create_fs(&root, now).await;
 
         let inner = FileSystem::new(&root)?;
         Ok(Self { inner })

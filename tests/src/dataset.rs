@@ -1,8 +1,11 @@
 use std::time::{Duration, SystemTime};
 
 use fsync::{path::FsPath, stat};
+use fsyncd::storage::cache::{CachePersist, CacheStorage};
 use futures::future::BoxFuture;
 use tokio::io::AsyncWriteExt;
+
+use crate::stubs;
 
 mod build {
     #[derive(Debug, Copy, Clone)]
@@ -96,10 +99,7 @@ impl From<build::Entry> for Entry {
         match e {
             build::Entry::Dir { name, entries } => Entry::Dir {
                 name: name.into(),
-                entries: entries
-                    .iter()
-                    .map(|e| (*e).into())
-                    .collect(),
+                entries: entries.iter().map(|e| (*e).into()).collect(),
             },
             build::Entry::File { name, content, age } => Entry::File {
                 name: name.into(),
@@ -107,33 +107,6 @@ impl From<build::Entry> for Entry {
                 age,
             },
         }
-    }
-}
-
-impl Entry {
-    pub fn create<'a>(&'a self, path: &'a FsPath, now: Option<SystemTime>) -> BoxFuture<'a, ()> {
-        Box::pin(async move {
-            match self {
-                Entry::Dir { name, entries } => {
-                    let path = path.join(name);
-                    tokio::fs::create_dir(&path).await.unwrap();
-                    for entry in entries.iter() {
-                        entry.create(&path, now).await;
-                    }
-                }
-                Entry::File { name, content, age } => {
-                    let path = path.join(name);
-                    let mut f = tokio::fs::File::create(&path).await.unwrap();
-                    f.write(content.as_bytes()).await.unwrap();
-                    if let Some(age) = age {
-                        let f = f.into_std().await;
-                        let now = now.unwrap_or_else(|| SystemTime::now());
-                        let age = Duration::from_secs(*age as u64);
-                        f.set_modified(now - age).unwrap();
-                    }
-                }
-            }
-        })
     }
 }
 
@@ -153,14 +126,63 @@ impl Default for Dataset {
     }
 }
 
-pub trait CreateDataset {
-    async fn create_dataset(&self, root: &FsPath, now: Option<SystemTime>);
+impl Entry {
+    pub fn create_fs<'a>(&'a self, path: &'a FsPath, now: Option<SystemTime>) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            match self {
+                Entry::Dir { name, entries } => {
+                    let path = path.join(name);
+                    tokio::fs::create_dir(&path).await.unwrap();
+                    for entry in entries.iter() {
+                        entry.create_fs(&path, now).await;
+                    }
+                }
+                Entry::File { name, content, age } => {
+                    let path = path.join(name);
+                    let mut f = tokio::fs::File::create(&path).await.unwrap();
+                    f.write(content.as_bytes()).await.unwrap();
+                    if let Some(age) = age {
+                        let f = f.into_std().await;
+                        let now = now.unwrap_or_else(|| SystemTime::now());
+                        let age = Duration::from_secs(*age as u64);
+                        f.set_modified(now - age).unwrap();
+                    }
+                }
+            }
+        })
+    }
 }
 
-impl CreateDataset for &[Entry] {
-    async fn create_dataset(&self, root: &FsPath, now: Option<SystemTime>) {
+pub trait CreateFs {
+    async fn create_fs(&self, root: &FsPath, now: Option<SystemTime>);
+}
+
+impl CreateFs for &[Entry] {
+    async fn create_fs(&self, root: &FsPath, now: Option<SystemTime>) {
         for entry in self.iter() {
-            entry.create(&root, now).await;
+            entry.create_fs(&root, now).await;
         }
+    }
+}
+
+impl Dataset {
+    pub async fn create_fs(
+        &self,
+        root: &FsPath,
+    ) -> (stubs::fs::Stub, CacheStorage<stubs::id::Stub>) {
+        use futures::FutureExt;
+
+        let local_root = root.join("local");
+        let local = stubs::fs::Stub::new(&local_root, &self.local, self.mtime_ref);
+
+        let remote_root = root.join("remote");
+        let remote =
+            stubs::id::Stub::new(&remote_root, &self.remote, self.mtime_ref).then(|remote| async {
+                CacheStorage::new(remote.unwrap(), CachePersist::Memory).await
+            });
+
+        let (local, remote) = tokio::try_join!(local, remote).unwrap();
+
+        (local, remote)
     }
 }
