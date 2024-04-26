@@ -83,3 +83,9 @@ async fn harness_with(dataset: Dataset) -> CacheHarness {
 
     Harness { service }
 }
+
+impl Dataset {
+    pub async fn harness(self) -> CacheHarness {
+        harness_with(self).await
+    }
+}

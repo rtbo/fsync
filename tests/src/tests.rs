@@ -1,8 +1,15 @@
 use fsync::{
-    path::{Path, PathBuf}, stat, tree::Entry, Location, Operation, ResolutionMethod, 
+    path::{Path, PathBuf},
+    stat,
+    tree::Entry,
+    Location, Operation, ResolutionMethod,
 };
 
-use crate::{dataset, harness, utils::UnwrapDisplay};
+use crate::{
+    dataset::{self, Dataset, Patch},
+    harness, 
+    utils::UnwrapDisplay,
+};
 
 #[tokio::test]
 async fn entry() {
@@ -159,32 +166,46 @@ async fn sync_local_to_remote_fail_missing() {
 
 #[tokio::test]
 async fn resolve_keep_newer_local() {
-    let h = harness().await;
-    let path = PathBuf::from("/both.txt");
+    let h = Dataset::default()
+        .with_mtime_now()
+        .apply_remote(Patch::Age("/conflict.txt".into(), 10))
+        .harness()
+        .await;
+    let path = PathBuf::from("/conflict.txt");
     h.service
         .clone()
-        .operate(Operation::Resolve(path.clone(), ResolutionMethod::ReplaceOlderByNewer))
+        .operate(Operation::Resolve(
+            path.clone(),
+            ResolutionMethod::ReplaceOlderByNewer,
+        ))
         .await
         .unwrap();
     let local_content = h.local_file_content(&path).await.unwrap();
     let remote_content = h.remote_file_content(&path).await.unwrap();
-    assert_eq!(&local_content, "/both.txt - local");
-    assert_eq!(&remote_content, "/both.txt - local");
+    assert_eq!(&local_content, "/conflict.txt - local");
+    assert_eq!(&remote_content, "/conflict.txt - local");
 }
 
 #[tokio::test]
 async fn resolve_keep_newer_remote() {
-    let h = harness().await;
-    let path = PathBuf::from("/both/both.txt");
+    let h = Dataset::default()
+        .with_mtime_now()
+        .apply_local(Patch::Age("/conflict.txt".into(), 10))
+        .harness()
+        .await;
+    let path = PathBuf::from("/conflict.txt");
     h.service
         .clone()
-        .operate(Operation::Resolve(path.clone(), ResolutionMethod::ReplaceOlderByNewer))
+        .operate(Operation::Resolve(
+            path.clone(),
+            ResolutionMethod::ReplaceOlderByNewer,
+        ))
         .await
         .unwrap();
     let local_content = h.local_file_content(&path).await.unwrap();
     let remote_content = h.remote_file_content(&path).await.unwrap();
-    assert_eq!(&local_content, "/both/both.txt - remote");
-    assert_eq!(&remote_content, "/both/both.txt - remote");
+    assert_eq!(&local_content, "/conflict.txt - remote");
+    assert_eq!(&remote_content, "/conflict.txt - remote");
 }
 
 #[tokio::test]

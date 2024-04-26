@@ -1,6 +1,9 @@
 use std::time::{Duration, SystemTime};
 
-use fsync::{path::FsPath, stat};
+use fsync::{
+    path::{Component, FsPath, Path, PathBuf},
+    stat,
+};
 use fsyncd::storage::cache::{CachePersist, CacheStorage};
 use futures::future::BoxFuture;
 use tokio::io::AsyncWriteExt;
@@ -94,6 +97,29 @@ pub enum Entry {
     },
 }
 
+impl Entry {
+    pub fn name(&self) -> &str {
+        match self {
+            Entry::Dir { name, .. } => name,
+            Entry::File { name, .. } => name,
+        }
+    }
+
+    pub fn content(&self) -> Option<&str> {
+        match self {
+            Entry::File { content, .. } => Some(content.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn age(&self) -> Option<u32> {
+        match self {
+            Entry::File { age, .. } => *age,
+            _ => None,
+        }
+    }
+}
+
 impl From<build::Entry> for Entry {
     fn from(e: build::Entry) -> Self {
         match e {
@@ -110,6 +136,60 @@ impl From<build::Entry> for Entry {
     }
 }
 
+fn resolve_entry<'a>(entries: &'a mut [Entry], path: &Path) -> Option<&'a mut Entry> {
+    fn inner<'a>(ent: &'a mut [Entry], p: &Path) -> Option<&'a mut Entry> {
+        let mut comps = p.components();
+        match comps.next() {
+            Some(Component::Normal(name)) => {
+                let entry = ent.iter_mut().find(|e| e.name() == name);
+                if comps.clone().next().is_none() {
+                    return entry;
+                }
+                match entry {
+                    Some(Entry::Dir { entries, .. }) => inner(entries, comps.as_path()),
+                    _ => None,
+                }
+            }
+            None => None,
+            _ => unreachable!("Invalid path"),
+        }
+    }
+
+    assert!(path.is_absolute(), "resolve_entry expects absolute path");
+    let path = path.without_root();
+    inner(entries, &path)
+}
+
+#[test]
+fn test_resolve_entry() {
+    let mut entries = build::LOCAL.iter().map(|e| (*e).into()).collect::<Vec<_>>();
+    {
+        let resolved =
+            resolve_entry(&mut entries, Path::new("/only-local.txt")).expect("Expected an entry");
+        assert_eq!("only-local.txt", resolved.name());
+        assert_eq!(Some("/only-local.txt"), resolved.content());
+    }
+
+    {
+        let resolved = resolve_entry(&mut entries, Path::new("/both/deep/file1.txt"))
+            .expect("Expected an entry");
+        assert_eq!("file1.txt", resolved.name());
+        assert_eq!(Some("/both/deep/file1.txt"), resolved.content());
+    }
+
+    {
+        let resolved =
+            resolve_entry(&mut entries, Path::new("/both/deep")).expect("Expected an entry");
+        assert_eq!("deep", resolved.name());
+        assert!(matches!(resolved, Entry::Dir { .. }));
+    }
+
+    {
+        let none = resolve_entry(&mut entries, Path::new("/only-remote.txt"));
+        assert!(none.is_none());
+    }
+}
+
 pub struct Dataset {
     pub local: Vec<Entry>,
     pub remote: Vec<Entry>,
@@ -123,6 +203,117 @@ impl Default for Dataset {
             remote: build::REMOTE.iter().map(|e| (*e).into()).collect(),
             mtime_ref: None,
         }
+    }
+}
+
+impl Dataset {
+    pub fn with_mtime_ref(mut self, mtime: SystemTime) -> Self {
+        self.mtime_ref = Some(mtime);
+        self
+    }
+
+    pub fn with_mtime_now(self) -> Self {
+        self.with_mtime_ref(SystemTime::now())
+    }
+}
+
+pub enum Patch {
+    Content(PathBuf, String),
+    Age(PathBuf, u32),
+    Delete(PathBuf),
+}
+
+impl Patch {
+    pub fn path(&self) -> &Path {
+        match self {
+            Patch::Content(path, _) => path,
+            Patch::Age(path, _) => path,
+            Patch::Delete(path) => path,
+        }
+    }
+
+    pub fn apply(self, root_entries: &mut Vec<Entry>) {
+        assert!(self.path().is_absolute());
+        match self {
+            Patch::Content(path, new_content) => {
+                let entry = resolve_entry(root_entries, &path);
+                match entry {
+                    Some(Entry::File { content, .. }) => {
+                        *content = new_content;
+                    }
+                    _ => panic!("Expected a file entry"),
+                }
+            }
+            Patch::Age(path, new_age) => {
+                let entry = resolve_entry(root_entries, &path);
+                match entry {
+                    Some(Entry::File { age, .. }) => {
+                        *age = Some(new_age);
+                    }
+                    _ => panic!("Expected a file entry"),
+                }
+            }
+            Patch::Delete(path) => {
+                let parent_path = path.parent().expect("Expected a parent");
+                let file_name = path.file_name().unwrap();
+
+                // parent can be root!
+                let parent_entries = if parent_path.is_root() {
+                    root_entries
+                } else {
+                    let parent_entry = resolve_entry(root_entries, &parent_path);
+                    if let Some(Entry::Dir { entries, .. }) = parent_entry {
+                        entries
+                    } else {
+                        panic!("Expected a directory as parent entry");
+                    }
+                };
+                let prev_len = parent_entries.len();
+                parent_entries.retain(|e| e.name() != file_name);
+                assert!(
+                    prev_len == parent_entries.len() + 1,
+                    "Expected to delete an entry"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_patch_apply() {
+    let mut entries = build::LOCAL.iter().map(|e| (*e).into()).collect::<Vec<_>>();
+
+    Patch::Content("/both/deep/file1.txt".into(), "new test content".into()).apply(&mut entries);
+    Patch::Age("/only-local.txt".into(), 42).apply(&mut entries);
+    Patch::Delete("/only-local".into()).apply(&mut entries);
+    Patch::Delete("/conflict.txt".into()).apply(&mut entries);
+
+    assert_eq!(
+        Some("new test content"),
+        resolve_entry(&mut entries, Path::new("/both/deep/file1.txt"))
+            .unwrap()
+            .content()
+    );
+    assert_eq!(
+        Some(42),
+        resolve_entry(&mut entries, Path::new("/only-local.txt"))
+            .unwrap()
+            .age()
+    );
+
+    assert!(resolve_entry(&mut entries, Path::new("/only-local")).is_none());
+    assert!(resolve_entry(&mut entries, Path::new("/conflict.txt")).is_none());
+}
+
+impl Dataset {
+    pub fn apply_local(mut self, patch: Patch) -> Self {
+        patch.apply(&mut self.local);
+        self
+    }
+
+    pub fn apply_remote(mut self, patch: Patch) -> Self {
+        patch.apply(&mut self.remote);
+        self
     }
 }
 
