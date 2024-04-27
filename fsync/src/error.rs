@@ -48,6 +48,7 @@ pub enum Error {
     IllegalSymlink { path: PathBuf, target: String },
     Io(String),
     Auth(String),
+    NotEmpty(PathBuf),
     Conflict(PathBuf),
     Unresolved(PathBuf, String),
     Api(String),
@@ -65,6 +66,7 @@ impl fmt::Display for Error {
             }
             Self::Auth(msg) => write!(f, "Authorization error: {msg}"),
             Self::Io(msg) => write!(f, "IO error: {msg}"),
+            Self::NotEmpty(path) => write!(f, "Directory not empty: {path}"),
             Self::Conflict(path) => {
                 write!(f, "Could not complete operation due to conflict on {path}")
             }
