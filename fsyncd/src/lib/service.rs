@@ -615,6 +615,7 @@ where
         node: EntryNode,
         progress: SharedProgress,
     ) -> fsync::Result<()> {
+        log::trace!("Operate unit: {operation:?}");
         match operation {
             Operation::Sync(path) => self.sync_unit(path.as_ref(), &node, &progress).await,
             Operation::Resolve(path, method) => {
@@ -637,6 +638,7 @@ where
         tx: mpsc::Sender<(PathBuf, SharedProgress)>,
     ) -> BoxFuture<'a, fsync::Result<()>> {
         Box::pin(async move {
+            log::trace!("Operate deep: {operation:?}");
             progress.set(Progress::Compound);
 
             let path = operation.path();
