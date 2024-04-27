@@ -584,6 +584,27 @@ impl Operation {
             Operation::SyncDeep(..) | Operation::ResolveDeep(..) | Operation::DeleteDeep(..)
         )
     }
+
+    pub fn not_deep(self) -> Self {
+        match self {
+            Operation::SyncDeep(path) => Operation::Sync(path),
+            Operation::ResolveDeep(path, method) => Operation::Resolve(path, method),
+            Operation::DeleteDeep(path, method) => Operation::Delete(path, method),
+            op => panic!("Not a deep operation: {op:?}"),
+        }
+    }
+
+    pub fn with_path(&self, path: PathBuf) -> Self {
+        match self {
+            Operation::Sync(_) => Operation::Sync(path),
+            Operation::Resolve(_, method) => Operation::Resolve(path, *method),
+            Operation::Delete(_, method) => Operation::Delete(path, *method),
+
+            Operation::SyncDeep(_) => Operation::SyncDeep(path),
+            Operation::ResolveDeep(_, method) => Operation::ResolveDeep(path, *method),
+            Operation::DeleteDeep(_, method) => Operation::DeleteDeep(path, *method),        
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
