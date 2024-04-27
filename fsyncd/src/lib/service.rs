@@ -11,6 +11,7 @@ use fsync::{
     self,
     loc::inst,
     path::{Path, PathBuf},
+    tree::EntryNode,
     DeletionMethod, Error, Fsync, Metadata, Operation, PathError, Progress, ResolutionMethod,
     StorageDir, StorageLoc,
 };
@@ -377,8 +378,12 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    async fn sync_unit(&self, path: &Path, progress: &SharedProgress) -> Result<(), Error> {
-        let node = self.check_node(path)?;
+    async fn sync_unit(
+        &self,
+        path: &Path,
+        node: EntryNode,
+        progress: &SharedProgress,
+    ) -> Result<(), Error> {
         match node.entry() {
             tree::Entry::Local(metadata) => {
                 if metadata.is_dir() {
@@ -418,10 +423,10 @@ where
     async fn resolve_unit(
         &self,
         path: &Path,
+        node: EntryNode,
         method: ResolutionMethod,
         progress: &SharedProgress,
     ) -> Result<(), Error> {
-        let node = self.check_node(path)?;
         match node.entry() {
             tree::Entry::Sync {
                 local,
@@ -504,10 +509,10 @@ where
     async fn delete_unit(
         &self,
         path: &Path,
+        node: EntryNode,
         method: DeletionMethod,
         progress: &SharedProgress,
     ) -> fsync::Result<()> {
-        let node = self.check_node(path)?;
         if !node.children().is_empty() {
             return Err(fsync::Error::NotEmpty(path.to_owned()));
         }
@@ -585,15 +590,19 @@ where
             .await
             .expect("tx should not be closed");
 
+        let node = self.check_node(operation.path())?;
+
         let res = match operation {
             Operation::Sync(path) | Operation::SyncDeep(path) => {
-                self.sync_unit(path.as_ref(), &progress).await
+                self.sync_unit(path.as_ref(), node, &progress).await
             }
             Operation::Resolve(path, method) | Operation::ResolveDeep(path, method) => {
-                self.resolve_unit(path.as_ref(), *method, &progress).await
+                self.resolve_unit(path.as_ref(), node, *method, &progress)
+                    .await
             }
             Operation::Delete(path, method) | Operation::DeleteDeep(path, method) => {
-                self.delete_unit(path.as_ref(), *method, &progress).await
+                self.delete_unit(path.as_ref(), node, *method, &progress)
+                    .await
             }
         };
         match res {
