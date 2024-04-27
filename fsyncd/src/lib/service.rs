@@ -11,6 +11,7 @@ use fsync::{
     self,
     loc::inst,
     path::{Path, PathBuf},
+    stat,
     tree::EntryNode,
     DeletionMethod, Error, Fsync, Metadata, Operation, PathError, Progress, ResolutionMethod,
     StorageDir, StorageLoc,
@@ -213,7 +214,7 @@ impl<L, R> Service<L, R> {
         dest.mkdir(path, false, Some(progress)).await?;
         let metadata = Metadata::Directory {
             path: path.to_path_buf(),
-            stat: None,
+            stat: Some(stat::Dir::null()),
         };
         let is_conflict = self
             .tree
