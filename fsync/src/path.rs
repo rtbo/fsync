@@ -55,7 +55,6 @@ fn rsplit_file_at_dot(file: &str) -> (Option<&str>, Option<&str>) {
     }
 }
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Component<'a> {
     RootDir,
@@ -726,7 +725,9 @@ impl Path {
     ///
     #[must_use]
     pub fn file_stem(&self) -> Option<&str> {
-        self.file_name().map(rsplit_file_at_dot).and_then(|(before, after)| before.or(after))
+        self.file_name()
+            .map(rsplit_file_at_dot)
+            .and_then(|(before, after)| before.or(after))
     }
 
     /// Extracts the extension (without the leading dot) of [`self.file_name`], if possible.
@@ -753,7 +754,9 @@ impl Path {
     /// ```
     #[must_use]
     pub fn extension(&self) -> Option<&str> {
-        self.file_name().map(rsplit_file_at_dot).and_then(|(before, after)| before.and(after))
+        self.file_name()
+            .map(rsplit_file_at_dot)
+            .and_then(|(before, after)| before.and(after))
     }
     /// Creates an owned [`PathBuf`] with `path` adjoined to `self`.
     ///

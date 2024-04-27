@@ -163,7 +163,6 @@ impl super::CopyFile for FileSystem {
         let fs_dest = self.root.join(dest.without_root().as_str());
         log::info!("copying {fs_src} to {fs_dest}");
 
-
         if fs_src.is_dir() {
             fsync::io_bail!("{src} is a direceory: {fs_src}");
         }

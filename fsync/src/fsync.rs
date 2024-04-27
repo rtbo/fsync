@@ -602,7 +602,7 @@ impl Operation {
 
             Operation::SyncDeep(_) => Operation::SyncDeep(path),
             Operation::ResolveDeep(_, method) => Operation::ResolveDeep(path, *method),
-            Operation::DeleteDeep(_, method) => Operation::DeleteDeep(path, *method),        
+            Operation::DeleteDeep(_, method) => Operation::DeleteDeep(path, *method),
         }
     }
 }

@@ -3,7 +3,9 @@ use std::time::SystemTime;
 use fsync::path::{FsPath, Path, PathBuf};
 use fsyncd::{
     storage::{
-        fs::FileSystem, id::{self, IdBuf}, CopyFile, CreateFile, Delete, DirEntries, MkDir, ReadFile, WriteFile
+        fs::FileSystem,
+        id::{self, IdBuf},
+        CopyFile, CreateFile, Delete, DirEntries, MkDir, ReadFile, WriteFile,
     },
     SharedProgress, Shutdown,
 };

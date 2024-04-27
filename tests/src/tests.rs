@@ -1,10 +1,13 @@
 use fsync::{
-    path::{Path, PathBuf}, stat, tree::Entry, DeletionMethod, Operation, ResolutionMethod
+    path::{Path, PathBuf},
+    stat,
+    tree::Entry,
+    DeletionMethod, Operation, ResolutionMethod,
 };
 
 use crate::{
     dataset::{self, Dataset, Patch},
-    harness, 
+    harness,
     utils::UnwrapDisplay,
 };
 

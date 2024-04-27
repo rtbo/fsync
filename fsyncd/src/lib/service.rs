@@ -616,9 +616,7 @@ where
         progress: SharedProgress,
     ) -> fsync::Result<()> {
         match operation {
-            Operation::Sync(path) => {
-                self.sync_unit(path.as_ref(), &node, &progress).await
-            }
+            Operation::Sync(path) => self.sync_unit(path.as_ref(), &node, &progress).await,
             Operation::Resolve(path, method) => {
                 self.resolve_unit(path.as_ref(), &node, method, &progress)
                     .await
@@ -639,14 +637,17 @@ where
         tx: mpsc::Sender<(PathBuf, SharedProgress)>,
     ) -> BoxFuture<'a, fsync::Result<()>> {
         Box::pin(async move {
-
             progress.set(Progress::Compound);
 
             let path = operation.path();
 
-            let parent_first =  matches!(operation, Operation::SyncDeep(..) | Operation::ResolveDeep(..));
+            let parent_first = matches!(
+                operation,
+                Operation::SyncDeep(..) | Operation::ResolveDeep(..)
+            );
             if parent_first {
-                self.operate_unit(operation.clone().not_deep(), node.clone(), progress.clone()).await?;
+                self.operate_unit(operation.clone().not_deep(), node.clone(), progress.clone())
+                    .await?;
             }
 
             let mut joinvec = Vec::new();
@@ -657,14 +658,15 @@ where
                 let this = self.clone();
                 let tx2 = tx.clone();
                 joinvec.push(track_progress(child_path, tx.clone(), |progress| async {
-                     this.operate_deep(child_op, child_node, progress, tx2).await
+                    this.operate_deep(child_op, child_node, progress, tx2).await
                 }));
             }
             future::try_join_all(joinvec).await?;
 
             if !parent_first {
                 debug_assert!(matches!(operation, Operation::DeleteDeep(..)));
-                self.operate_unit(operation.not_deep(), node.without_children(), progress).await?;
+                self.operate_unit(operation.not_deep(), node.without_children(), progress)
+                    .await?;
             }
 
             Ok(())

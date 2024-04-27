@@ -118,7 +118,7 @@ impl DiffTree {
         let node = self.nodes.get_mut(path);
         if let Some(mut node) = node {
             if node.is_sync() {
-                node.op_entry(|entry| entry.without(loc)); 
+                node.op_entry(|entry| entry.without(loc));
             } else {
                 mem::drop(node);
                 self.nodes.remove(path);

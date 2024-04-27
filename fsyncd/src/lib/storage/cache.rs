@@ -378,7 +378,10 @@ where
 
         let src_id = {
             let src = self.entries.get(&src).expect("Source should be present");
-            src.id.as_ref().expect("Id should be set for non-root path").clone()
+            src.id
+                .as_ref()
+                .expect("Id should be set for non-root path")
+                .clone()
         };
         let dest_parent_id = {
             let parent = self
@@ -387,9 +390,12 @@ where
                 .expect("Parent node should be defined");
             parent.id.clone()
         };
-        
+
         let metadata = {
-            let (id, metadata) = self.storage.copy_file(&src_id, dest_parent_id.as_deref(), &dest, progress).await?;
+            let (id, metadata) = self
+                .storage
+                .copy_file(&src_id, dest_parent_id.as_deref(), &dest, progress)
+                .await?;
             let node = CacheNode {
                 id: Some(id),
                 metadata: metadata.clone(),
