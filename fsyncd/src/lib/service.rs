@@ -646,7 +646,9 @@ where
         let sleep = tokio::time::sleep(Duration::from_millis(50));
 
         tokio::select! {
-            res = join => match res {
+            res = join => {
+                log::trace!("Operation completed within 50ms");
+                match res {
                 Ok(Ok(())) => {
                     if cfg!(debug_assertions) {
                         let (_, prog) = rx.try_recv().expect("should receive at least root progress");
@@ -656,12 +658,15 @@ where
                 },
                 Ok(Err(e)) => Err(e),
                 Err(err) => Err(fsync::Error::Bug(err.to_string())),
+                }
             },
             _ = sleep => {
+                log::trace!("Operation completed within 50ms");
 
                 let (path, first_progress) = rx
                     .try_recv()
                     .expect("should receive at least root progress");
+
                 self.add_progress(path, first_progress.clone()).await;
 
                 tokio::spawn(async move {
