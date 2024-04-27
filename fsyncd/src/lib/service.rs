@@ -377,7 +377,7 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    pub async fn sync_unit(&self, path: &Path, progress: &SharedProgress) -> Result<(), Error> {
+    async fn sync_unit(&self, path: &Path, progress: &SharedProgress) -> Result<(), Error> {
         let node = self.check_node(path)?;
         match node.entry() {
             tree::Entry::Local(metadata) => {
@@ -415,7 +415,7 @@ where
         }
     }
 
-    pub async fn resolve_unit(
+    async fn resolve_unit(
         &self,
         path: &Path,
         method: ResolutionMethod,
@@ -501,7 +501,7 @@ where
         }
     }
 
-    pub async fn delete_unit(
+    async fn delete_unit(
         &self,
         path: &Path,
         method: DeletionMethod,
