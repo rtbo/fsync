@@ -38,6 +38,138 @@ async fn node_stat() {
 }
 
 #[tokio::test]
+async fn sync_remote_file() {
+    use dataset::build::Entry;
+
+    let h = harness((
+        (),
+        &[Entry::File {
+            name: "file.txt",
+            content: "Test content",
+            age: None,
+        }],
+    ))
+    .await;
+
+    let path = Path::new("/file.txt");
+    h.operate(Operation::Sync(path.to_owned())).await.unwrap();
+    let content = h.local_file_content(path).await.unwrap();
+    assert_eq!(&content, "Test content");
+}
+
+#[tokio::test]
+async fn sync_local_file() {
+    use dataset::build::Entry;
+
+    let h = harness((
+        &[Entry::File {
+            name: "file.txt",
+            content: "Test content",
+            age: None,
+        }],
+        (),
+    ))
+    .await;
+
+    let path = Path::new("/file.txt");
+    h.operate(Operation::Sync(path.to_owned())).await.unwrap();
+    let content = h.remote_file_content(path).await.unwrap();
+    assert_eq!(&content, "Test content");
+}
+
+#[tokio::test]
+async fn sync_remote_deep_file_creates_local_dirs() {
+    let h = {
+        use dataset::build::Entry;
+        harness((
+            (),
+            &[Entry::Dir {
+                name: "dir",
+                entries: &[Entry::Dir {
+                    name: "dir",
+                    entries: &[Entry::File {
+                        name: "file.txt",
+                        content: "Test content",
+                        age: None,
+                    }],
+                }],
+            }],
+        ))
+        .await
+    };
+
+    h.operate(Operation::Sync(PathBuf::from("/dir/dir/file.txt")))
+        .await
+        .unwrap();
+
+    assert!(h.has_local_dir(Path::new("/dir/dir")).await.unwrap());
+    assert!(h
+        .has_local_file(Path::new("/dir/dir/file.txt"))
+        .await
+        .unwrap());
+}
+
+#[tokio::test]
+async fn sync_remote_dir_deep() {
+    let h = {
+        use dataset::build::Entry;
+        harness((
+            (),
+            &[
+                Entry::File {
+                    name: "file.txt",
+                    content: "Test content",
+                    age: None,
+                },
+                Entry::Dir {
+                    name: "dir",
+                    entries: &[
+                        Entry::File {
+                            name: "file1.txt",
+                            content: "/dir/file1.txt",
+                            age: None,
+                        },
+                        Entry::File {
+                            name: "file2.txt",
+                            content: "/dir/file2.txt",
+                            age: None,
+                        },
+                        Entry::Dir {
+                            name: "dir",
+                            entries: &[
+                                Entry::File {
+                                    name: "file1.txt",
+                                    content: "/dir/dir/file1.txt",
+                                    age: None,
+                                },
+                                Entry::File {
+                                    name: "file2.txt",
+                                    content: "/dir/dir/file2.txt",
+                                    age: None,
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        ))
+        .await
+    };
+
+    h.operate(Operation::SyncDeep(PathBuf::from("/dir")))
+        .await
+        .unwrap();
+
+    assert!(!h.has_local_file(Path::new("/file.txt")).await.unwrap());
+    h.assert_sync_dir(Path::new("/dir")).await;
+    h.assert_sync_dir(Path::new("/dir/dir")).await;
+    h.assert_sync_file_with_path_content(Path::new("/dir/file1.txt")).await;
+    h.assert_sync_file_with_path_content(Path::new("/dir/file2.txt")).await;
+    h.assert_sync_file_with_path_content(Path::new("/dir/dir/file1.txt")).await;
+    h.assert_sync_file_with_path_content(Path::new("/dir/dir/file2.txt")).await;
+}
+
+#[tokio::test]
 async fn sync_remote_to_local() {
     let h = default_harness().await;
 
