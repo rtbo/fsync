@@ -16,7 +16,7 @@ use fsync::{
     StorageDir, StorageLoc,
 };
 use futures::{
-    future,
+    future::{self, BoxFuture},
     prelude::*,
     stream::{AbortHandle, AbortRegistration, Abortable},
 };
@@ -373,6 +373,35 @@ impl<L, R> Service<L, R> {
     }
 }
 
+async fn track_progress<F, Fut>(
+    path: PathBuf,
+    tx: mpsc::Sender<(PathBuf, SharedProgress)>,
+    f: F,
+) -> fsync::Result<()>
+where
+    F: FnOnce(SharedProgress) -> Fut,
+    Fut: Future<Output = fsync::Result<()>> + Send,
+{
+    let progress = SharedProgress::new();
+
+    tx.send((path, progress.clone()))
+        .await
+        .expect("tx should not be closed");
+
+    let res = f(progress.clone()).await;
+
+    match res {
+        Ok(()) => {
+            progress.set(Progress::Done);
+            Ok(())
+        }
+        Err(err) => {
+            progress.set(Progress::Err(err.clone()));
+            Err(err)
+        }
+    }
+}
+
 impl<L, R> Service<L, R>
 where
     L: storage::Storage,
@@ -381,7 +410,7 @@ where
     async fn sync_unit(
         &self,
         path: &Path,
-        node: EntryNode,
+        node: &EntryNode,
         progress: &SharedProgress,
     ) -> Result<(), Error> {
         match node.entry() {
@@ -423,7 +452,7 @@ where
     async fn resolve_unit(
         &self,
         path: &Path,
-        node: EntryNode,
+        node: &EntryNode,
         method: ResolutionMethod,
         progress: &SharedProgress,
     ) -> Result<(), Error> {
@@ -509,7 +538,7 @@ where
     async fn delete_unit(
         &self,
         path: &Path,
-        node: EntryNode,
+        node: &EntryNode,
         method: DeletionMethod,
         progress: &SharedProgress,
     ) -> fsync::Result<()> {
@@ -582,60 +611,64 @@ where
 
     async fn operate_unit(
         &self,
-        operation: &Operation,
-        tx: mpsc::Sender<(PathBuf, SharedProgress)>,
+        operation: Operation,
+        node: EntryNode,
+        progress: SharedProgress,
     ) -> fsync::Result<()> {
-        let progress = SharedProgress::new();
-        tx.send((operation.path().to_owned(), progress.clone()))
-            .await
-            .expect("tx should not be closed");
-
-        let node = self.check_node(operation.path())?;
-
-        let res = match operation {
-            Operation::Sync(path) | Operation::SyncDeep(path) => {
-                self.sync_unit(path.as_ref(), node, &progress).await
+        match operation {
+            Operation::Sync(path) => {
+                self.sync_unit(path.as_ref(), &node, &progress).await
             }
-            Operation::Resolve(path, method) | Operation::ResolveDeep(path, method) => {
-                self.resolve_unit(path.as_ref(), node, *method, &progress)
+            Operation::Resolve(path, method) => {
+                self.resolve_unit(path.as_ref(), &node, method, &progress)
                     .await
             }
-            Operation::Delete(path, method) | Operation::DeleteDeep(path, method) => {
-                self.delete_unit(path.as_ref(), node, *method, &progress)
+            Operation::Delete(path, method) => {
+                self.delete_unit(path.as_ref(), &node, method, &progress)
                     .await
             }
-        };
-        match res {
-            Ok(()) => {
-                progress.set(Progress::Done);
-                Ok(())
-            }
-            Err(err) => {
-                progress.set(Progress::Err(err.clone()));
-                Err(err)
-            }
+            _ => panic!("Not a unit operation: {operation:?}"),
         }
     }
 
-    async fn operate_deep(
-        &self,
-        operation: &Operation,
+    fn operate_deep<'a>(
+        self: Arc<Self>,
+        operation: Operation,
+        node: EntryNode,
+        progress: SharedProgress,
         tx: mpsc::Sender<(PathBuf, SharedProgress)>,
-    ) -> fsync::Result<()> {
-        let path = operation.path();
-        let node = self.check_node(path)?;
-        if node.children().is_empty() {
-            return self.operate_unit(operation, tx).await;
-        }
+    ) -> BoxFuture<'a, fsync::Result<()>> {
+        Box::pin(async move {
 
-        let progress = SharedProgress::new();
-        tx.send((path.to_owned(), progress.clone()))
-            .await
-            .expect("tx should not be closed");
+            progress.set(Progress::Compound);
 
-        progress.set(Progress::Compound);
+            let path = operation.path();
 
-        unimplemented!()
+            let parent_first =  matches!(operation, Operation::SyncDeep(..) | Operation::ResolveDeep(..));
+            if parent_first {
+                self.operate_unit(operation.clone().not_deep(), node.clone(), progress.clone()).await?;
+            }
+
+            let mut joinvec = Vec::new();
+            for child_name in node.children() {
+                let child_path = path.join(child_name);
+                let child_node = self.check_node(path)?;
+                let child_op = operation.with_path(child_path.clone());
+                let this = self.clone();
+                let tx2 = tx.clone();
+                joinvec.push(track_progress(child_path, tx.clone(), |progress| async {
+                     this.operate_deep(child_op, child_node, progress, tx2).await
+                }));
+            }
+            future::try_join_all(joinvec).await?;
+
+            if !parent_first {
+                debug_assert!(matches!(operation, Operation::DeleteDeep(..)));
+                self.operate_unit(operation.not_deep(), node.without_children(), progress).await?;
+            }
+
+            Ok(())
+        })
     }
 
     pub async fn operate(self: Arc<Self>, operation: Operation) -> fsync::Result<Progress> {
@@ -644,11 +677,16 @@ where
         let join = {
             let this = self.clone();
             tokio::spawn(async move {
-                if operation.is_deep() {
-                    this.operate_deep(&operation, tx).await
-                } else {
-                    this.operate_unit(&operation, tx).await
-                }
+                let path = operation.path().to_owned();
+                track_progress(path, tx.clone(), move |progress| async move {
+                    let node = this.check_node(operation.path())?;
+                    if operation.is_deep() {
+                        this.operate_deep(operation, node, progress, tx).await
+                    } else {
+                        this.operate_unit(operation, node, progress).await
+                    }
+                })
+                .await
             })
         };
 
@@ -658,15 +696,15 @@ where
             res = join => {
                 log::trace!("Operation completed within 50ms");
                 match res {
-                Ok(Ok(())) => {
-                    if cfg!(debug_assertions) {
-                        let (_, prog) = rx.try_recv().expect("should receive at least root progress");
-                        debug_assert!(matches!(prog.get(), Progress::Done));
-                    }
-                    Ok(Progress::Done)
-                },
-                Ok(Err(e)) => Err(e),
-                Err(err) => Err(fsync::Error::Bug(err.to_string())),
+                    Ok(Ok(())) => {
+                        if cfg!(debug_assertions) {
+                            let (_, prog) = rx.try_recv().expect("should receive at least root progress");
+                            debug_assert!(matches!(prog.get(), Progress::Done));
+                        }
+                        Ok(Progress::Done)
+                    },
+                    Ok(Err(e)) => Err(e),
+                    Err(err) => Err(fsync::Error::Bug(err.to_string())),
                 }
             },
             _ = sleep => {
