@@ -520,7 +520,7 @@ impl Operation {
         }
     }
 
-    pub fn is_deep(&self) -> bool {
+    pub const fn is_deep(&self) -> bool {
         matches!(
             self,
             Operation::SyncDeep(..) | Operation::ResolveDeep(..) | Operation::DeleteDeep(..)
