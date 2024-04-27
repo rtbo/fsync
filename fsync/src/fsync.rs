@@ -352,6 +352,14 @@ pub mod tree {
             }
         }
 
+        pub fn without_children(self) -> Self {
+            Self {
+                entry: self.entry,
+                children: Vec::new(),
+                children_node_stat: stat::Node::null(),
+            }
+        }
+
         pub fn entry(&self) -> &Entry {
             &self.entry
         }
