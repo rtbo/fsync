@@ -11,8 +11,8 @@ use fsync::{
     self,
     loc::inst,
     path::{Path, PathBuf},
-    Error, Fsync, Location, Metadata, Operation, PathError, Progress, ResolutionMethod, StorageDir,
-    StorageLoc,
+    DeletionMethod, Error, Fsync, Metadata, Operation, PathError, Progress, ResolutionMethod,
+    StorageDir, StorageLoc,
 };
 use futures::{
     future,
@@ -504,28 +504,53 @@ where
     pub async fn delete_unit(
         &self,
         path: &Path,
-        location: Location,
+        method: DeletionMethod,
         progress: &SharedProgress,
     ) -> fsync::Result<()> {
         let node = self.check_node(path)?;
-        match (node.entry(), location) {
-            (tree::Entry::Local(..), Location::Local) => {
+        if !node.children().is_empty() {
+            return Err(fsync::Error::NotEmpty(path.to_owned()));
+        }
+
+        match (node.entry(), method) {
+            // Delete only locally
+            (tree::Entry::Local(..), DeletionMethod::Local | DeletionMethod::All)
+            | (
+                tree::Entry::Sync { conflict: None, .. },
+                DeletionMethod::Local
+                | DeletionMethod::LocalIfSync
+                | DeletionMethod::LocalIfSyncNoConflict,
+            )
+            | (
+                tree::Entry::Sync {
+                    conflict: Some(_), ..
+                },
+                DeletionMethod::Local | DeletionMethod::LocalIfSync,
+            ) => {
                 self.do_delete(path, &self.local, StorageLoc::Local, progress)
                     .await
             }
-            (tree::Entry::Remote(..), Location::Remote) => {
+
+            // Delete only remotely
+            (tree::Entry::Remote(..), DeletionMethod::Remote | DeletionMethod::All)
+            | (
+                tree::Entry::Sync { conflict: None, .. },
+                DeletionMethod::Remote
+                | DeletionMethod::RemoteIfSync
+                | DeletionMethod::RemoteIfSyncNoConflict,
+            )
+            | (
+                tree::Entry::Sync {
+                    conflict: Some(_), ..
+                },
+                DeletionMethod::Remote | DeletionMethod::RemoteIfSync,
+            ) => {
                 self.do_delete(path, &self.remote, StorageLoc::Remote, progress)
                     .await
             }
-            (tree::Entry::Sync { .. }, Location::Local) => {
-                self.do_delete(path, &self.local, StorageLoc::Local, progress)
-                    .await
-            }
-            (tree::Entry::Sync { .. }, Location::Remote) => {
-                self.do_delete(path, &self.remote, StorageLoc::Remote, progress)
-                    .await
-            }
-            (tree::Entry::Sync { .. }, Location::Both) => {
+
+            // Delete everywhere
+            (tree::Entry::Sync { .. }, DeletionMethod::All) => {
                 let local = self.local().delete(path, Some(progress));
                 let remote = self.remote().delete(path, Some(progress));
                 futures::try_join!(local, remote)?;
@@ -533,10 +558,20 @@ where
                 self.check_conflict(path, false).await;
                 Ok(())
             }
-            _ => Err(fsync::PathError::NotFound(
-                path.to_path_buf(),
-                Some(location),
-            ))?,
+
+            // Nothing to do
+            (tree::Entry::Local(..), deletion) if deletion.is_remote() => Ok(()),
+            (tree::Entry::Remote(..), deletion) if deletion.is_local() => Ok(()),
+
+            // Conflict error
+            (
+                tree::Entry::Sync {
+                    conflict: Some(_), ..
+                },
+                deletion,
+            ) if deletion.no_conflict() => Err(fsync::Error::Conflict(path.to_owned())),
+
+            (entry, method) => unreachable!("missing delete_unit case:{entry:#?}, {method:#?}"),
         }
     }
 
@@ -557,8 +592,8 @@ where
             Operation::Resolve(path, method) | Operation::ResolveDeep(path, method) => {
                 self.resolve_unit(path.as_ref(), *method, &progress).await
             }
-            Operation::Delete(path, location) | Operation::DeleteDeep(path, location) => {
-                self.delete_unit(path.as_ref(), *location, &progress).await
+            Operation::Delete(path, method) | Operation::DeleteDeep(path, method) => {
+                self.delete_unit(path.as_ref(), *method, &progress).await
             }
         };
         match res {

@@ -1,8 +1,5 @@
 use fsync::{
-    path::{Path, PathBuf},
-    stat,
-    tree::Entry,
-    Location, Operation, ResolutionMethod,
+    path::{Path, PathBuf}, stat, tree::Entry, DeletionMethod, Operation, ResolutionMethod
 };
 
 use crate::{
@@ -214,7 +211,7 @@ async fn delete_local() {
     let path = PathBuf::from("/both.txt");
     h.service
         .clone()
-        .operate(Operation::Delete(path.clone(), Location::Local))
+        .operate(Operation::Delete(path.clone(), DeletionMethod::Local))
         .await
         .unwrap();
     let node = h.service.entry_node(&path).await.unwrap();
@@ -227,7 +224,7 @@ async fn delete_remote() {
     let path = PathBuf::from("/both.txt");
     h.service
         .clone()
-        .operate(Operation::Delete(path.clone(), Location::Remote))
+        .operate(Operation::Delete(path.clone(), DeletionMethod::Remote))
         .await
         .unwrap();
     let node = h.service.entry_node(&path).await.unwrap();
@@ -240,7 +237,7 @@ async fn delete_both() {
     let path = PathBuf::from("/both.txt");
     h.service
         .clone()
-        .operate(Operation::Delete(path.clone(), Location::Both))
+        .operate(Operation::Delete(path.clone(), DeletionMethod::All))
         .await
         .unwrap();
     let node = h.service.entry_node(&path).await.unwrap();

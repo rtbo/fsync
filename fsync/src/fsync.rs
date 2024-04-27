@@ -4,7 +4,7 @@ use typescript_type_def::TypeDef;
 
 use crate::{
     path::{Path, PathBuf},
-    stat, Location,
+    stat,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TypeDef)]
@@ -395,11 +395,11 @@ pub mod tree {
         }
 
         pub fn is_at_loc(&self, loc: StorageLoc) -> bool {
-            self.entry.is_at_loc(loc) 
+            self.entry.is_at_loc(loc)
         }
 
         pub fn is_only_at_loc(&self, loc: StorageLoc) -> bool {
-            self.entry.is_only_at_loc(loc) 
+            self.entry.is_only_at_loc(loc)
         }
 
         pub fn is_sync(&self) -> bool {
@@ -495,16 +495,66 @@ pub enum ResolutionMethod {
     CreateLocalCopy,
 }
 
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
+pub enum DeletionMethod {
+    /// Will delete local files and folders only if they are synced with remote.
+    /// Files with conflict will be deleted as well.
+    LocalIfSync,
+    /// Will delete remote files and folders only if they are synced locally.
+    /// Files with conflict will be deleted as well.
+    RemoteIfSync,
+    /// Will delete local files and folders only if they are synced with remote.
+    /// Files with conflict won't be deleted.
+    LocalIfSyncNoConflict,
+    /// Will delete remote files and folders only if they are synced locally.
+    /// Files with conflict won't be deleted.
+    RemoteIfSyncNoConflict,
+    /// Will delete all local files and folders.
+    Local,
+    /// Will delete all remote files and folders.
+    Remote,
+    /// Will delete both local and remote files and folders, losing all data.
+    All,
+}
+
+impl DeletionMethod {
+    pub const fn is_local(&self) -> bool {
+        matches!(
+            self,
+            DeletionMethod::Local
+                | DeletionMethod::LocalIfSync
+                | DeletionMethod::LocalIfSyncNoConflict
+        )
+    }
+
+    pub const fn is_remote(&self) -> bool {
+        matches!(
+            self,
+            DeletionMethod::Remote
+                | DeletionMethod::RemoteIfSync
+                | DeletionMethod::RemoteIfSyncNoConflict
+        )
+    }
+
+    pub const fn no_conflict(&self) -> bool {
+        matches!(
+            self,
+            DeletionMethod::LocalIfSyncNoConflict | DeletionMethod::RemoteIfSyncNoConflict
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
 #[serde(rename_all = "camelCase")]
 pub enum Operation {
     Sync(PathBuf),
     Resolve(PathBuf, ResolutionMethod),
-    Delete(PathBuf, Location),
+    Delete(PathBuf, DeletionMethod),
 
     SyncDeep(PathBuf),
     ResolveDeep(PathBuf, ResolutionMethod),
-    DeleteDeep(PathBuf, Location),
+    DeleteDeep(PathBuf, DeletionMethod),
 }
 
 impl Operation {
