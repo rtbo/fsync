@@ -656,7 +656,7 @@ where
             let mut joinvec = Vec::new();
             for child_name in node.children() {
                 let child_path = path.join(child_name);
-                let child_node = self.check_node(path)?;
+                let child_node = self.check_node(&child_path)?;
                 let child_op = operation.with_path(child_path.clone());
                 let this = self.clone();
                 let tx2 = tx.clone();
