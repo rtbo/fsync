@@ -3,14 +3,11 @@
 use std::sync::{Arc, Once};
 
 use dataset::Dataset;
-use fsync::{path::Path, Metadata};
-use fsyncd::{
-    service::Service,
-    storage::{cache::CacheStorage, Storage},
-};
+use fsyncd::{service::Service, storage::cache::CacheStorage};
 
 //mod config;
 mod dataset;
+mod harness;
 mod utils;
 mod stubs {
     //pub mod drive;
@@ -19,60 +16,21 @@ mod stubs {
 }
 mod tests;
 
+use harness::Harness;
 use stubs::{fs, id};
-
-pub struct Harness<L, R> {
-    pub service: Arc<Service<L, R>>,
-}
-
-impl<L, R> Harness<L, R>
-where
-    L: Storage,
-    R: Storage,
-{
-    pub fn local(&self) -> &L {
-        self.service.local()
-    }
-
-    pub fn remote(&self) -> &R {
-        self.service.remote()
-    }
-
-    pub async fn local_metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>> {
-        let e = self.service.entry_node(path).await?;
-        Ok(e.map(|node| node.into_entry().into_local_metadata())
-            .flatten())
-    }
-
-    pub async fn remote_metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>> {
-        let e = self.service.entry_node(path).await?;
-        Ok(e.map(|node| node.into_entry().into_remote_metadata())
-            .flatten())
-    }
-
-    pub async fn local_file_content(&self, path: &Path) -> anyhow::Result<String> {
-        let r = self.local().read_file(path.to_owned(), None).await?;
-        let c = utils::file_content(r).await?;
-        Ok(c)
-    }
-
-    pub async fn remote_file_content(&self, path: &Path) -> anyhow::Result<String> {
-        let r = self.remote().read_file(path.to_owned(), None).await?;
-        let c = utils::file_content(r).await?;
-        Ok(c)
-    }
-}
 
 type CacheHarness = Harness<fs::Stub, CacheStorage<id::Stub>>;
 
 static LOG_INIT: Once = Once::new();
 
-async fn harness() -> CacheHarness {
-    harness_with(Dataset::default()).await
+async fn default_harness() -> CacheHarness {
+    harness(Dataset::default()).await
 }
 
-async fn harness_with(dataset: Dataset) -> CacheHarness {
+async fn harness<D: Into<Dataset>>(dataset: D) -> CacheHarness {
     LOG_INIT.call_once(env_logger::init);
+
+    let dataset = dataset.into();
 
     let root = utils::temp_path(Some("fsync-fs"), None);
     tokio::fs::create_dir(&root).await.unwrap();
@@ -86,6 +44,6 @@ async fn harness_with(dataset: Dataset) -> CacheHarness {
 
 impl Dataset {
     pub async fn harness(self) -> CacheHarness {
-        harness_with(self).await
+        harness(self).await
     }
 }

@@ -96,6 +96,15 @@ pub enum Location {
     Both,
 }
 
+impl From<StorageLoc> for Location {
+    fn from(value: StorageLoc) -> Self {
+        match value {
+            StorageLoc::Local => Location::Local,
+            StorageLoc::Remote => Location::Remote,
+        }
+    }
+}
+
 impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

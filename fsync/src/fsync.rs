@@ -177,6 +177,13 @@ pub mod tree {
             self.path().file_name()
         }
 
+        pub fn into_metadata(self, loc: StorageLoc) -> Option<super::Metadata> {
+            match loc {
+                StorageLoc::Local => self.into_local_metadata(),
+                StorageLoc::Remote => self.into_remote_metadata(),
+            }
+        }
+
         pub fn into_local_metadata(self) -> Option<super::Metadata> {
             match self {
                 Self::Local(metadata) => Some(metadata),

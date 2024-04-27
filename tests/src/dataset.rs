@@ -10,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::stubs;
 
-mod build {
+pub mod build {
     #[derive(Debug, Copy, Clone)]
     pub enum Entry {
         Dir {
@@ -201,6 +201,66 @@ impl Default for Dataset {
         Self {
             local: build::LOCAL.iter().map(|e| (*e).into()).collect(),
             remote: build::REMOTE.iter().map(|e| (*e).into()).collect(),
+            mtime_ref: None,
+        }
+    }
+}
+
+impl From<(&[build::Entry], &[build::Entry])> for Dataset {
+    fn from((local, remote): (&[build::Entry], &[build::Entry])) -> Self {
+        Self {
+            local: local.iter().map(|e| (*e).into()).collect(),
+            remote: remote.iter().map(|e| (*e).into()).collect(),
+            mtime_ref: None,
+        }
+    }
+}
+
+impl<const L: usize, const R: usize> From<(&[build::Entry; L], &[build::Entry; R])> for Dataset {
+    fn from((local, remote): (&[build::Entry; L], &[build::Entry; R])) -> Self {
+        Self {
+            local: local.iter().map(|e| (*e).into()).collect(),
+            remote: remote.iter().map(|e| (*e).into()).collect(),
+            mtime_ref: None,
+        }
+    }
+}
+
+impl From<(&[build::Entry], ())> for Dataset {
+    fn from((local, ()): (&[build::Entry], ())) -> Self {
+        Self {
+            local: local.iter().map(|e| (*e).into()).collect(),
+            remote: vec![],
+            mtime_ref: None,
+        }
+    }
+}
+
+impl<const L: usize> From<(&[build::Entry; L], ())> for Dataset {
+    fn from((local, ()): (&[build::Entry; L], ())) -> Self {
+        Self {
+            local: local.iter().map(|e| (*e).into()).collect(),
+            remote: vec![],
+            mtime_ref: None,
+        }
+    }
+}
+
+impl From<((), &[build::Entry])> for Dataset {
+    fn from(((), remote): ((), &[build::Entry])) -> Self {
+        Self {
+            local: vec![],
+            remote: remote.iter().map(|e| (*e).into()).collect(),
+            mtime_ref: None,
+        }
+    }
+}
+
+impl<const R: usize> From<((), &[build::Entry; R])> for Dataset {
+    fn from(((), remote): ((), &[build::Entry; R])) -> Self {
+        Self {
+            local: vec![],
+            remote: remote.iter().map(|e| (*e).into()).collect(),
             mtime_ref: None,
         }
     }

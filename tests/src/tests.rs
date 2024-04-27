@@ -7,13 +7,13 @@ use fsync::{
 
 use crate::{
     dataset::{self, Dataset, Patch},
-    harness,
+    default_harness, harness,
     utils::UnwrapDisplay,
 };
 
 #[tokio::test]
 async fn entry() {
-    let h = harness().await;
+    let h = default_harness().await;
     let notexist = h
         .service
         .entry_node(Path::new("/not-exists"))
@@ -31,7 +31,7 @@ async fn entry() {
 
 #[tokio::test]
 async fn node_stat() {
-    let h = harness().await;
+    let h = default_harness().await;
     let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
     let stat = root.stats();
     assert_eq!(stat.node, dataset::DEFAULT_NODE_STAT);
@@ -39,7 +39,7 @@ async fn node_stat() {
 
 #[tokio::test]
 async fn sync_remote_to_local() {
-    let h = harness().await;
+    let h = default_harness().await;
 
     let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
     let orig_stat = root.stats();
@@ -75,7 +75,7 @@ async fn sync_remote_to_local() {
 
 #[tokio::test]
 async fn sync_remote_to_local_deep() {
-    let h = harness().await;
+    let h = default_harness().await;
     let path = PathBuf::from("/only-remote/deep/file2.txt");
     h.service
         .clone()
@@ -97,7 +97,7 @@ async fn sync_remote_to_local_deep() {
 #[tokio::test]
 #[should_panic(expected = "No such entry: /not-a-file.txt")]
 async fn sync_remote_to_local_fail_missing() {
-    let h = harness().await;
+    let h = default_harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
         .clone()
@@ -108,7 +108,7 @@ async fn sync_remote_to_local_fail_missing() {
 
 #[tokio::test]
 async fn sync_local_to_remote_deep() {
-    let h = harness().await;
+    let h = default_harness().await;
     let path = PathBuf::from("/only-local/deep/file2.txt");
     h.service
         .clone()
@@ -130,7 +130,7 @@ async fn sync_local_to_remote_deep() {
 #[tokio::test]
 #[should_panic(expected = "Expected an absolute path: only-remote.txt")]
 async fn sync_remote_to_local_fail_relative() {
-    let h = harness().await;
+    let h = default_harness().await;
     let path = PathBuf::from("only-remote.txt");
     h.service
         .clone()
@@ -141,7 +141,7 @@ async fn sync_remote_to_local_fail_relative() {
 
 #[tokio::test]
 async fn sync_local_to_remote() {
-    let h = harness().await;
+    let h = default_harness().await;
     let path = PathBuf::from("/only-local.txt");
     h.service
         .clone()
@@ -155,7 +155,7 @@ async fn sync_local_to_remote() {
 #[tokio::test]
 #[should_panic(expected = "No such entry: /not-a-file.txt")]
 async fn sync_local_to_remote_fail_missing() {
-    let h = harness().await;
+    let h = default_harness().await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
         .clone()
@@ -210,7 +210,7 @@ async fn resolve_keep_newer_remote() {
 
 #[tokio::test]
 async fn delete_local() {
-    let h = harness().await;
+    let h = default_harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
         .clone()
@@ -223,7 +223,7 @@ async fn delete_local() {
 
 #[tokio::test]
 async fn delete_remote() {
-    let h = harness().await;
+    let h = default_harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
         .clone()
@@ -236,7 +236,7 @@ async fn delete_remote() {
 
 #[tokio::test]
 async fn delete_both() {
-    let h = harness().await;
+    let h = default_harness().await;
     let path = PathBuf::from("/both.txt");
     h.service
         .clone()
