@@ -110,7 +110,7 @@ async fn sync_remote_deep_file_creates_local_dirs() {
 }
 
 #[tokio::test]
-async fn sync_remote_dir_deep() {
+async fn sync_remote_dir_deep_and_stats() {
     let h = {
         use dataset::build::Entry;
         harness((
@@ -156,6 +156,30 @@ async fn sync_remote_dir_deep() {
         .await
     };
 
+    h.assert_tree_stats(
+        Path::root(),
+        &stat::Tree {
+            local: stat::Dir {
+                data: 0,
+                dirs: 1, // root
+                files: 0,
+            },
+            remote: stat::Dir {
+                data: 12 + 2 * 14 + 2 * 18,
+                dirs: 3,
+                files: 5,
+            },
+            node: stat::Node {
+                nodes: 8,
+                sync: 1, // root
+                conflicts: 0,
+            },
+        },
+    )
+    .await;
+
+    // will sync all except "/file.txt"
+
     h.operate(Operation::SyncDeep(PathBuf::from("/dir")))
         .await
         .unwrap();
@@ -163,10 +187,36 @@ async fn sync_remote_dir_deep() {
     assert!(!h.has_local_file(Path::new("/file.txt")).await.unwrap());
     h.assert_sync_dir(Path::new("/dir")).await;
     h.assert_sync_dir(Path::new("/dir/dir")).await;
-    h.assert_sync_file_with_path_content(Path::new("/dir/file1.txt")).await;
-    h.assert_sync_file_with_path_content(Path::new("/dir/file2.txt")).await;
-    h.assert_sync_file_with_path_content(Path::new("/dir/dir/file1.txt")).await;
-    h.assert_sync_file_with_path_content(Path::new("/dir/dir/file2.txt")).await;
+    h.assert_sync_file_with_path_content(Path::new("/dir/file1.txt"))
+        .await;
+    h.assert_sync_file_with_path_content(Path::new("/dir/file2.txt"))
+        .await;
+    h.assert_sync_file_with_path_content(Path::new("/dir/dir/file1.txt"))
+        .await;
+    h.assert_sync_file_with_path_content(Path::new("/dir/dir/file2.txt"))
+        .await;
+
+    h.assert_tree_stats(
+        Path::root(),
+        &stat::Tree {
+            local: stat::Dir {
+                data: 2 * 14 + 2 * 18,
+                dirs: 3,
+                files: 4,
+            },
+            remote: stat::Dir {
+                data: 12 + 2 * 14 + 2 * 18,
+                dirs: 3,
+                files: 5,
+            },
+            node: stat::Node {
+                nodes: 8,
+                sync: 7,
+                conflicts: 0,
+            },
+        },
+    )
+    .await;
 }
 
 #[tokio::test]
