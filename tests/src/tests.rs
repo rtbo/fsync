@@ -1,26 +1,32 @@
 use fsync::{
     path::{Path, PathBuf},
-    stat,
-    tree::Entry,
-    DeletionMethod, Operation, ResolutionMethod,
+    stat, DeletionMethod, Operation, ResolutionMethod,
 };
 
 use crate::{
-    dataset::{self, Dataset, Patch},
-    default_harness, harness,
+    dataset::{self, Dataset},
+    harness,
     utils::UnwrapDisplay,
 };
 
 #[tokio::test]
 async fn entry() {
-    let h = default_harness().await;
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file("/file.txt", "Test content")],
+            remote: vec![Entry::txt_file("/file.txt", "Test content")],
+        })
+        .await
+    };
+
     let notexist = h
         .service
         .entry_node(Path::new("/not-exists"))
         .await
         .unwrap();
     assert!(notexist.is_none());
-    let exist = h.service.entry_node(Path::new("/both.txt")).await.unwrap();
+    let exist = h.service.entry_node(Path::new("/file.txt")).await.unwrap();
     match exist {
         None => unreachable!(),
         Some(exist) => {
@@ -30,26 +36,15 @@ async fn entry() {
 }
 
 #[tokio::test]
-async fn node_stat() {
-    let h = default_harness().await;
-    let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
-    let stat = root.stats();
-    assert_eq!(stat.node, dataset::DEFAULT_NODE_STAT);
-}
-
-#[tokio::test]
 async fn sync_remote_file() {
-    use dataset::build::Entry;
-
-    let h = harness((
-        (),
-        &[Entry::File {
-            name: "file.txt",
-            content: "Test content",
-            age: None,
-        }],
-    ))
-    .await;
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![],
+            remote: vec![Entry::txt_file("/file.txt", "Test content")],
+        })
+        .await
+    };
 
     let path = Path::new("/file.txt");
     h.operate(Operation::Sync(path.to_owned())).await.unwrap();
@@ -59,17 +54,14 @@ async fn sync_remote_file() {
 
 #[tokio::test]
 async fn sync_local_file() {
-    use dataset::build::Entry;
-
-    let h = harness((
-        &[Entry::File {
-            name: "file.txt",
-            content: "Test content",
-            age: None,
-        }],
-        (),
-    ))
-    .await;
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file("/file.txt", "Test content")],
+            remote: vec![],
+        })
+        .await
+    };
 
     let path = Path::new("/file.txt");
     h.operate(Operation::Sync(path.to_owned())).await.unwrap();
@@ -80,21 +72,11 @@ async fn sync_local_file() {
 #[tokio::test]
 async fn sync_remote_deep_file_creates_local_dirs() {
     let h = {
-        use dataset::build::Entry;
-        harness((
-            (),
-            &[Entry::Dir {
-                name: "dir",
-                entries: &[Entry::Dir {
-                    name: "dir",
-                    entries: &[Entry::File {
-                        name: "file.txt",
-                        content: "Test content",
-                        age: None,
-                    }],
-                }],
-            }],
-        ))
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![],
+            remote: vec![Entry::txt_file("/dir/dir/file.txt", "Test content")],
+        })
         .await
     };
 
@@ -112,47 +94,17 @@ async fn sync_remote_deep_file_creates_local_dirs() {
 #[tokio::test]
 async fn sync_remote_dir_deep_and_stats() {
     let h = {
-        use dataset::build::Entry;
-        harness((
-            (),
-            &[
-                Entry::File {
-                    name: "file.txt",
-                    content: "Test content",
-                    age: None,
-                },
-                Entry::Dir {
-                    name: "dir",
-                    entries: &[
-                        Entry::File {
-                            name: "file1.txt",
-                            content: "/dir/file1.txt",
-                            age: None,
-                        },
-                        Entry::File {
-                            name: "file2.txt",
-                            content: "/dir/file2.txt",
-                            age: None,
-                        },
-                        Entry::Dir {
-                            name: "dir",
-                            entries: &[
-                                Entry::File {
-                                    name: "file1.txt",
-                                    content: "/dir/dir/file1.txt",
-                                    age: None,
-                                },
-                                Entry::File {
-                                    name: "file2.txt",
-                                    content: "/dir/dir/file2.txt",
-                                    age: None,
-                                },
-                            ],
-                        },
-                    ],
-                },
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![],
+            remote: vec![
+                Entry::file_with_path_content("/file.txt"),
+                Entry::file_with_path_content("/dir/file1.txt"),
+                Entry::file_with_path_content("/dir/file2.txt"),
+                Entry::file_with_path_content("/dir/dir/file1.txt"),
+                Entry::file_with_path_content("/dir/dir/file2.txt"),
             ],
-        ))
+        })
         .await
     };
 
@@ -165,7 +117,7 @@ async fn sync_remote_dir_deep_and_stats() {
                 files: 0,
             },
             remote: stat::Dir {
-                data: 12 + 2 * 14 + 2 * 18,
+                data: 9 + 2 * 14 + 2 * 18,
                 dirs: 3,
                 files: 5,
             },
@@ -205,7 +157,7 @@ async fn sync_remote_dir_deep_and_stats() {
                 files: 4,
             },
             remote: stat::Dir {
-                data: 12 + 2 * 14 + 2 * 18,
+                data: 9 + 2 * 14 + 2 * 18,
                 dirs: 3,
                 files: 5,
             },
@@ -220,66 +172,9 @@ async fn sync_remote_dir_deep_and_stats() {
 }
 
 #[tokio::test]
-async fn sync_remote_to_local() {
-    let h = default_harness().await;
-
-    let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
-    let orig_stat = root.stats();
-
-    let path = PathBuf::from("/only-remote.txt");
-    h.service
-        .clone()
-        .operate(Operation::Sync(path.clone()))
-        .await
-        .unwrap();
-
-    let content = h.local_file_content(&path).await.unwrap();
-    assert_eq!(&content, path.as_str());
-
-    let added_stat = stat::Tree {
-        local: stat::Dir {
-            data: content.len() as i64,
-            dirs: 0,
-            files: 1,
-        },
-        remote: stat::Dir::null(),
-        node: stat::Node {
-            nodes: 0,
-            sync: 1,
-            conflicts: 0,
-        },
-    };
-
-    let root = h.service.entry_node(Path::root()).await.unwrap().unwrap();
-    let new_stat = root.stats();
-    assert_eq!(new_stat, orig_stat + added_stat);
-}
-
-#[tokio::test]
-async fn sync_remote_to_local_deep() {
-    let h = default_harness().await;
-    let path = PathBuf::from("/only-remote/deep/file2.txt");
-    h.service
-        .clone()
-        .operate(Operation::Sync(path.clone()))
-        .await
-        .unwrap();
-    let content = h.local_file_content(&path).await.unwrap();
-    assert_eq!(&content, path.as_str());
-    let deep = PathBuf::from("/only-remote/deep");
-    let deep_node = h
-        .service
-        .entry_node(&deep)
-        .await
-        .unwrap()
-        .expect("should have the deep dir entry");
-    assert!(matches!(deep_node.entry(), Entry::Sync { .. }));
-}
-
-#[tokio::test]
 #[should_panic(expected = "No such entry: /not-a-file.txt")]
 async fn sync_remote_to_local_fail_missing() {
-    let h = default_harness().await;
+    let h = harness(Dataset::empty()).await;
     let path = PathBuf::from("/not-a-file.txt");
     h.service
         .clone()
@@ -290,141 +185,159 @@ async fn sync_remote_to_local_fail_missing() {
 
 #[tokio::test]
 async fn sync_local_to_remote_deep() {
-    let h = default_harness().await;
-    let path = PathBuf::from("/only-local/deep/file2.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::file_with_path_content("/only-local/deep/file.txt")],
+            remote: vec![],
+        })
+        .await
+    };
+    let path = Path::new("/only-local/deep/file.txt");
     h.service
         .clone()
-        .operate(Operation::Sync(path.clone()))
+        .operate(Operation::Sync(path.to_path_buf()))
         .await
         .unwrap();
-    let content = h.remote_file_content(&path).await.unwrap();
-    assert_eq!(&content, path.as_str());
-    let deep = PathBuf::from("/only-local/deep");
-    let deep_node = h
-        .service
-        .entry_node(&deep)
-        .await
-        .unwrap()
-        .expect("should have the deep dir entry");
-    assert!(matches!(deep_node.entry(), Entry::Sync { .. }));
-}
 
-#[tokio::test]
-#[should_panic(expected = "Expected an absolute path: only-remote.txt")]
-async fn sync_remote_to_local_fail_relative() {
-    let h = default_harness().await;
-    let path = PathBuf::from("only-remote.txt");
-    h.service
-        .clone()
-        .operate(Operation::Sync(path))
-        .await
-        .unwrap_display();
-}
-
-#[tokio::test]
-async fn sync_local_to_remote() {
-    let h = default_harness().await;
-    let path = PathBuf::from("/only-local.txt");
-    h.service
-        .clone()
-        .operate(Operation::Sync(path.clone()))
-        .await
-        .unwrap();
-    let content = h.remote_file_content(&path).await.unwrap();
-    assert_eq!(&content, path.as_str());
-}
-
-#[tokio::test]
-#[should_panic(expected = "No such entry: /not-a-file.txt")]
-async fn sync_local_to_remote_fail_missing() {
-    let h = default_harness().await;
-    let path = PathBuf::from("/not-a-file.txt");
-    h.service
-        .clone()
-        .operate(Operation::Sync(path))
-        .await
-        .unwrap_display();
-}
-
-#[tokio::test]
-async fn resolve_keep_newer_local() {
-    let h = Dataset::default()
-        .with_mtime_now()
-        .apply_remote(Patch::Age("/conflict.txt".into(), 10))
-        .harness()
+    h.assert_sync_dir(Path::new("/only-local/deep")).await;
+    h.assert_sync_file_with_path_content(Path::new("/only-local/deep/file.txt"))
         .await;
-    let path = PathBuf::from("/conflict.txt");
+
+    let content = h.remote_file_content(path).await.unwrap();
+    assert_eq!(&content, path.as_str());
+}
+
+#[tokio::test]
+#[should_panic(expected = "Expected an absolute path: file.txt")]
+async fn sync_remote_to_local_fail_relative() {
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file("/file.txt", "Test content")],
+            remote: vec![],
+        })
+        .await
+    };
+    h.service
+        .clone()
+        .operate(Operation::Sync(PathBuf::from("file.txt")))
+        .await
+        .unwrap_display();
+}
+
+#[tokio::test]
+
+async fn resolve_keep_newer_local() {
+    let path = Path::new("/conflict.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Newer test content").with_age(0)],
+            remote: vec![Entry::txt_file(path, "Older test content").with_age(10)],
+        })
+        .await
+    };
     h.service
         .clone()
         .operate(Operation::Resolve(
-            path.clone(),
+            path.to_path_buf(),
             ResolutionMethod::ReplaceOlderByNewer,
         ))
         .await
         .unwrap();
-    let local_content = h.local_file_content(&path).await.unwrap();
-    let remote_content = h.remote_file_content(&path).await.unwrap();
-    assert_eq!(&local_content, "/conflict.txt - local");
-    assert_eq!(&remote_content, "/conflict.txt - local");
+
+    h.assert_local_file_with_content(path, "Newer test content")
+        .await;
+    h.assert_remote_file_with_content(path, "Newer test content")
+        .await;
 }
 
 #[tokio::test]
 async fn resolve_keep_newer_remote() {
-    let h = Dataset::default()
-        .with_mtime_now()
-        .apply_local(Patch::Age("/conflict.txt".into(), 10))
-        .harness()
-        .await;
-    let path = PathBuf::from("/conflict.txt");
+    let path = Path::new("/conflict.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Older test content").with_age(10)],
+            remote: vec![Entry::txt_file(path, "Newer test content").with_age(0)],
+        })
+        .await
+    };
     h.service
         .clone()
         .operate(Operation::Resolve(
-            path.clone(),
+            path.to_path_buf(),
             ResolutionMethod::ReplaceOlderByNewer,
         ))
         .await
         .unwrap();
-    let local_content = h.local_file_content(&path).await.unwrap();
-    let remote_content = h.remote_file_content(&path).await.unwrap();
-    assert_eq!(&local_content, "/conflict.txt - remote");
-    assert_eq!(&remote_content, "/conflict.txt - remote");
+
+    h.assert_local_file_with_content(path, "Newer test content")
+        .await;
+    h.assert_remote_file_with_content(path, "Newer test content")
+        .await;
 }
 
 #[tokio::test]
 async fn delete_local() {
-    let h = default_harness().await;
-    let path = PathBuf::from("/both.txt");
+    let path = Path::new("/file.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Test content").with_age(0)],
+            remote: vec![Entry::txt_file(path, "Test content").with_age(0)],
+        })
+        .await
+    };
     h.service
         .clone()
-        .operate(Operation::Delete(path.clone(), DeletionMethod::Local))
+        .operate(Operation::Delete(path.to_path_buf(), DeletionMethod::Local))
         .await
         .unwrap();
-    let node = h.service.entry_node(&path).await.unwrap();
-    assert!(node.unwrap().is_remote_only());
+    assert!(!h.has_local_file(Path::new("/file.txt")).await.unwrap());
+    assert!(h.has_remote_file(Path::new("/file.txt")).await.unwrap());
 }
 
 #[tokio::test]
 async fn delete_remote() {
-    let h = default_harness().await;
-    let path = PathBuf::from("/both.txt");
+    let path = Path::new("/file.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Test content").with_age(0)],
+            remote: vec![Entry::txt_file(path, "Test content").with_age(0)],
+        })
+        .await
+    };
     h.service
         .clone()
-        .operate(Operation::Delete(path.clone(), DeletionMethod::Remote))
+        .operate(Operation::Delete(
+            path.to_path_buf(),
+            DeletionMethod::Remote,
+        ))
         .await
         .unwrap();
-    let node = h.service.entry_node(&path).await.unwrap();
-    assert!(node.unwrap().is_local_only());
+    assert!(h.has_local_file(Path::new("/file.txt")).await.unwrap());
+    assert!(!h.has_remote_file(Path::new("/file.txt")).await.unwrap());
 }
 
 #[tokio::test]
 async fn delete_both() {
-    let h = default_harness().await;
-    let path = PathBuf::from("/both.txt");
+    let path = Path::new("/file.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Test content").with_age(0)],
+            remote: vec![Entry::txt_file(path, "Test content").with_age(0)],
+        })
+        .await
+    };
     h.service
         .clone()
-        .operate(Operation::Delete(path.clone(), DeletionMethod::All))
+        .operate(Operation::Delete(path.to_path_buf(), DeletionMethod::All))
         .await
         .unwrap();
-    let node = h.service.entry_node(&path).await.unwrap();
-    assert!(node.is_none());
+    assert!(!h.has_local_file(Path::new("/file.txt")).await.unwrap());
+    assert!(!h.has_remote_file(Path::new("/file.txt")).await.unwrap());
 }

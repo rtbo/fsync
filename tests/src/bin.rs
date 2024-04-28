@@ -23,10 +23,6 @@ type CacheHarness = Harness<fs::Stub, CacheStorage<id::Stub>>;
 
 static LOG_INIT: Once = Once::new();
 
-async fn default_harness() -> CacheHarness {
-    harness(Dataset::default()).await
-}
-
 async fn harness<D: Into<Dataset>>(dataset: D) -> CacheHarness {
     LOG_INIT.call_once(env_logger::init);
 
@@ -40,10 +36,4 @@ async fn harness<D: Into<Dataset>>(dataset: D) -> CacheHarness {
     let service = Arc::new(Service::new(local, remote).await.unwrap());
 
     Harness { service }
-}
-
-impl Dataset {
-    pub async fn harness(self) -> CacheHarness {
-        harness(self).await
-    }
 }
