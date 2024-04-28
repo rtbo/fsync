@@ -5,13 +5,11 @@ use std::sync::Arc;
 use crate::utils;
 use fsync::{
     path::Path,
+    stat,
     tree::{Entry, EntryNode},
     Location, Metadata, StorageLoc,
 };
-use fsyncd::{
-    service::Service,
-    storage::Storage,
-};
+use fsyncd::{service::Service, storage::Storage};
 
 #[derive(Clone)]
 pub struct Harness<L, R> {
@@ -129,6 +127,11 @@ where
                 Ok(utils::file_content(r).await?)
             }
         }
+    }
+
+    pub async fn tree_stats(&self, path: &Path) -> fsync::Result<Option<stat::Tree>> {
+        let stats = self.entry_node(path).await?.map(|n| n.stats());
+        Ok(stats)
     }
 }
 
@@ -342,5 +345,14 @@ where
     pub async fn assert_sync_file_with_path_content(&self, path: &Path) {
         self.assert_file_with_path_content(path, Location::Both)
             .await;
+    }
+
+    pub async fn assert_tree_stats(&self, path: &Path, expected: &stat::Tree) {
+        let actual = self
+            .tree_stats(path)
+            .await
+            .unwrap()
+            .expect("No such tree node: {path}");
+        assert_eq!(*expected, actual);
     }
 }
