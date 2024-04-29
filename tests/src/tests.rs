@@ -1,6 +1,8 @@
 use fsync::{
     path::{Path, PathBuf},
-    stat, DeletionMethod, Operation, ResolutionMethod,
+    stat,
+    tree::Entry,
+    Conflict, DeletionMethod, Operation, ResolutionMethod,
 };
 
 use crate::{
@@ -214,6 +216,51 @@ async fn sync_remote_dir_deep_and_stats() {
 }
 
 #[tokio::test]
+async fn detects_conflict() {
+    let path = Path::new("/conflict.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Newer test content").with_age(0)],
+            remote: vec![Entry::txt_file(path, "Older test content").with_age(10)],
+        })
+        .await
+    };
+
+    h.assert_tree_stats(
+        Path::root(),
+        // root dir itself is included in the stats
+        &stat::Tree {
+            local: stat::Dir {
+                data: 18,
+                dirs: 1,
+                files: 1,
+            },
+            remote: stat::Dir {
+                data: 18,
+                dirs: 1,
+                files: 1,
+            },
+            node: stat::Node {
+                nodes: 2,
+                sync: 2, // sync include the conflicts
+                conflicts: 1,
+            },
+        },
+    )
+    .await;
+
+    let conflict = h.entry_node(path).await.unwrap().unwrap();
+    assert!(matches!(
+        conflict.entry(),
+        Entry::Sync {
+            conflict: Some(Conflict::LocalNewer),
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
 async fn resolve_keep_newer_local() {
     let path = Path::new("/conflict.txt");
     let h = {
@@ -224,19 +271,41 @@ async fn resolve_keep_newer_local() {
         })
         .await
     };
-    h.service
-        .clone()
-        .operate(Operation::Resolve(
-            path.to_path_buf(),
-            ResolutionMethod::ReplaceOlderByNewer,
-        ))
-        .await
-        .unwrap();
+
+    h.operate(Operation::Resolve(
+        path.to_path_buf(),
+        ResolutionMethod::ReplaceOlderByNewer,
+    ))
+    .await
+    .unwrap();
 
     h.assert_local_file_with_content(path, "Newer test content")
         .await;
     h.assert_remote_file_with_content(path, "Newer test content")
         .await;
+
+    h.assert_tree_stats(
+        Path::root(),
+        // root dir itself is included in the stats
+        &stat::Tree {
+            local: stat::Dir {
+                data: 18,
+                dirs: 1,
+                files: 1,
+            },
+            remote: stat::Dir {
+                data: 18,
+                dirs: 1,
+                files: 1,
+            },
+            node: stat::Node {
+                nodes: 2,
+                sync: 2,
+                conflicts: 0,
+            },
+        },
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -266,6 +335,56 @@ async fn resolve_keep_newer_remote() {
 }
 
 #[tokio::test]
+async fn resolve_create_local_copy() {
+    let path = Path::new("/conflict.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Older test content").with_age(10)],
+            remote: vec![Entry::txt_file(path, "Newer test content").with_age(0)],
+        })
+        .await
+    };
+
+    h.operate(Operation::Resolve(
+        path.to_path_buf(),
+        ResolutionMethod::CreateLocalCopy,
+    ))
+    .await
+    .unwrap();
+
+    h.assert_local_file_with_content(path, "Newer test content")
+        .await;
+    h.assert_local_file_with_content("/conflict-copy.txt", "Older test content")
+        .await;
+    h.assert_remote_file_with_content(path, "Newer test content")
+        .await;
+
+    h.assert_tree_stats(
+        Path::root(),
+        // root dir itself is included in the stats
+        &stat::Tree {
+            local: stat::Dir {
+                data: 2 * 18,
+                dirs: 1,
+                files: 2,
+            },
+            remote: stat::Dir {
+                data: 18,
+                dirs: 1,
+                files: 1,
+            },
+            node: stat::Node {
+                nodes: 3,
+                sync: 2,
+                conflicts: 0,
+            },
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn delete_local() {
     let path = Path::new("/file.txt");
     let h = {
@@ -276,9 +395,7 @@ async fn delete_local() {
         })
         .await
     };
-    h.service
-        .clone()
-        .operate(Operation::Delete(path.to_path_buf(), DeletionMethod::Local))
+    h.operate(Operation::Delete(path.to_path_buf(), DeletionMethod::Local))
         .await
         .unwrap();
     assert!(!h.has_local_file(path).await.unwrap());
@@ -296,14 +413,12 @@ async fn delete_remote() {
         })
         .await
     };
-    h.service
-        .clone()
-        .operate(Operation::Delete(
-            path.to_path_buf(),
-            DeletionMethod::Remote,
-        ))
-        .await
-        .unwrap();
+    h.operate(Operation::Delete(
+        path.to_path_buf(),
+        DeletionMethod::Remote,
+    ))
+    .await
+    .unwrap();
     assert!(h.has_local_file(path).await.unwrap());
     assert!(!h.has_remote_file(path).await.unwrap());
 }
@@ -319,9 +434,7 @@ async fn delete_both() {
         })
         .await
     };
-    h.service
-        .clone()
-        .operate(Operation::Delete(path.to_path_buf(), DeletionMethod::All))
+    h.operate(Operation::Delete(path.to_path_buf(), DeletionMethod::All))
         .await
         .unwrap();
     assert!(!h.has_local_file(path).await.unwrap());
