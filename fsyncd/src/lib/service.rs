@@ -140,6 +140,8 @@ impl<L, R> Service<L, R> {
         let path = metadata_from.path();
         debug_assert!(path.is_absolute() && !path.is_root());
         debug_assert!(metadata_from.is_file());
+        debug_assert!(to.is_absolute() && !to.is_root());
+        debug_assert!(!self.tree.has_entry(to));
 
         self.do_ensure_parents(path, storage, loc, progress).await?;
 
@@ -147,9 +149,9 @@ impl<L, R> Service<L, R> {
             .copy_file(metadata_from.path(), to, Some(progress))
             .await?;
 
-        let is_conflict = self.tree.add_to_storage_check_conflict(path, metadata, loc);
-
-        self.check_conflict(path, is_conflict).await;
+        let entry = fsync::tree::Entry::new_at(metadata, loc);
+        let node = fsync::tree::EntryNode::new(entry, vec![], stat::Tree::null());
+        self.tree.insert(to, node);
 
         Ok(())
     }
