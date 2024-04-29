@@ -95,6 +95,10 @@ impl DiffTree {
         Ok(Self { nodes })
     }
 
+    pub fn has_entry(&self, path: &Path) -> bool {
+        self.nodes.get(path).is_some()
+    }
+
     pub fn entry(&self, path: &Path) -> Option<EntryNode> {
         self.nodes.get(path).map(|node| node.clone())
     }
