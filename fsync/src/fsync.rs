@@ -154,6 +154,13 @@ pub mod tree {
             }
         }
 
+        pub fn new_at(metadata: super::Metadata, loc: StorageLoc) -> Self {
+            match loc {
+                StorageLoc::Local => Self::Local(metadata),
+                StorageLoc::Remote => Self::Remote(metadata),
+            }
+        }
+
         pub fn root() -> Self {
             Self::Sync {
                 local: super::Metadata::root(),
