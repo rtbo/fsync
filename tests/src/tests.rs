@@ -36,6 +36,31 @@ async fn entry() {
 }
 
 #[tokio::test]
+#[should_panic(expected = "No such entry: /not-a-file.txt")]
+async fn operate_fail_missing() {
+    let h = harness(Dataset::empty()).await;
+    h.operate(Operation::Sync("/not-a-file.txt".into()))
+        .await
+        .unwrap_display();
+}
+
+#[tokio::test]
+#[should_panic(expected = "Expected an absolute path: file.txt")]
+async fn operate_fail_relative() {
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file("/file.txt", "Test content")],
+            remote: vec![],
+        })
+        .await
+    };
+    h.operate(Operation::Sync(PathBuf::from("file.txt")))
+        .await
+        .unwrap_display();
+}
+
+#[tokio::test]
 async fn sync_remote_file() {
     let h = {
         use dataset::Entry;
@@ -70,6 +95,28 @@ async fn sync_local_file() {
 }
 
 #[tokio::test]
+async fn sync_local_file_in_subdir() {
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::file_with_path_content("/only-local/deep/file.txt")],
+            remote: vec![],
+        })
+        .await
+    };
+    let path = Path::new("/only-local/deep/file.txt");
+    h.operate(Operation::Sync(path.to_path_buf()))
+        .await
+        .unwrap();
+
+    h.assert_sync_dir(path.parent().unwrap()).await;
+    h.assert_sync_file_with_path_content(path).await;
+
+    let content = h.remote_file_content(path).await.unwrap();
+    assert_eq!(&content, path.as_str());
+}
+
+#[tokio::test]
 async fn sync_remote_deep_file_creates_local_dirs() {
     let path = "/dir/dir/file.txt";
 
@@ -82,15 +129,10 @@ async fn sync_remote_deep_file_creates_local_dirs() {
         .await
     };
 
-    h.operate(Operation::Sync(path.into()))
-        .await
-        .unwrap();
+    h.operate(Operation::Sync(path.into())).await.unwrap();
 
     assert!(h.has_local_dir("/dir/dir").await.unwrap());
-    assert!(h
-        .has_local_file("/dir/dir/file.txt")
-        .await
-        .unwrap());
+    assert!(h.has_local_file("/dir/dir/file.txt").await.unwrap());
 }
 
 #[tokio::test]
@@ -141,10 +183,8 @@ async fn sync_remote_dir_deep_and_stats() {
     assert!(!h.has_local_file("/file.txt").await.unwrap());
     h.assert_sync_dir("/dir").await;
     h.assert_sync_dir("/dir/dir").await;
-    h.assert_sync_file_with_path_content("/dir/file1.txt")
-        .await;
-    h.assert_sync_file_with_path_content("/dir/file2.txt")
-        .await;
+    h.assert_sync_file_with_path_content("/dir/file1.txt").await;
+    h.assert_sync_file_with_path_content("/dir/file2.txt").await;
     h.assert_sync_file_with_path_content("/dir/dir/file1.txt")
         .await;
     h.assert_sync_file_with_path_content("/dir/dir/file2.txt")
@@ -174,61 +214,6 @@ async fn sync_remote_dir_deep_and_stats() {
 }
 
 #[tokio::test]
-#[should_panic(expected = "No such entry: /not-a-file.txt")]
-async fn sync_remote_to_local_fail_missing() {
-    let h = harness(Dataset::empty()).await;
-    h.service
-        .clone()
-        .operate(Operation::Sync("/not-a-file.txt".into()))
-        .await
-        .unwrap_display();
-}
-
-#[tokio::test]
-async fn sync_local_to_remote_deep() {
-    let h = {
-        use dataset::Entry;
-        harness(Dataset {
-            local: vec![Entry::file_with_path_content("/only-local/deep/file.txt")],
-            remote: vec![],
-        })
-        .await
-    };
-    let path = Path::new("/only-local/deep/file.txt");
-    h.service
-        .clone()
-        .operate(Operation::Sync(path.to_path_buf()))
-        .await
-        .unwrap();
-
-    h.assert_sync_dir(path.parent().unwrap()).await;
-    h.assert_sync_file_with_path_content(path)
-        .await;
-
-    let content = h.remote_file_content(path).await.unwrap();
-    assert_eq!(&content, path.as_str());
-}
-
-#[tokio::test]
-#[should_panic(expected = "Expected an absolute path: file.txt")]
-async fn sync_remote_to_local_fail_relative() {
-    let h = {
-        use dataset::Entry;
-        harness(Dataset {
-            local: vec![Entry::txt_file("/file.txt", "Test content")],
-            remote: vec![],
-        })
-        .await
-    };
-    h.service
-        .clone()
-        .operate(Operation::Sync(PathBuf::from("file.txt")))
-        .await
-        .unwrap_display();
-}
-
-#[tokio::test]
-
 async fn resolve_keep_newer_local() {
     let path = Path::new("/conflict.txt");
     let h = {
