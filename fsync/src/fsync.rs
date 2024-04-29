@@ -400,6 +400,12 @@ pub mod tree {
             &self.children
         }
 
+        pub fn add_child(&mut self, child: String) {
+            debug_assert!(!self.children.contains(&child));
+            self.children.push(child);
+            self.children.sort_unstable();
+        }
+
         pub fn path(&self) -> &Path {
             self.entry.path()
         }
