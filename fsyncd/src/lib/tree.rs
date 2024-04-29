@@ -109,6 +109,18 @@ impl DiffTree {
         self.nodes.iter()
     }
 
+    pub fn insert(&self, path: &Path, entry: EntryNode) {
+        debug_assert_eq!(path, entry.path());
+        debug_assert!(!self.has_entry(path));
+        let parent_path = path.parent().expect("This path should have a parent");
+        {
+            let mut parent = self.nodes.get_mut(parent_path).expect("this parent should be valid");
+            parent.add_child(path.file_name().expect("this path should have a file name").to_string());
+            parent.add_stat(&entry.stats());
+        }
+        self.nodes.insert(path.to_path_buf(), entry);
+    }
+
     pub fn add_to_storage_check_conflict(
         &self,
         path: &Path,
