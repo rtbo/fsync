@@ -71,7 +71,16 @@
       localDate.getFullYear() === remoteDate.getFullYear();
 
     if (sameDay) {
-      return { local: localDate.toLocaleString(), remote: remoteDate.toLocaleString() };
+      const now = new Date(Date.now());
+      const today =
+        now.getDate() == localDate.getDate() &&
+        now.getMonth() == localDate.getMonth() &&
+        now.getFullYear() == localDate.getFullYear();
+      if (today) {
+        return { local: localDate.toLocaleTimeString(), remote: remoteDate.toLocaleTimeString() };
+      } else {
+        return { local: localDate.toLocaleString(), remote: remoteDate.toLocaleString() };
+      }
     } else {
       return { local: displayMtime(local), remote: displayMtime(remote) };
     }
