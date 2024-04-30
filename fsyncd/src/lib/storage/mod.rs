@@ -55,6 +55,17 @@ pub trait WriteFile {
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
+/// A trait to copy files within the storage
+pub trait CopyFile {
+    /// Copies the file from `src` to `dest`.
+    fn copy_file(
+        &self,
+        src: &Path,
+        dest: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
+}
+
 /// A trait to delete files or folders
 pub trait Delete {
     /// Deletes the file or folder pointed to by `path`.
@@ -74,6 +85,7 @@ pub trait Storage:
     + MkDir
     + CreateFile
     + WriteFile
+    + CopyFile
     + Delete
     + Shutdown
     + Send

@@ -91,6 +91,17 @@ impl ops::SubAssign for Dir {
     }
 }
 
+impl ops::Neg for Dir {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        Self {
+            data: -self.data,
+            dirs: -self.dirs,
+            files: -self.files,
+        }
+    }
+}
+
 /// Stats for a Node in the tree structure.
 /// That is, the stats for both local and remote files and directories
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, TypeDef)]
@@ -173,6 +184,17 @@ impl ops::SubAssign for Node {
     }
 }
 
+impl ops::Neg for Node {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        Self {
+            nodes: -self.nodes,
+            sync: -self.sync,
+            conflicts: -self.conflicts,
+        }
+    }
+}
+
 /// Stats for the whole diff tree structure.
 /// That is, the stats for both local and remote files and directories
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, TypeDef)]
@@ -243,5 +265,16 @@ impl ops::SubAssign for Tree {
         self.local -= rhs.local;
         self.remote -= rhs.remote;
         self.node -= rhs.node;
+    }
+}
+
+impl ops::Neg for Tree {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        Self {
+            local: -self.local,
+            remote: -self.remote,
+            node: -self.node,
+        }
     }
 }

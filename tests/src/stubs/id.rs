@@ -5,14 +5,14 @@ use fsyncd::{
     storage::{
         fs::FileSystem,
         id::{self, IdBuf},
-        CreateFile, Delete, DirEntries, MkDir, ReadFile, WriteFile,
+        CopyFile, CreateFile, Delete, DirEntries, MkDir, ReadFile, WriteFile,
     },
     SharedProgress, Shutdown,
 };
 use futures::prelude::*;
 use tokio::io;
 
-use crate::dataset::{self, CreateDataset};
+use crate::dataset::{self, CreateFs};
 
 /// Stub that fakes an Id based Storage with filesystem
 /// Ids are paths that are:
@@ -26,11 +26,11 @@ pub struct Stub {
 impl Stub {
     pub async fn new(
         root: &FsPath,
-        dataset: &[dataset::Entry],
+        entries: &[dataset::Entry],
         now: Option<SystemTime>,
     ) -> anyhow::Result<Self> {
         tokio::fs::create_dir(&root).await.unwrap();
-        dataset.create_dataset(&root, now).await;
+        entries.create_fs(&root, now).await;
 
         let inner = FileSystem::new(&root)?;
         Ok(Self { inner })
@@ -106,6 +106,21 @@ impl id::WriteFile for Stub {
     ) -> fsync::Result<fsync::Metadata> {
         let metadata = self.inner.write_file(metadata, data, progress).await?;
         Ok(metadata)
+    }
+}
+
+impl id::CopyFile for Stub {
+    async fn copy_file(
+        &self,
+        src_id: &id::Id,
+        _dest_parent_id: Option<&id::Id>,
+        dest_path: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
+        let src = PathBuf::from(src_id.as_str());
+        let metadata = self.inner.copy_file(&src, dest_path, progress).await?;
+        let id = IdBuf::from(dest_path.as_str());
+        Ok((id, metadata))
     }
 }
 

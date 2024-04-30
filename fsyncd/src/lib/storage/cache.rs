@@ -319,9 +319,7 @@ where
             metadata: metadata.clone(),
             children: Vec::new(),
         };
-        log::debug!("will insert new node {}", metadata.path());
         self.entries.insert(metadata.path().to_owned(), node);
-        log::debug!("done inserting new node {}", metadata.path());
         Ok(metadata)
     }
 }
@@ -357,6 +355,56 @@ where
                 .await?
         };
         node.metadata = metadata.clone();
+        Ok(metadata)
+    }
+}
+
+impl<S> super::CopyFile for CacheStorage<S>
+where
+    S: super::id::Storage,
+{
+    async fn copy_file(
+        &self,
+        src: &Path,
+        dest: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> fsync::Result<Metadata> {
+        log::info!("copying file {src} to {dest}");
+        let src = Self::check_path(src)?;
+        let dest = Self::check_path(dest)?;
+
+        debug_assert!(!src.is_root() && !dest.is_root());
+        debug_assert!(self.entries.get(&dest).is_none());
+
+        let src_id = {
+            let src = self.entries.get(&src).expect("Source should be present");
+            src.id
+                .as_ref()
+                .expect("Id should be set for non-root path")
+                .clone()
+        };
+        let dest_parent_id = {
+            let parent = self
+                .entries
+                .get(dest.parent().expect("non-root path should have parent"))
+                .expect("Parent node should be defined");
+            parent.id.clone()
+        };
+
+        let metadata = {
+            let (id, metadata) = self
+                .storage
+                .copy_file(&src_id, dest_parent_id.as_deref(), &dest, progress)
+                .await?;
+            let node = CacheNode {
+                id: Some(id),
+                metadata: metadata.clone(),
+                children: Vec::new(),
+            };
+            self.entries.insert(dest, node);
+            metadata
+        };
+
         Ok(metadata)
     }
 }

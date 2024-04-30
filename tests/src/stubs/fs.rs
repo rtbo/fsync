@@ -8,7 +8,7 @@ use fsyncd::{
 use futures::{Future, Stream};
 use tokio::{fs, io};
 
-use crate::dataset::{self, CreateDataset};
+use crate::dataset::{self, CreateFs};
 
 #[derive(Debug, Clone)]
 pub struct Stub {
@@ -18,11 +18,11 @@ pub struct Stub {
 impl Stub {
     pub async fn new(
         root: &FsPath,
-        dataset: &[dataset::Entry],
+        entries: &[dataset::Entry],
         now: Option<SystemTime>,
     ) -> anyhow::Result<Self> {
         tokio::fs::create_dir(&root).await.unwrap();
-        dataset.create_dataset(&root, now).await;
+        entries.create_fs(&root, now).await;
 
         let inner = FileSystem::new(&root)?;
         Ok(Self { inner })
@@ -89,6 +89,17 @@ impl storage::WriteFile for Stub {
         progress: Option<&SharedProgress>,
     ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
         self.inner.write_file(metadata, data, progress)
+    }
+}
+
+impl storage::CopyFile for Stub {
+    fn copy_file(
+        &self,
+        src: &Path,
+        dest: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
+        self.inner.copy_file(src, dest, progress)
     }
 }
 

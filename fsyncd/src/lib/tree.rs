@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, mem};
 
 use dashmap::DashMap;
 pub use fsync::tree::{Entry, EntryNode};
@@ -95,6 +95,10 @@ impl DiffTree {
         Ok(Self { nodes })
     }
 
+    pub fn has_entry(&self, path: &Path) -> bool {
+        self.nodes.get(path).is_some()
+    }
+
     pub fn entry(&self, path: &Path) -> Option<EntryNode> {
         self.nodes.get(path).map(|node| node.clone())
     }
@@ -103,6 +107,25 @@ impl DiffTree {
         &'a self,
     ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMulti<'a, PathBuf, EntryNode>> {
         self.nodes.iter()
+    }
+
+    pub fn insert(&self, path: &Path, entry: EntryNode) {
+        debug_assert_eq!(path, entry.path());
+        debug_assert!(!self.has_entry(path));
+        let parent_path = path.parent().expect("This path should have a parent");
+        {
+            let mut parent = self
+                .nodes
+                .get_mut(parent_path)
+                .expect("this parent should be valid");
+            parent.add_child(
+                path.file_name()
+                    .expect("this path should have a file name")
+                    .to_string(),
+            );
+            parent.add_stat(&entry.stats());
+        }
+        self.nodes.insert(path.to_path_buf(), entry);
     }
 
     pub fn add_to_storage_check_conflict(
@@ -115,8 +138,27 @@ impl DiffTree {
     }
 
     pub fn remove_from_storage(&self, path: &Path, loc: StorageLoc) {
-        let is_conflict = self.op_entry_check_conflict(path, |entry| entry.without(loc));
-        debug_assert!(!is_conflict);
+        let stat_diff = {
+            let mut node = self.nodes.get_mut(path).expect("This node should be valid");
+            if node.is_sync() {
+                let rem = node.stats();
+                node.op_entry(|entry| entry.without(loc));
+                let add = node.stats();
+                add - rem
+            } else {
+                let stat = node.stats();
+                mem::drop(node);
+                self.nodes.remove(path);
+                let parent_path = path.parent().expect("This path should have a valid parent");
+                let file_name = path
+                    .file_name()
+                    .expect("This path should have a valid name");
+                let mut parent = self.nodes.get_mut(parent_path).unwrap();
+                parent.remove_child(file_name);
+                -stat
+            }
+        };
+        self.add_stat_to_ancestors(path, &stat_diff);
     }
 
     /// Apply `op` to entry and return whether it is a conflict
@@ -165,7 +207,7 @@ impl DiffTree {
         while let Some(path) = parent {
             let mut node = self.nodes.get_mut(path).expect("this node should be valid");
 
-            if node.entry().has_by_loc(loc) {
+            if node.entry().is_at_loc(loc) {
                 node.add_stat(&tree_stat);
             } else {
                 let md = fsync::Metadata::Directory {

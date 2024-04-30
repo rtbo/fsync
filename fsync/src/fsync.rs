@@ -4,7 +4,7 @@ use typescript_type_def::TypeDef;
 
 use crate::{
     path::{Path, PathBuf},
-    stat, Location, StorageDir,
+    stat,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TypeDef)]
@@ -154,6 +154,13 @@ pub mod tree {
             }
         }
 
+        pub fn new_at(metadata: super::Metadata, loc: StorageLoc) -> Self {
+            match loc {
+                StorageLoc::Local => Self::Local(metadata),
+                StorageLoc::Remote => Self::Remote(metadata),
+            }
+        }
+
         pub fn root() -> Self {
             Self::Sync {
                 local: super::Metadata::root(),
@@ -175,6 +182,13 @@ pub mod tree {
 
         pub fn name(&self) -> Option<&str> {
             self.path().file_name()
+        }
+
+        pub fn into_metadata(self, loc: StorageLoc) -> Option<super::Metadata> {
+            match loc {
+                StorageLoc::Local => self.into_local_metadata(),
+                StorageLoc::Remote => self.into_remote_metadata(),
+            }
         }
 
         pub fn into_local_metadata(self) -> Option<super::Metadata> {
@@ -243,10 +257,17 @@ pub mod tree {
             )
         }
 
-        pub fn has_by_loc(&self, loc: StorageLoc) -> bool {
+        pub fn is_at_loc(&self, loc: StorageLoc) -> bool {
             match loc {
                 StorageLoc::Local => self.is_local_only() || self.is_sync(),
                 StorageLoc::Remote => self.is_remote_only() || self.is_sync(),
+            }
+        }
+
+        pub fn is_only_at_loc(&self, loc: StorageLoc) -> bool {
+            match loc {
+                StorageLoc::Local => self.is_local_only(),
+                StorageLoc::Remote => self.is_remote_only(),
             }
         }
 
@@ -345,6 +366,14 @@ pub mod tree {
             }
         }
 
+        pub fn without_children(self) -> Self {
+            Self {
+                entry: self.entry,
+                children: Vec::new(),
+                children_node_stat: stat::Node::null(),
+            }
+        }
+
         pub fn entry(&self) -> &Entry {
             &self.entry
         }
@@ -371,6 +400,16 @@ pub mod tree {
             &self.children
         }
 
+        pub fn add_child(&mut self, child: String) {
+            debug_assert!(!self.children.contains(&child));
+            self.children.push(child);
+            self.children.sort_unstable();
+        }
+
+        pub fn remove_child(&mut self, child: &str) {
+            self.children.retain(|c| c != child);
+        }
+
         pub fn path(&self) -> &Path {
             self.entry.path()
         }
@@ -385,6 +424,14 @@ pub mod tree {
 
         pub fn is_remote_only(&self) -> bool {
             self.entry.is_remote_only()
+        }
+
+        pub fn is_at_loc(&self, loc: StorageLoc) -> bool {
+            self.entry.is_at_loc(loc)
+        }
+
+        pub fn is_only_at_loc(&self, loc: StorageLoc) -> bool {
+            self.entry.is_only_at_loc(loc)
         }
 
         pub fn is_sync(&self) -> bool {
@@ -466,20 +513,120 @@ pub mod tree {
     }
 }
 
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
+pub enum ResolutionMethod {
+    ReplaceOlderByNewer,
+    ReplaceNewerByOlder,
+    ReplaceLocalByRemote,
+    ReplaceRemoteByLocal,
+    DeleteOlder,
+    DeleteNewer,
+    DeleteLocal,
+    DeleteRemote,
+    CreateLocalCopy,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, TypeDef)]
+#[serde(rename_all = "camelCase")]
+pub enum DeletionMethod {
+    /// Will delete local files and folders only if they are synced with remote.
+    /// Files with conflict will be deleted as well.
+    LocalIfSync,
+    /// Will delete remote files and folders only if they are synced locally.
+    /// Files with conflict will be deleted as well.
+    RemoteIfSync,
+    /// Will delete local files and folders only if they are synced with remote.
+    /// Files with conflict won't be deleted.
+    LocalIfSyncNoConflict,
+    /// Will delete remote files and folders only if they are synced locally.
+    /// Files with conflict won't be deleted.
+    RemoteIfSyncNoConflict,
+    /// Will delete all local files and folders.
+    Local,
+    /// Will delete all remote files and folders.
+    Remote,
+    /// Will delete both local and remote files and folders, losing all data.
+    All,
+}
+
+impl DeletionMethod {
+    pub const fn is_local(&self) -> bool {
+        matches!(
+            self,
+            DeletionMethod::Local
+                | DeletionMethod::LocalIfSync
+                | DeletionMethod::LocalIfSyncNoConflict
+        )
+    }
+
+    pub const fn is_remote(&self) -> bool {
+        matches!(
+            self,
+            DeletionMethod::Remote
+                | DeletionMethod::RemoteIfSync
+                | DeletionMethod::RemoteIfSyncNoConflict
+        )
+    }
+
+    pub const fn no_conflict(&self) -> bool {
+        matches!(
+            self,
+            DeletionMethod::LocalIfSyncNoConflict | DeletionMethod::RemoteIfSyncNoConflict
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TypeDef)]
 #[serde(rename_all = "camelCase")]
 pub enum Operation {
-    Copy(PathBuf, StorageDir),
-    Replace(PathBuf, StorageDir),
-    Delete(PathBuf, Location),
+    Sync(PathBuf),
+    Resolve(PathBuf, ResolutionMethod),
+    Delete(PathBuf, DeletionMethod),
+
+    SyncDeep(PathBuf),
+    ResolveDeep(PathBuf, ResolutionMethod),
+    DeleteDeep(PathBuf, DeletionMethod),
 }
 
 impl Operation {
     pub fn path(&self) -> &Path {
         match self {
-            Operation::Copy(path, _) => path,
-            Operation::Replace(path, _) => path,
+            Operation::Sync(path) => path,
+            Operation::Resolve(path, _) => path,
             Operation::Delete(path, _) => path,
+
+            Operation::SyncDeep(path) => path,
+            Operation::ResolveDeep(path, _) => path,
+            Operation::DeleteDeep(path, _) => path,
+        }
+    }
+
+    pub const fn is_deep(&self) -> bool {
+        matches!(
+            self,
+            Operation::SyncDeep(..) | Operation::ResolveDeep(..) | Operation::DeleteDeep(..)
+        )
+    }
+
+    pub fn not_deep(self) -> Self {
+        match self {
+            Operation::SyncDeep(path) => Operation::Sync(path),
+            Operation::ResolveDeep(path, method) => Operation::Resolve(path, method),
+            Operation::DeleteDeep(path, method) => Operation::Delete(path, method),
+            op => panic!("Not a deep operation: {op:?}"),
+        }
+    }
+
+    pub fn with_path(&self, path: PathBuf) -> Self {
+        match self {
+            Operation::Sync(_) => Operation::Sync(path),
+            Operation::Resolve(_, method) => Operation::Resolve(path, *method),
+            Operation::Delete(_, method) => Operation::Delete(path, *method),
+
+            Operation::SyncDeep(_) => Operation::SyncDeep(path),
+            Operation::ResolveDeep(_, method) => Operation::ResolveDeep(path, *method),
+            Operation::DeleteDeep(_, method) => Operation::DeleteDeep(path, *method),
         }
     }
 }
@@ -492,6 +639,7 @@ pub enum Progress {
     OAuth2Exchange,
     OAuth2Refresh,
     Progress { progress: u64, total: u64 },
+    Compound,
     Done,
     Err(crate::Error),
 }

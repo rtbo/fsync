@@ -151,6 +151,38 @@ impl super::WriteFile for FileSystem {
     }
 }
 
+impl super::CopyFile for FileSystem {
+    async fn copy_file(
+        &self,
+        src: &Path,
+        dest: &Path,
+        _progress: Option<&SharedProgress>,
+    ) -> fsync::Result<fsync::Metadata> {
+        debug_assert!(src.is_absolute() && dest.is_absolute());
+        let fs_src = self.root.join(src.without_root().as_str());
+        let fs_dest = self.root.join(dest.without_root().as_str());
+        log::info!("copying {fs_src} to {fs_dest}");
+
+        if fs_src.is_dir() {
+            fsync::io_bail!("{src} is a direceory: {fs_src}");
+        }
+        if !fs_src.exists() {
+            fsync::io_bail!("{src} doesn't exists here: {fs_src}");
+        }
+        if fs_dest.exists() {
+            fsync::io_bail!("{dest} already exists here: {fs_dest}");
+        }
+        let fs_dest_dir = fs_dest.parent().expect("Expected fs_dest to have a parent");
+        if !fs_dest_dir.is_dir() {
+            fsync::io_bail!("{fs_dest_dir}: No such directory");
+        }
+
+        tokio::fs::copy(&fs_src, &fs_dest).await?;
+        let fs_metadata = tokio::fs::metadata(&fs_dest).await?;
+        map_metadata(dest.to_owned(), &fs_metadata, &fs_dest).await
+    }
+}
+
 impl super::Delete for FileSystem {
     async fn delete(&self, path: &Path, _progress: Option<&SharedProgress>) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
