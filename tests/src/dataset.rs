@@ -171,10 +171,15 @@ impl Entry {
 
                 let mut f = tokio::fs::File::create(&path).await.unwrap();
                 f.write(content).await.unwrap();
-                if let Some(age) = age {
+
+                // `now` can be set while `age` is not set. 
+                // if `age` is set however, `now` must be set.
+                assert!(age.is_none() || now.is_some());
+
+                if let Some(now) = now {
                     let f = f.into_std().await;
-                    let now = now.expect("Expected an age reference");
-                    let age = Duration::from_secs(*age as u64);
+                    let age = age.unwrap_or(0);
+                    let age = Duration::from_secs(age as u64);
                     f.set_modified(now - age).unwrap();
                 }
             }
