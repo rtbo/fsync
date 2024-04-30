@@ -20,11 +20,11 @@
         return ['text-cyan-500 dark:text-cyan-400', 'cloud'];
       case 'sync':
         return ['text-gray-500 dark:text-gray-400', 'check_circle'];
-      case 'sync-full':
+      case 'syncFull':
         return ['text-green-500 dark:text-green-400', 'check_circle'];
       case 'conflict':
         return ['text-gray-500 dark:text-gray-400', 'error'];
-      case 'conflict-full':
+      case 'conflictFull':
         return ['text-red-600 dark:text-red-400', 'error'];
     }
   }
