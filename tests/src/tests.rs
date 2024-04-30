@@ -138,6 +138,31 @@ async fn sync_remote_deep_file_creates_local_dirs() {
 }
 
 #[tokio::test]
+async fn sync_remote_dir_without_files() {
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![],
+            remote: vec![
+                Entry::file_with_path_content("/file.txt"),
+                Entry::file_with_path_content("/dir/file.txt"),
+                Entry::file_with_path_content("/dir/dir/file.txt"),
+            ],
+        })
+        .await
+    };
+
+    h.operate(Operation::Sync("/dir/dir".into())).await.unwrap();
+
+    assert!(h.has_local_dir("/dir").await.unwrap());
+    assert!(h.has_local_dir("/dir/dir").await.unwrap());
+    assert!(!h.has_local_file("/file.txt").await.unwrap());
+    assert!(!h.has_local_file("/dir/file.txt").await.unwrap());
+    assert!(!h.has_local_file("/dir/dir/file.txt").await.unwrap());
+
+}
+
+#[tokio::test]
 async fn sync_remote_dir_deep_and_stats() {
     let h = {
         use dataset::Entry;
@@ -227,10 +252,9 @@ async fn detects_conflict() {
         .await
     };
 
-    h.assert_tree_stats(
-        Path::root(),
-        // root dir itself is included in the stats
-        &stat::Tree {
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        stat::Tree {
             local: stat::Dir {
                 data: 18,
                 dirs: 1,
@@ -246,9 +270,8 @@ async fn detects_conflict() {
                 sync: 2, // sync include the conflicts
                 conflicts: 1,
             },
-        },
-    )
-    .await;
+        }
+    );
 
     let conflict = h.entry_node(path).await.unwrap().unwrap();
     assert!(matches!(
@@ -284,10 +307,9 @@ async fn resolve_keep_newer_local() {
     h.assert_remote_file_with_content(path, "Newer test content")
         .await;
 
-    h.assert_tree_stats(
-        Path::root(),
-        // root dir itself is included in the stats
-        &stat::Tree {
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        stat::Tree {
             local: stat::Dir {
                 data: 18,
                 dirs: 1,
@@ -303,9 +325,8 @@ async fn resolve_keep_newer_local() {
                 sync: 2,
                 conflicts: 0,
             },
-        },
-    )
-    .await;
+        }
+    );
 }
 
 #[tokio::test]
@@ -360,10 +381,10 @@ async fn resolve_create_local_copy() {
     h.assert_remote_file_with_content(path, "Newer test content")
         .await;
 
-    h.assert_tree_stats(
-        Path::root(),
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap().unwrap(),
         // root dir itself is included in the stats
-        &stat::Tree {
+        stat::Tree {
             local: stat::Dir {
                 data: 2 * 18,
                 dirs: 1,
@@ -380,8 +401,191 @@ async fn resolve_create_local_copy() {
                 conflicts: 0,
             },
         },
-    )
-    .await;
+    );
+}
+
+#[tokio::test]
+async fn resolve_delete_local() {
+    let path = Path::new("/conflict.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Older test content").with_age(10)],
+            remote: vec![Entry::txt_file(path, "Newer test content").with_age(0)],
+        })
+        .await
+    };
+
+    h.operate(Operation::Resolve(
+        path.to_path_buf(),
+        ResolutionMethod::DeleteLocal,
+    ))
+    .await
+    .unwrap();
+
+    h.assert_remote_file_with_content(path, "Newer test content")
+        .await;
+    assert!(!h.has_local_file(path).await.unwrap());
+
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        // root dir itself is included in the stats
+        stat::Tree {
+            local: stat::Dir {
+                data: 0,
+                dirs: 1,
+                files: 0,
+            },
+            remote: stat::Dir {
+                data: 18,
+                dirs: 1,
+                files: 1,
+            },
+            node: stat::Node {
+                nodes: 2,
+                sync: 1,
+                conflicts: 0,
+            },
+        },
+    );
+}
+
+#[tokio::test]
+async fn resolve_delete_remote() {
+    let path = Path::new("/conflict.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Older test content").with_age(10)],
+            remote: vec![Entry::txt_file(path, "Newer test content").with_age(0)],
+        })
+        .await
+    };
+
+    h.operate(Operation::Resolve(
+        path.to_path_buf(),
+        ResolutionMethod::DeleteRemote,
+    ))
+    .await
+    .unwrap();
+
+    h.assert_local_file_with_content(path, "Older test content")
+        .await;
+    assert!(!h.has_remote_file(path).await.unwrap());
+
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        // root dir itself is included in the stats
+        stat::Tree {
+            local: stat::Dir {
+                data: 18,
+                dirs: 1,
+                files: 1,
+            },
+            remote: stat::Dir {
+                data: 0,
+                dirs: 1,
+                files: 0,
+            },
+            node: stat::Node {
+                nodes: 2,
+                sync: 1,
+                conflicts: 0,
+            },
+        },
+    );
+}
+
+#[tokio::test]
+async fn resolve_delete_older() {
+    let path = Path::new("/conflict.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Older test content").with_age(10)],
+            remote: vec![Entry::txt_file(path, "Newer test content").with_age(0)],
+        })
+        .await
+    };
+
+    h.operate(Operation::Resolve(
+        path.to_path_buf(),
+        ResolutionMethod::DeleteOlder,
+    ))
+    .await
+    .unwrap();
+
+    h.assert_remote_file_with_content(path, "Newer test content")
+        .await;
+    assert!(!h.has_local_file(path).await.unwrap());
+
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        // root dir itself is included in the stats
+        stat::Tree {
+            local: stat::Dir {
+                data: 0,
+                dirs: 1,
+                files: 0,
+            },
+            remote: stat::Dir {
+                data: 18,
+                dirs: 1,
+                files: 1,
+            },
+            node: stat::Node {
+                nodes: 2,
+                sync: 1,
+                conflicts: 0,
+            },
+        },
+    );
+}
+
+#[tokio::test]
+async fn resolve_delete_newer() {
+    let path = Path::new("/conflict.txt");
+    let h = {
+        use dataset::Entry;
+        harness(Dataset {
+            local: vec![Entry::txt_file(path, "Older test content").with_age(10)],
+            remote: vec![Entry::txt_file(path, "Newer test content").with_age(0)],
+        })
+        .await
+    };
+
+    h.operate(Operation::Resolve(
+        path.to_path_buf(),
+        ResolutionMethod::DeleteNewer,
+    ))
+    .await
+    .unwrap();
+
+    h.assert_local_file_with_content(path, "Older test content")
+        .await;
+    assert!(!h.has_remote_file(path).await.unwrap());
+
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        // root dir itself is included in the stats
+        stat::Tree {
+            local: stat::Dir {
+                data: 18,
+                dirs: 1,
+                files: 1,
+            },
+            remote: stat::Dir {
+                data: 0,
+                dirs: 1,
+                files: 0,
+            },
+            node: stat::Node {
+                nodes: 2,
+                sync: 1,
+                conflicts: 0,
+            },
+        },
+    );
 }
 
 #[tokio::test]
