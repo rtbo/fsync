@@ -199,28 +199,31 @@ impl<L, R> Service<L, R> {
         Ok(())
     }
 
-    async fn do_mkdir<D>(
+    async fn do_mkdir<S>(
         &self,
         metadata: &fsync::Metadata,
-        dest: &D,
-        dir: StorageDir,
+        storage: &S,
+        loc: StorageLoc,
         progress: &SharedProgress,
     ) -> fsync::Result<()>
     where
-        D: storage::MkDir,
+        S: storage::MkDir,
     {
         let path = metadata.path();
         debug_assert!(path.is_absolute() && !path.is_root());
         debug_assert!(metadata.is_dir());
 
-        dest.mkdir(path, false, Some(progress)).await?;
+        self.do_ensure_parents(path, storage, loc, progress)
+            .await?;
+
+        storage.mkdir(path, false, Some(progress)).await?;
         let metadata = Metadata::Directory {
             path: path.to_path_buf(),
             stat: Some(stat::Dir::null()),
         };
         let is_conflict = self
             .tree
-            .add_to_storage_check_conflict(path, metadata, dir.dest());
+            .add_to_storage_check_conflict(path, metadata, loc);
         self.check_conflict(path, is_conflict).await;
         Ok(())
     }
@@ -419,7 +422,7 @@ where
         match node.entry() {
             tree::Entry::Local(metadata) => {
                 if metadata.is_dir() {
-                    self.do_mkdir(metadata, &self.remote, StorageDir::LocalToRemote, progress)
+                    self.do_mkdir(metadata, &self.remote, StorageLoc::Remote, progress)
                         .await
                 } else {
                     self.do_clone(
@@ -434,7 +437,7 @@ where
             }
             tree::Entry::Remote(metadata) => {
                 if metadata.is_dir() {
-                    self.do_mkdir(metadata, &self.local, StorageDir::RemoteToLocal, progress)
+                    self.do_mkdir(metadata, &self.local, StorageLoc::Local, progress)
                         .await
                 } else {
                     self.do_clone(
