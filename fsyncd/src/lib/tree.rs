@@ -114,8 +114,15 @@ impl DiffTree {
         debug_assert!(!self.has_entry(path));
         let parent_path = path.parent().expect("This path should have a parent");
         {
-            let mut parent = self.nodes.get_mut(parent_path).expect("this parent should be valid");
-            parent.add_child(path.file_name().expect("this path should have a file name").to_string());
+            let mut parent = self
+                .nodes
+                .get_mut(parent_path)
+                .expect("this parent should be valid");
+            parent.add_child(
+                path.file_name()
+                    .expect("this path should have a file name")
+                    .to_string(),
+            );
             parent.add_stat(&entry.stats());
         }
         self.nodes.insert(path.to_path_buf(), entry);
@@ -131,15 +138,27 @@ impl DiffTree {
     }
 
     pub fn remove_from_storage(&self, path: &Path, loc: StorageLoc) {
-        let node = self.nodes.get_mut(path);
-        if let Some(mut node) = node {
+        let stat_diff = {
+            let mut node = self.nodes.get_mut(path).expect("This node should be valid");
             if node.is_sync() {
+                let rem = node.stats();
                 node.op_entry(|entry| entry.without(loc));
+                let add = node.stats();
+                add - rem
             } else {
+                let stat = node.stats();
                 mem::drop(node);
                 self.nodes.remove(path);
+                let parent_path = path.parent().expect("This path should have a valid parent");
+                let file_name = path
+                    .file_name()
+                    .expect("This path should have a valid name");
+                let mut parent = self.nodes.get_mut(parent_path).unwrap();
+                parent.remove_child(file_name);
+                -stat
             }
-        }
+        };
+        self.add_stat_to_ancestors(path, &stat_diff);
     }
 
     /// Apply `op` to entry and return whether it is a conflict
