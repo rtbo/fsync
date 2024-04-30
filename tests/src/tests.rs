@@ -41,7 +41,9 @@ async fn entry() {
 #[should_panic(expected = "No such entry: /not-a-file.txt")]
 async fn operate_fail_missing() {
     let h = harness(Dataset::empty()).await;
-    h.operate(Operation::Sync("/not-a-file.txt".into()))
+    h.service
+        .clone()
+        .operate(Operation::Sync("/not-a-file.txt".into()))
         .await
         .unwrap_display();
 }
@@ -57,7 +59,9 @@ async fn operate_fail_relative() {
         })
         .await
     };
-    h.operate(Operation::Sync(PathBuf::from("file.txt")))
+    h.service
+        .clone()
+        .operate(Operation::Sync(PathBuf::from("file.txt")))
         .await
         .unwrap_display();
 }
@@ -74,8 +78,8 @@ async fn sync_remote_file() {
     };
 
     let path = "/file.txt";
-    h.operate(Operation::Sync(path.into())).await.unwrap();
-    let content = h.local_file_content(path).await.unwrap();
+    h.operate(Operation::Sync(path.into())).await;
+    let content = h.local_file_content(path).await.expect("File should exist");
     assert_eq!(&content, "Test content");
 }
 
@@ -91,8 +95,11 @@ async fn sync_local_file() {
     };
 
     let path = "/file.txt";
-    h.operate(Operation::Sync(path.into())).await.unwrap();
-    let content = h.remote_file_content(path).await.unwrap();
+    h.operate(Operation::Sync(path.into())).await;
+    let content = h
+        .remote_file_content(path)
+        .await
+        .expect("File should exist");
     assert_eq!(&content, "Test content");
 }
 
@@ -107,14 +114,15 @@ async fn sync_local_file_in_subdir() {
         .await
     };
     let path = Path::new("/only-local/deep/file.txt");
-    h.operate(Operation::Sync(path.to_path_buf()))
+    h.operate(Operation::Sync(path.to_path_buf())).await;
+
+    assert!(h.has_sync_dir(path.parent().unwrap()).await);
+    assert!(h.has_sync_file_with_path_content(path).await);
+
+    let content = h
+        .remote_file_content(path)
         .await
-        .unwrap();
-
-    h.assert_sync_dir(path.parent().unwrap()).await;
-    h.assert_sync_file_with_path_content(path).await;
-
-    let content = h.remote_file_content(path).await.unwrap();
+        .expect("File should exist");
     assert_eq!(&content, path.as_str());
 }
 
@@ -131,10 +139,10 @@ async fn sync_remote_deep_file_creates_local_dirs() {
         .await
     };
 
-    h.operate(Operation::Sync(path.into())).await.unwrap();
+    h.operate(Operation::Sync(path.into())).await;
 
-    assert!(h.has_local_dir("/dir/dir").await.unwrap());
-    assert!(h.has_local_file("/dir/dir/file.txt").await.unwrap());
+    assert!(h.has_local_dir("/dir/dir").await);
+    assert!(h.has_local_file("/dir/dir/file.txt").await);
 }
 
 #[tokio::test]
@@ -152,14 +160,13 @@ async fn sync_remote_dir_without_files() {
         .await
     };
 
-    h.operate(Operation::Sync("/dir/dir".into())).await.unwrap();
+    h.operate(Operation::Sync("/dir/dir".into())).await;
 
-    assert!(h.has_local_dir("/dir").await.unwrap());
-    assert!(h.has_local_dir("/dir/dir").await.unwrap());
-    assert!(!h.has_local_file("/file.txt").await.unwrap());
-    assert!(!h.has_local_file("/dir/file.txt").await.unwrap());
-    assert!(!h.has_local_file("/dir/dir/file.txt").await.unwrap());
-
+    assert!(h.has_local_dir("/dir").await);
+    assert!(h.has_local_dir("/dir/dir").await);
+    assert!(!h.has_local_file("/file.txt").await);
+    assert!(!h.has_local_file("/dir/file.txt").await);
+    assert!(!h.has_local_file("/dir/dir/file.txt").await);
 }
 
 #[tokio::test]
@@ -179,9 +186,9 @@ async fn sync_remote_dir_deep_and_stats() {
         .await
     };
 
-    h.assert_tree_stats(
-        Path::root(),
-        &stat::Tree {
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap(),
+        stat::Tree {
             local: stat::Dir {
                 data: 0,
                 dirs: 1, // root
@@ -198,28 +205,29 @@ async fn sync_remote_dir_deep_and_stats() {
                 conflicts: 0,
             },
         },
-    )
-    .await;
+    );
 
     // will sync all except "/file.txt"
 
-    h.operate(Operation::SyncDeep(PathBuf::from("/dir")))
-        .await
-        .unwrap();
+    h.operate(Operation::SyncDeep(PathBuf::from("/dir"))).await;
 
-    assert!(!h.has_local_file("/file.txt").await.unwrap());
-    h.assert_sync_dir("/dir").await;
-    h.assert_sync_dir("/dir/dir").await;
-    h.assert_sync_file_with_path_content("/dir/file1.txt").await;
-    h.assert_sync_file_with_path_content("/dir/file2.txt").await;
-    h.assert_sync_file_with_path_content("/dir/dir/file1.txt")
-        .await;
-    h.assert_sync_file_with_path_content("/dir/dir/file2.txt")
-        .await;
+    assert!(!h.has_local_file("/file.txt").await);
+    assert!(h.has_sync_dir("/dir").await);
+    assert!(h.has_sync_dir("/dir/dir").await);
+    assert!(h.has_sync_file_with_path_content("/dir/file1.txt").await);
+    assert!(h.has_sync_file_with_path_content("/dir/file2.txt").await);
+    assert!(
+        h.has_sync_file_with_path_content("/dir/dir/file1.txt")
+            .await
+    );
+    assert!(
+        h.has_sync_file_with_path_content("/dir/dir/file2.txt")
+            .await
+    );
 
-    h.assert_tree_stats(
-        Path::root(),
-        &stat::Tree {
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap(),
+        stat::Tree {
             local: stat::Dir {
                 data: 2 * 14 + 2 * 18,
                 dirs: 3,
@@ -236,8 +244,7 @@ async fn sync_remote_dir_deep_and_stats() {
                 conflicts: 0,
             },
         },
-    )
-    .await;
+    );
 }
 
 #[tokio::test]
@@ -253,7 +260,7 @@ async fn detects_conflict() {
     };
 
     assert_eq!(
-        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        h.tree_stats(Path::root()).await.unwrap(),
         stat::Tree {
             local: stat::Dir {
                 data: 18,
@@ -273,7 +280,7 @@ async fn detects_conflict() {
         }
     );
 
-    let conflict = h.entry_node(path).await.unwrap().unwrap();
+    let conflict = h.entry_node(path).await.unwrap();
     assert!(matches!(
         conflict.entry(),
         Entry::Sync {
@@ -299,16 +306,21 @@ async fn resolve_keep_newer_local() {
         path.to_path_buf(),
         ResolutionMethod::ReplaceOlderByNewer,
     ))
-    .await
-    .unwrap();
-
-    h.assert_local_file_with_content(path, "Newer test content")
-        .await;
-    h.assert_remote_file_with_content(path, "Newer test content")
-        .await;
+    .await;
 
     assert_eq!(
-        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        h.local_file_content(path).await.expect("File should exist"),
+        "Newer test content"
+    );
+    assert_eq!(
+        h.remote_file_content(path)
+            .await
+            .expect("File should exist"),
+        "Newer test content"
+    );
+
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap(),
         stat::Tree {
             local: stat::Dir {
                 data: 18,
@@ -340,19 +352,22 @@ async fn resolve_keep_newer_remote() {
         })
         .await
     };
-    h.service
-        .clone()
-        .operate(Operation::Resolve(
-            path.to_path_buf(),
-            ResolutionMethod::ReplaceOlderByNewer,
-        ))
-        .await
-        .unwrap();
+    h.operate(Operation::Resolve(
+        path.to_path_buf(),
+        ResolutionMethod::ReplaceOlderByNewer,
+    ))
+    .await;
 
-    h.assert_local_file_with_content(path, "Newer test content")
-        .await;
-    h.assert_remote_file_with_content(path, "Newer test content")
-        .await;
+    assert_eq!(
+        h.local_file_content(path).await.expect("File should exist"),
+        "Newer test content"
+    );
+    assert_eq!(
+        h.remote_file_content(path)
+            .await
+            .expect("File should exist"),
+        "Newer test content"
+    );
 }
 
 #[tokio::test]
@@ -371,18 +386,27 @@ async fn resolve_create_local_copy() {
         path.to_path_buf(),
         ResolutionMethod::CreateLocalCopy,
     ))
-    .await
-    .unwrap();
-
-    h.assert_local_file_with_content(path, "Newer test content")
-        .await;
-    h.assert_local_file_with_content("/conflict-copy.txt", "Older test content")
-        .await;
-    h.assert_remote_file_with_content(path, "Newer test content")
-        .await;
+    .await;
 
     assert_eq!(
-        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        h.local_file_content(path).await.expect("File should exist"),
+        "Newer test content"
+    );
+    assert_eq!(
+        h.local_file_content("/conflict-copy.txt")
+            .await
+            .expect("File should exist"),
+        "Older test content"
+    );
+    assert_eq!(
+        h.remote_file_content(path)
+            .await
+            .expect("File should exist"),
+        "Newer test content"
+    );
+
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap(),
         // root dir itself is included in the stats
         stat::Tree {
             local: stat::Dir {
@@ -420,15 +444,16 @@ async fn resolve_delete_local() {
         path.to_path_buf(),
         ResolutionMethod::DeleteLocal,
     ))
-    .await
-    .unwrap();
+    .await;
 
-    h.assert_remote_file_with_content(path, "Newer test content")
-        .await;
-    assert!(!h.has_local_file(path).await.unwrap());
+    assert!(
+        h.has_remote_file_with_content(path, "Newer test content")
+            .await
+    );
+    assert!(!h.has_local_file(path).await);
 
     assert_eq!(
-        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        h.tree_stats(Path::root()).await.unwrap(),
         // root dir itself is included in the stats
         stat::Tree {
             local: stat::Dir {
@@ -466,15 +491,16 @@ async fn resolve_delete_remote() {
         path.to_path_buf(),
         ResolutionMethod::DeleteRemote,
     ))
-    .await
-    .unwrap();
-
-    h.assert_local_file_with_content(path, "Older test content")
-        .await;
-    assert!(!h.has_remote_file(path).await.unwrap());
+    .await;
 
     assert_eq!(
-        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        h.local_file_content(path).await.expect("File should exist"),
+        "Older test content"
+    );
+    assert!(!h.has_remote_file(path).await);
+
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap(),
         // root dir itself is included in the stats
         stat::Tree {
             local: stat::Dir {
@@ -512,15 +538,18 @@ async fn resolve_delete_older() {
         path.to_path_buf(),
         ResolutionMethod::DeleteOlder,
     ))
-    .await
-    .unwrap();
-
-    h.assert_remote_file_with_content(path, "Newer test content")
-        .await;
-    assert!(!h.has_local_file(path).await.unwrap());
+    .await;
 
     assert_eq!(
-        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        h.remote_file_content(path)
+            .await
+            .expect("File should exist"),
+        "Newer test content"
+    );
+    assert!(!h.has_local_file(path).await);
+
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap(),
         // root dir itself is included in the stats
         stat::Tree {
             local: stat::Dir {
@@ -558,15 +587,16 @@ async fn resolve_delete_newer() {
         path.to_path_buf(),
         ResolutionMethod::DeleteNewer,
     ))
-    .await
-    .unwrap();
-
-    h.assert_local_file_with_content(path, "Older test content")
-        .await;
-    assert!(!h.has_remote_file(path).await.unwrap());
+    .await;
 
     assert_eq!(
-        h.tree_stats(Path::root()).await.unwrap().unwrap(),
+        h.local_file_content(path).await.expect("File should exist"),
+        "Older test content"
+    );
+    assert!(!h.has_remote_file(path).await);
+
+    assert_eq!(
+        h.tree_stats(Path::root()).await.unwrap(),
         // root dir itself is included in the stats
         stat::Tree {
             local: stat::Dir {
@@ -600,10 +630,9 @@ async fn delete_local() {
         .await
     };
     h.operate(Operation::Delete(path.to_path_buf(), DeletionMethod::Local))
-        .await
-        .unwrap();
-    assert!(!h.has_local_file(path).await.unwrap());
-    assert!(h.has_remote_file(path).await.unwrap());
+        .await;
+    assert!(!h.has_local_file(path).await);
+    assert!(h.has_remote_file(path).await);
 }
 
 #[tokio::test]
@@ -621,10 +650,9 @@ async fn delete_remote() {
         path.to_path_buf(),
         DeletionMethod::Remote,
     ))
-    .await
-    .unwrap();
-    assert!(h.has_local_file(path).await.unwrap());
-    assert!(!h.has_remote_file(path).await.unwrap());
+    .await;
+    assert!(h.has_local_file(path).await);
+    assert!(!h.has_remote_file(path).await);
 }
 
 #[tokio::test]
@@ -639,8 +667,7 @@ async fn delete_both() {
         .await
     };
     h.operate(Operation::Delete(path.to_path_buf(), DeletionMethod::All))
-        .await
-        .unwrap();
-    assert!(!h.has_local_file(path).await.unwrap());
-    assert!(!h.has_remote_file(path).await.unwrap());
+        .await;
+    assert!(!h.has_local_file(path).await);
+    assert!(!h.has_remote_file(path).await);
 }
