@@ -406,6 +406,10 @@ pub mod tree {
             self.children.sort_unstable();
         }
 
+        pub fn remove_child(&mut self, child: &str) {
+            self.children.retain(|c| c != child);
+        }
+
         pub fn path(&self) -> &Path {
             self.entry.path()
         }
