@@ -172,7 +172,7 @@ impl Entry {
                 let mut f = tokio::fs::File::create(&path).await.unwrap();
                 f.write(content).await.unwrap();
 
-                // `now` can be set while `age` is not set. 
+                // `now` can be set while `age` is not set.
                 // if `age` is set however, `now` must be set.
                 assert!(age.is_none() || now.is_some());
 

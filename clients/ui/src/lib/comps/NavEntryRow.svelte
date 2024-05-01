@@ -20,11 +20,11 @@
         return ['text-cyan-500 dark:text-cyan-400', 'cloud'];
       case 'sync':
         return ['text-gray-500 dark:text-gray-400', 'check_circle'];
-      case 'sync-full':
+      case 'syncFull':
         return ['text-green-500 dark:text-green-400', 'check_circle'];
       case 'conflict':
         return ['text-gray-500 dark:text-gray-400', 'error'];
-      case 'conflict-full':
+      case 'conflictFull':
         return ['text-red-600 dark:text-red-400', 'error'];
     }
   }
@@ -71,7 +71,16 @@
       localDate.getFullYear() === remoteDate.getFullYear();
 
     if (sameDay) {
-      return { local: localDate.toLocaleString(), remote: remoteDate.toLocaleString() };
+      const now = new Date(Date.now());
+      const today =
+        now.getDate() == localDate.getDate() &&
+        now.getMonth() == localDate.getMonth() &&
+        now.getFullYear() == localDate.getFullYear();
+      if (today) {
+        return { local: localDate.toLocaleTimeString(), remote: remoteDate.toLocaleTimeString() };
+      } else {
+        return { local: localDate.toLocaleString(), remote: remoteDate.toLocaleString() };
+      }
     } else {
       return { local: displayMtime(local), remote: displayMtime(remote) };
     }

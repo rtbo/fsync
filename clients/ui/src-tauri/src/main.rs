@@ -45,6 +45,7 @@ async fn main() {
     };
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(daemon)
         .invoke_handler(tauri::generate_handler![
             error_message,

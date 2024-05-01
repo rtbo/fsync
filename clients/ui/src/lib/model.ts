@@ -34,7 +34,7 @@ export function entryType(entry: types.Entry | types.TreeEntry): types.EntryType
   }
 }
 
-export type EntryStatus = 'local' | 'remote' | 'sync' | 'sync-full' | 'conflict' | 'conflict-full';
+export type EntryStatus = 'local' | 'remote' | 'sync' | 'syncFull' | 'conflict' | 'conflictFull';
 
 export function entryStatus(entry: types.TreeEntry): EntryStatus {
   const ee = entry.entry;
@@ -49,11 +49,11 @@ export function entryStatus(entry: types.TreeEntry): EntryStatus {
       ns.conflicts == entry.stats.local.files &&
       ns.conflicts == entry.stats.remote.files;
     if (ee.sync.conflict || all_conflicts) {
-      return 'conflict-full';
+      return 'conflictFull';
     } else if (ns.conflicts) {
       return 'conflict';
     } else if (ns.nodes == ns.sync) {
-      return 'sync-full';
+      return 'syncFull';
     } else {
       return 'sync';
     }
