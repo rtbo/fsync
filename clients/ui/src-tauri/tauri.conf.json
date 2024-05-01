@@ -1,28 +1,15 @@
 {
+  "productName": "fsyncui",
+  "version": "0.0.1",
+  "identifier": "io.fsync.tauri",
   "build": {
-    "beforeBuildCommand": "pnpm run build",
-    "beforeDevCommand": "pnpm run dev",
-    "devPath": "http://localhost:5173",
-    "distDir": "../build"
+    "beforeBuildCommand": "pnpm build",
+    "beforeDevCommand": "pnpm dev",
+    "frontendDist": "../build",
+    "devUrl": "http://localhost:5173"
   },
-  "package": {
-    "productName": "fsyncui",
-    "version": "0.0.1"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "dialog": {
-        "all": false,
-        "open": true
-      },
-      "path": {
-        "all": true
-      }
-    },
-    "security": {
-      "csp": null
-    },
+  "plugins": {},
+  "app": {
     "windows": [
       {
         "fullscreen": false,
@@ -31,6 +18,9 @@
         "width": 800,
         "height": 600
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
   }
 }

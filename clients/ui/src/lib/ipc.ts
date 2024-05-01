@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 import type types from "./types";
 
 export async function errorMessage(err: types.Error): Promise<string> {
