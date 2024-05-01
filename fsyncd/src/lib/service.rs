@@ -213,17 +213,14 @@ impl<L, R> Service<L, R> {
         debug_assert!(path.is_absolute() && !path.is_root());
         debug_assert!(metadata.is_dir());
 
-        self.do_ensure_parents(path, storage, loc, progress)
-            .await?;
+        self.do_ensure_parents(path, storage, loc, progress).await?;
 
         storage.mkdir(path, false, Some(progress)).await?;
         let metadata = Metadata::Directory {
             path: path.to_path_buf(),
             stat: Some(stat::Dir::null()),
         };
-        let is_conflict = self
-            .tree
-            .add_to_storage_check_conflict(path, metadata, loc);
+        let is_conflict = self.tree.add_to_storage_check_conflict(path, metadata, loc);
         self.check_conflict(path, is_conflict).await;
         Ok(())
     }
