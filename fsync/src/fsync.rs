@@ -27,7 +27,7 @@ pub enum Metadata {
 /// The milliseconds are rounded down to the nearest second however.
 /// This is because some provider do not provide millisecond granularity in the timestamps.
 mod ms_since_epoch {
-    use chrono::{DateTime, TimeZone, Utc};
+    use chrono::{DateTime, Utc};
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
@@ -42,9 +42,8 @@ mod ms_since_epoch {
         D: Deserializer<'de>,
     {
         let millis = u64::deserialize(deserializer)?;
-        let naive = chrono::NaiveDateTime::from_timestamp_millis(millis as i64).unwrap();
-        let utc = Utc;
-        Ok(utc.from_utc_datetime(&naive))
+        let datetime = DateTime::from_timestamp_millis(millis as i64).unwrap();
+        Ok(datetime)
     }
 }
 
