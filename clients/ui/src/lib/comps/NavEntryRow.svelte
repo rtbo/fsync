@@ -6,6 +6,7 @@
   import MatSymIcon from './MatSymIcon.svelte';
   import { Progressbar, Spinner } from 'flowbite-svelte';
   import prettyBytes from 'pretty-bytes';
+    import { showContextMenu } from '$lib/context-menu';
 
   let addedClass = '';
   export { addedClass as class };
@@ -129,10 +130,19 @@
     }
   }
 
-  async function copy(dir: types.StorageDir) {
-    const prog = await daemonOperate({
-      copy: [entry.path, dir]
-    });
+  async function sync() {
+  }
+
+  async function resolve() {
+
+  }
+
+  async function contextMenu(): Promise<void> {
+    await showContextMenu(entry, etyp, status);
+  }
+
+  async function operate(op: types.Operation) {
+    const prog = await daemonOperate(op);
     if (prog === 'done') {
       dispatch('mutation');
     } else {
@@ -144,7 +154,7 @@
   }
 </script>
 
-<tr class="h-12 dark:bg-gray-800 select-none {addedClass}">
+<tr class="h-12 dark:bg-gray-800 select-none {addedClass}" on:contextmenu|preventDefault={contextMenu}>
   <td
     class="px-2 pt-1 text-center align-middle text-gray-900 dark:text-white {nameClass}"
     on:dblclick={() => childDoubleClick()}
@@ -202,13 +212,17 @@
     {:else if progressPercent !== null}
       <Progressbar progress={progressPercent} />
     {:else if status === 'local'}
-      <button on:click={() => copy('localToRemote')}>
+      <button on:click={() => sync()}>
         <MatSymIcon>upload</MatSymIcon>
       </button>
     {:else if status === 'remote'}
-      <button on:click={() => copy('remoteToLocal')}>
-        <MatSymIcon>download</MatSymIcon>
+      <button on:click={() => sync()}>
+        <MatSymIcon>upload</MatSymIcon>
       </button>
+    {:else if status === 'conflict' || status === 'conflictFull'} 
+      <button on:click={() => resolve()}>
+        <MatSymIcon>sync_problem</MatSymIcon>
+      </button> 
     {/if}
   </td>
 </tr>
