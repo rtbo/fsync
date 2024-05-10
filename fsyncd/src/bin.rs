@@ -57,7 +57,12 @@ impl ShutdownRef {
 #[command(name = "fsyncd")]
 #[command(author, version, about, long_about=None)]
 struct Cli {
+    /// Name of the fsyncd instance
     instance: String,
+
+    #[clap(long)]
+    /// Ignore the cache of the remote drive
+    ignore_remote_cache: bool,
 }
 
 async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<()> {
@@ -121,7 +126,10 @@ where
     log::trace!("mkdir -p {remote_cache_dir}");
     tokio::fs::create_dir_all(remote_cache_dir).await.unwrap();
 
-    let persist = CachePersist::MemoryAndDisk(remote_cache_path);
+    let persist = CachePersist::MemoryAndDisk{
+        path: remote_cache_path,
+        ignore_initial_cache: cli.ignore_remote_cache,
+    };
     let remote = storage::cache::CacheStorage::new(remote, persist).await?;
 
     start_service(cli, local, remote, shutdown_ref).await
