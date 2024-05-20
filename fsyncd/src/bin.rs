@@ -1,7 +1,7 @@
 use std::{ffi::OsString, process::ExitCode, sync::Arc};
 
 use clap::Parser;
-use fsync::loc::inst;
+use fsync::{loc::inst, path::FsPathBuf};
 use fsyncd::{
     oauth2,
     service::{RpcService, Service},
@@ -79,6 +79,7 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
     let config = fsync::Config::load_from_file(&config_file).await?;
     log::trace!("Loaded config: {config:?}");
 
+    let local_root = config.local_dir.clone();
     let local = storage::fs::FileSystem::new(&config.local_dir)?;
 
     let token_cache_path = &inst::token_cache_file(&cli.instance)?;
@@ -100,13 +101,13 @@ async fn run(args: Vec<OsString>, shutdown_ref: ShutdownRef) -> anyhow::Result<(
             let remote =
                 storage::drive::GoogleDrive::new(auth, client, config.root.as_deref().into())
                     .await?;
-            start_cache_service(cli, local, remote, shutdown_ref).await
+            start_cache_service(cli, local, remote, local_root, shutdown_ref).await
         }
         fsync::ProviderConfig::LocalFs(path) => {
             log::info!("Initializing Local File system storage in {path}",);
 
             let remote = storage::fs::FileSystem::new(path)?;
-            start_service(cli, local, remote, shutdown_ref).await
+            start_service(cli, local, remote, local_root, shutdown_ref).await
         }
     }
 }
@@ -115,6 +116,7 @@ async fn start_cache_service<L, R>(
     cli: Cli,
     local: L,
     remote: R,
+    local_root: FsPathBuf,
     shutdown_ref: ShutdownRef,
 ) -> anyhow::Result<()>
 where
@@ -132,20 +134,21 @@ where
     };
     let remote = storage::cache::CacheStorage::new(remote, persist).await?;
 
-    start_service(cli, local, remote, shutdown_ref).await
+    start_service(cli, local, remote, local_root, shutdown_ref).await
 }
 
 async fn start_service<L, R>(
     cli: Cli,
     local: L,
     remote: R,
+    local_root: FsPathBuf,
     shutdown_ref: ShutdownRef,
 ) -> anyhow::Result<()>
 where
     L: storage::Storage,
     R: storage::Storage,
 {
-    let service = Service::new(local, remote.clone()).await?;
+    let service = Service::new(local, remote.clone(), local_root).await?;
     let service = Arc::new(service);
 
     shutdown_ref.set(service.clone()).await;

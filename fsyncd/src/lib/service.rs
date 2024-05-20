@@ -10,7 +10,7 @@ use async_read_progress::TokioAsyncReadProgressExt;
 use fsync::{
     self,
     loc::inst,
-    path::{Path, PathBuf},
+    path::{FsPathBuf, Path, PathBuf},
     stat,
     tree::EntryNode,
     DeletionMethod, Error, Fsync, Metadata, Operation, PathError, Progress, ResolutionMethod,
@@ -42,6 +42,7 @@ pub struct Service<L, R> {
     conflicts: RwLock<BTreeSet<PathBuf>>,
     abort_handle: RwLock<Option<AbortHandle>>,
     progresses: Arc<RwLock<Vec<(PathBuf, SharedProgress)>>>,
+    local_root: FsPathBuf,
 }
 
 impl<L, R> Service<L, R>
@@ -49,7 +50,7 @@ where
     L: storage::Storage,
     R: storage::Storage,
 {
-    pub async fn new(local: L, remote: R) -> anyhow::Result<Self> {
+    pub async fn new(local: L, remote: R, local_root: FsPathBuf) -> anyhow::Result<Self> {
         let tree = DiffTree::build(&local, &remote).await?;
 
         let mut conflicts = BTreeSet::new();
@@ -71,6 +72,7 @@ where
             conflicts: RwLock::new(conflicts),
             abort_handle: RwLock::new(None),
             progresses: Arc::new(RwLock::new(vec![])),
+            local_root,
         })
     }
 }
@@ -331,6 +333,26 @@ impl<L, R> Service<L, R> {
     pub async fn entry_node(&self, path: &Path) -> Result<Option<fsync::tree::EntryNode>, Error> {
         let path = Self::check_path(path)?;
         Ok(self.tree.entry(&path))
+    }
+
+    pub async fn local_path(&self, path: Option<&Path>) -> Result<FsPathBuf, Error> {
+        let path = path.unwrap_or_else(|| Path::root());
+        let path = Self::check_path(path)?;
+        let node = self.tree.entry(&path);
+        if node.is_none() {
+            return Err(Error::Path(PathError::NotFound(path.to_owned(), None)));
+        }
+        let node = node.unwrap();
+        let local_path = match node.entry() {
+            tree::Entry::Local(path) => Some(path.path()), 
+            tree::Entry::Sync { local, .. } => Some(local.path()),
+            _ => None,
+        };
+        if local_path.is_none() {
+            return Err(Error::Path(PathError::NotFound(path.to_owned(), Some(fsync::Location::Local))));
+        } 
+        let local_path = local_path.unwrap();
+        Ok(self.local_root.join(local_path.without_root().as_str()))
     }
 
     pub async fn conflicts(
@@ -843,6 +865,13 @@ where
         let res = self.inner.entry_node(&path).await;
         log::trace!(target: "RPC", "Fsync::entry(path: {path:?}) -> {res:#?}");
         res
+    }
+
+    async fn local_path(self, _: Context, path: Option<PathBuf>) -> fsync::Result<FsPathBuf> {
+        let res = self.inner.local_path(path.as_deref()).await;
+        log::trace!(target: "RPC", "Fsync::local_path(path: {path:?}) -> {res:#?}");
+        res
+
     }
 
     async fn operate(self, _: Context, operation: fsync::Operation) -> fsync::Result<Progress> {

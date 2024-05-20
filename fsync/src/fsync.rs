@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use typescript_type_def::TypeDef;
 
 use crate::{
-    path::{Path, PathBuf},
+    path::{Path, PathBuf, FsPathBuf},
     stat,
 };
 
@@ -659,6 +659,7 @@ impl Default for Progress {
 pub trait Fsync {
     async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<tree::Entry>>;
     async fn entry_node(path: PathBuf) -> crate::Result<Option<tree::EntryNode>>;
+    async fn local_path(path: Option<PathBuf>) -> crate::Result<FsPathBuf>;
     async fn operate(operation: Operation) -> crate::Result<Progress>;
     /// Provide the progress of the operation on the given path.
     async fn progress(path: PathBuf) -> crate::Result<Option<Progress>>;
