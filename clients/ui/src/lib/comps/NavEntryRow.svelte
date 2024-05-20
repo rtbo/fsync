@@ -138,7 +138,7 @@
   }
 
   async function contextMenu(): Promise<void> {
-    await showContextMenu(entry, etyp, status);
+    await showContextMenu(entry, etyp, status, operate);
   }
 
   async function operate(op: types.Operation) {
