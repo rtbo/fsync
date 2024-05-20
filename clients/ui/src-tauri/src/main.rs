@@ -51,6 +51,8 @@ async fn main() {
             error_message,
             instance_get_all,
             instance_create,
+
+            daemon::open_path,
             daemon::daemon_connected,
             daemon::daemon_instance_name,
             daemon::daemon_connect,
