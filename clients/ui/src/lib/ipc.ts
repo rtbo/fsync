@@ -55,3 +55,9 @@ export async function daemonProgresses(path: string): Promise<types.PathProgress
     path
   });
 }
+
+export async function openPath(path: string): Promise<void> {
+  return invoke('open_path', {
+    path
+  });
+}

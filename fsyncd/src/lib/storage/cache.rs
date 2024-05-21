@@ -19,13 +19,26 @@ use crate::{PersistCache, SharedProgress};
 #[derive(Clone, Debug)]
 pub enum CachePersist {
     Memory,
-    MemoryAndDisk(FsPathBuf),
+    MemoryAndDisk {
+        path: FsPathBuf,
+        ignore_initial_cache: bool,
+    },
 }
 
 impl CachePersist {
-    fn try_path(&self) -> Option<&FsPath> {
+    fn try_load_path(&self) -> Option<&FsPath> {
         match self {
-            Self::MemoryAndDisk(path) => Some(path),
+            Self::MemoryAndDisk {
+                path,
+                ignore_initial_cache: false,
+            } => Some(path),
+            _ => None,
+        }
+    }
+
+    fn try_save_path(&self) -> Option<&FsPath> {
+        match self {
+            Self::MemoryAndDisk { path, .. } => Some(path),
             _ => None,
         }
     }
@@ -51,7 +64,7 @@ where
 {
     pub async fn new(storage: S, persist: CachePersist) -> anyhow::Result<Self> {
         let storage = Arc::new(storage);
-        let entries = if let Some(path) = persist.try_path() {
+        let entries = if let Some(path) = persist.try_load_path() {
             match load_from_disk(path).await {
                 Ok(entries) => entries,
                 Err(LoadError::Io(_)) => populate_from_storage(storage.clone()).await?,
@@ -439,7 +452,7 @@ where
     S: super::id::Storage,
 {
     async fn persist_cache(&self) -> anyhow::Result<()> {
-        if let Some(path) = self.persist.try_path() {
+        if let Some(path) = self.persist.try_save_path() {
             save_to_disc(path, self.entries.clone()).await?;
         }
         Ok(())

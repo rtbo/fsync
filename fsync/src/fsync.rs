@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use typescript_type_def::TypeDef;
 
 use crate::{
-    path::{Path, PathBuf},
+    path::{Path, PathBuf, FsPathBuf},
     stat,
 };
 
@@ -27,7 +27,7 @@ pub enum Metadata {
 /// The milliseconds are rounded down to the nearest second however.
 /// This is because some provider do not provide millisecond granularity in the timestamps.
 mod ms_since_epoch {
-    use chrono::{DateTime, TimeZone, Utc};
+    use chrono::{DateTime, Utc};
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
@@ -42,9 +42,8 @@ mod ms_since_epoch {
         D: Deserializer<'de>,
     {
         let millis = u64::deserialize(deserializer)?;
-        let naive = chrono::NaiveDateTime::from_timestamp_millis(millis as i64).unwrap();
-        let utc = Utc;
-        Ok(utc.from_utc_datetime(&naive))
+        let datetime = DateTime::from_timestamp_millis(millis as i64).unwrap();
+        Ok(datetime)
     }
 }
 
@@ -660,6 +659,7 @@ impl Default for Progress {
 pub trait Fsync {
     async fn conflicts(first: Option<PathBuf>, max_len: u32) -> crate::Result<Vec<tree::Entry>>;
     async fn entry_node(path: PathBuf) -> crate::Result<Option<tree::EntryNode>>;
+    async fn local_path(path: Option<PathBuf>) -> crate::Result<FsPathBuf>;
     async fn operate(operation: Operation) -> crate::Result<Progress>;
     /// Provide the progress of the operation on the given path.
     async fn progress(path: PathBuf) -> crate::Result<Option<Progress>>;

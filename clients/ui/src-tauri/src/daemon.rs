@@ -14,6 +14,21 @@ use serde::{Deserialize, Serialize};
 use tokio::{fs, sync::Mutex};
 
 #[tauri::command]
+pub async fn open_path(
+    daemon: tauri::State<'_, Daemon>,
+    path: Option<PathBuf>,
+) -> fsync::Result<()> {
+    let client = daemon
+        .client()
+        .await
+        .ok_or_else(|| fsync::other_error!("daemon not connected"))?;
+    let local_path = client.local_path(ctx(), path).await.unwrap()?;
+    println!("Opening {:?}", local_path); 
+    open::that(local_path)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn daemon_connected(daemon: tauri::State<'_, Daemon>) -> Result<bool, ()> {
     Ok(daemon.connected().await)
 }
