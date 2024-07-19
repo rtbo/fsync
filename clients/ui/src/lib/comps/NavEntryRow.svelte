@@ -131,11 +131,16 @@
   }
 
   async function sync() {
+    const op: types.Operation = etyp === 'directory' ? {
+      syncDeep: entry.path,
+    } : {
+      sync: entry.path
+    };
+    return operate(op);
   }
 
-  async function resolve() {
-
-  }
+  // async function resolve() {
+  // }
 
   async function contextMenu(): Promise<void> {
     await showContextMenu(entry, etyp, status, operate);
@@ -217,12 +222,12 @@
       </button>
     {:else if status === 'remote'}
       <button on:click={() => sync()}>
-        <MatSymIcon>upload</MatSymIcon>
+        <MatSymIcon>download</MatSymIcon>
       </button>
     {:else if status === 'conflict' || status === 'conflictFull'} 
-      <button on:click={() => resolve()}>
+      <!-- <button on:click={() => resolve()}>
         <MatSymIcon>sync_problem</MatSymIcon>
-      </button> 
+      </button>  -->
     {/if}
   </td>
 </tr>
