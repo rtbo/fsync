@@ -13,7 +13,7 @@
     Alert
   } from 'flowbite-svelte';
   import { AngleLeftOutline, ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
-  import { open } from '@tauri-apps/api/dialog';
+  import { open } from '@tauri-apps/plugin-dialog';
   import { goto, afterNavigate } from '$app/navigation';
 
   let previousPage: string = '';
