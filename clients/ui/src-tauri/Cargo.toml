@@ -10,7 +10,7 @@ edition = { workspace = true }
 [build-dependencies]
 fsync-client = { path = "../../lib" }
 typescript-type-def = { workspace = true }
-tauri-build = { version = "2.0.0-beta", features = [] }
+tauri-build = { version = "2.0.0", features = [] }
 
 [dependencies]
 fsync = { path = "../../../fsync" }
@@ -26,8 +26,8 @@ typescript-type-def = { workspace = true }
 
 open = "5"
 
-tauri = { version = "2.0.0-beta", features = [] }
-tauri-plugin-dialog = "2.0.0-beta.6"
+tauri = { version = "2.0.0", features = [] }
+tauri-plugin-dialog = "2.0.0"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
