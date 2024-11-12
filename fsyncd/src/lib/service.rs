@@ -429,7 +429,7 @@ where
 
 impl<L, R> Service<L, R>
 where
-    L: storage::Storage,
+    L: storage::LocalStorage,
     R: storage::Storage,
 {
     async fn sync_unit(
@@ -787,7 +787,7 @@ pub struct RpcService<L, R> {
 
 impl<L, R> RpcService<L, R>
 where
-    L: storage::Storage,
+    L: storage::LocalStorage,
     R: storage::Storage,
 {
     pub async fn new(service: Arc<Service<L, R>>, abort_handle: AbortHandle) -> Self {
@@ -842,7 +842,7 @@ where
 
 impl<L, R> Fsync for RpcService<L, R>
 where
-    L: storage::Storage,
+    L: storage::LocalStorage,
     R: storage::Storage,
 {
     async fn conflicts(
@@ -871,7 +871,6 @@ where
         let res = self.inner.local_path(path.as_deref()).await;
         log::trace!(target: "RPC", "Fsync::local_path(path: {path:?}) -> {res:#?}");
         res
-
     }
 
     async fn operate(self, _: Context, operation: fsync::Operation) -> fsync::Result<Progress> {

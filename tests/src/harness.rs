@@ -8,7 +8,7 @@ use fsync::{
     tree::{Entry, EntryNode},
     Location, Metadata, StorageLoc,
 };
-use fsyncd::{service::Service, storage::Storage};
+use fsyncd::{service::Service, storage::{LocalStorage, Storage}};
 
 use crate::utils;
 
@@ -19,7 +19,7 @@ pub struct Harness<L, R> {
 
 impl<L, R> Harness<L, R>
 where
-    L: Storage,
+    L: LocalStorage,
     R: Storage,
 {
     pub fn local(&self) -> &L {
@@ -188,7 +188,7 @@ where
 
 impl<L, R> Harness<L, R>
 where
-    L: Storage,
+    L: LocalStorage,
     R: Storage,
 {
     pub async fn local_metadata<P: AsRef<Path>>(&self, path: P) -> Option<Metadata> {
@@ -253,7 +253,7 @@ where
 
 impl<L, R> Harness<L, R>
 where
-    L: Storage,
+    L: LocalStorage,
     R: Storage,
 {
     pub async fn has_sync_dir<P: AsRef<Path>>(&self, path: P) -> bool {

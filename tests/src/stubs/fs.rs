@@ -39,6 +39,12 @@ impl Drop for Stub {
     }
 }
 
+impl storage::Exists for Stub {
+    fn exists(&self, path: &Path) -> impl Future<Output = fsync::Result<bool>> + Send {
+        self.inner.exists(path)
+    }
+}
+
 impl storage::DirEntries for Stub {
     fn dir_entries(
         &self,
@@ -103,6 +109,17 @@ impl storage::CopyFile for Stub {
     }
 }
 
+impl storage::MoveEntry for Stub {
+    fn move_entry(
+        &self,
+        src: &Path,
+        dest: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> impl Future<Output = fsync::Result<fsync::Metadata>> + Send {
+        self.inner.move_entry(src, dest, progress)
+    }
+}
+
 impl storage::Delete for Stub {
     fn delete(
         &self,
@@ -121,3 +138,4 @@ impl fsyncd::Shutdown for Stub {
 }
 
 impl storage::Storage for Stub {}
+impl storage::LocalStorage for Stub {}

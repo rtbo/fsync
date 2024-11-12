@@ -120,7 +120,7 @@ async fn start_cache_service<L, R>(
     shutdown_ref: ShutdownRef,
 ) -> anyhow::Result<()>
 where
-    L: storage::Storage,
+    L: storage::LocalStorage,
     R: storage::id::Storage,
 {
     let remote_cache_path = inst::remote_cache_file(&cli.instance)?;
@@ -145,7 +145,7 @@ async fn start_service<L, R>(
     shutdown_ref: ShutdownRef,
 ) -> anyhow::Result<()>
 where
-    L: storage::Storage,
+    L: storage::LocalStorage,
     R: storage::Storage,
 {
     let service = Service::new(local, remote.clone(), local_root).await?;

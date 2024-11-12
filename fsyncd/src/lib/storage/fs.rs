@@ -56,6 +56,15 @@ impl FileSystem {
     }
 }
 
+impl super::Exists for FileSystem
+{
+    async fn exists(&self, path: &Path) -> fsync::Result<bool> {
+        let fs_path = self.root.join(path.without_root().as_str());
+        Ok(fs::metadata(fs_path).await.is_ok())
+    }
+}
+
+
 impl super::DirEntries for FileSystem {
     fn dir_entries(
         &self,
@@ -183,6 +192,35 @@ impl super::CopyFile for FileSystem {
     }
 }
 
+impl super::MoveEntry for FileSystem {
+    async fn move_entry(
+        &self,
+        src: &Path,
+        dest: &Path,
+        _progress: Option<&SharedProgress>,
+    ) -> fsync::Result<fsync::Metadata> {
+        debug_assert!(src.is_absolute() && dest.is_absolute());
+        let fs_src = self.root.join(src.without_root().as_str());
+        let fs_dest = self.root.join(dest.without_root().as_str());
+        log::info!("moving {fs_src} to {fs_dest}");
+
+        if !fs_src.exists() {
+            fsync::io_bail!("{src} doesn't exists here: {fs_src}");
+        }
+        if fs_dest.exists() {
+            fsync::io_bail!("{dest} already exists here: {fs_dest}");
+        }
+        let fs_dest_dir = fs_dest.parent().expect("Expected fs_dest to have a parent");
+        if !fs_dest_dir.is_dir() {
+            fsync::io_bail!("{fs_dest_dir}: No such directory");
+        }
+
+        tokio::fs::rename(&fs_src, &fs_dest).await?;
+        let fs_metadata = tokio::fs::metadata(&fs_dest).await?;
+        map_metadata(dest.to_owned(), &fs_metadata, &fs_dest).await
+    }
+}
+
 impl super::Delete for FileSystem {
     async fn delete(&self, path: &Path, _progress: Option<&SharedProgress>) -> fsync::Result<()> {
         debug_assert!(path.is_absolute());
@@ -210,6 +248,7 @@ impl super::Delete for FileSystem {
 impl Shutdown for FileSystem {}
 
 impl super::Storage for FileSystem {}
+impl super::LocalStorage for FileSystem {}
 
 async fn map_direntry(parent_path: &Path, direntry: &DirEntry) -> fsync::Result<fsync::Metadata> {
     let fs_path = FsPathBuf::try_from(direntry.path())?;
