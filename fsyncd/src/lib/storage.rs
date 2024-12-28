@@ -12,6 +12,10 @@ pub mod drive;
 pub mod fs;
 pub mod id;
 
+pub trait Exists {
+    fn exists(&self, path: &Path) -> impl Future<Output = fsync::Result<bool>> + Send;
+}
+
 pub trait DirEntries {
     fn dir_entries(
         &self,
@@ -66,6 +70,17 @@ pub trait CopyFile {
     ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
 }
 
+/// A trait to move or rename files or directories within the storage
+pub trait MoveEntry {
+    /// Moves the file or directory from `src` to `dest`.
+    fn move_entry(
+        &self,
+        src: &Path,
+        dest: &Path,
+        progress: Option<&SharedProgress>,
+    ) -> impl Future<Output = fsync::Result<Metadata>> + Send;
+}
+
 /// A trait to delete files or folders
 pub trait Delete {
     /// Deletes the file or folder pointed to by `path`.
@@ -93,3 +108,6 @@ pub trait Storage:
     + 'static
 {
 }
+
+/// A trait for local storage
+pub trait LocalStorage : Storage + Exists + MoveEntry {}

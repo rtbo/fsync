@@ -26,7 +26,10 @@ use tarpc::{
     server::{self, incoming::Incoming, Channel},
     tokio_serde::formats::Bincode,
 };
-use tokio::sync::{mpsc, RwLock};
+use tokio::{
+    io,
+    sync::{mpsc, RwLock},
+};
 
 use crate::{
     storage,
@@ -74,6 +77,131 @@ where
             progresses: Arc::new(RwLock::new(vec![])),
             local_root,
         })
+    }
+}
+
+async fn get_tmp_path<S: storage::Exists>(path: &Path, storage: &S) -> PathBuf {
+    let base = path.parent().expect("This path should have a parent");
+    let file_name = path.file_name().expect("This path should have a name");
+    let attempt1_name = format!("{file_name}.fsync-part");
+    let attempt1 = base.join(attempt1_name.as_str());
+    if !storage.exists(&attempt1).await.unwrap_or(false) {
+        return attempt1;
+    }
+    let mut i = 1;
+    loop {
+        let num_name = format!("{attempt1_name}.{i}");
+        let attempt = base.join(num_name.as_str());
+        if !storage.exists(&attempt).await.unwrap_or(false) {
+            break attempt;
+        }
+        i += 1;
+    }
+}
+
+async fn read_file_with_progress<'a, S>(
+    storage: &'a S,
+    metadata: &'a fsync::Metadata,
+    progress: &'a SharedProgress,
+) -> fsync::Result<impl io::AsyncRead + use<'a, S>>
+where
+    S: storage::ReadFile,
+{
+    let path = metadata.path();
+    debug_assert!(path.is_absolute() && !path.is_root());
+    debug_assert!(metadata.is_file());
+    let total = metadata.size().unwrap_or(0);
+    let progress2 = progress.clone();
+
+    let read = storage.read_file(path.to_owned(), Some(progress)).await?;
+    log::debug!("read {path}");
+    let read = read.report_progress(Duration::from_millis(50), move |prog| {
+        log::debug!("progress: {} of {}", prog, total);
+        progress2.set(fsync::Progress::Progress {
+            progress: prog as _,
+            total,
+        });
+    });
+    Ok(read)
+}
+
+impl<L, R> Service<L, R>
+where
+    L: storage::CreateFile + storage::Exists + storage::MoveEntry + storage::MkDir + storage::Delete,
+    R: storage::ReadFile,
+{
+    async fn do_sync_remote_file_to_local(
+        &self,
+        metadata: &fsync::Metadata,
+        progress: &SharedProgress,
+    ) -> fsync::Result<()> {
+        let path = metadata.path();
+        let tmp_path = get_tmp_path(path, &self.local).await;
+
+        debug_assert!(!self.local.exists(path).await.unwrap());
+
+        let read = read_file_with_progress(&self.remote, metadata, progress).await?;
+
+        self.do_ensure_parents(&tmp_path, &self.local, StorageLoc::Local, progress)
+            .await?;
+
+        let tmp_metadata = metadata.with_path(tmp_path);
+
+        let create_res = self
+            .local
+            .create_file(&tmp_metadata, read, Some(progress))
+            .await;
+        let created = match create_res {
+            Ok(created) => created,
+            Err(err) => {
+                progress.set(fsync::Progress::Err(err.clone()));
+                let _ = self.local.delete(tmp_metadata.path(), None).await;
+                return Err(err);
+            }
+        };
+
+        let metadata = self
+            .local
+            .move_entry(&created.path(), metadata.path(), None)
+            .await?;
+
+        let is_conflict =
+            self.tree
+                .add_to_storage_check_conflict(path, metadata, StorageLoc::Local);
+        self.check_conflict(path, is_conflict).await;
+        Ok(())
+    }
+}
+
+impl<L, R> Service<L, R>
+where
+    L: storage::ReadFile,
+    R: storage::CreateFile + storage::MkDir,
+{
+    async fn do_sync_local_file_to_remote(
+        &self,
+        metadata: &fsync::Metadata,
+        progress: &SharedProgress,
+    ) -> fsync::Result<()> {
+        let path = metadata.path();
+
+        let read = read_file_with_progress(&self.local, metadata, progress).await?;
+
+        log::debug!("reporting progress on {path}");
+
+        self.do_ensure_parents(path, &self.remote, fsync::StorageLoc::Remote, progress)
+            .await?;
+
+        let metadata = self
+            .remote
+            .create_file(&metadata, read, Some(progress))
+            .await
+            .unwrap();
+        let is_conflict = self
+            .tree
+            .add_to_storage_check_conflict(path, metadata, fsync::StorageLoc::Remote);
+        self.check_conflict(path, is_conflict).await;
+        Ok(())
     }
 }
 
@@ -155,49 +283,6 @@ impl<L, R> Service<L, R> {
         let node = fsync::tree::EntryNode::new(entry, vec![], stat::Tree::null());
         self.tree.insert(to, node);
 
-        Ok(())
-    }
-
-    async fn do_clone<S, D>(
-        &self,
-        metadata: &fsync::Metadata,
-        src: &S,
-        dest: &D,
-        dir: StorageDir,
-        progress: &SharedProgress,
-    ) -> fsync::Result<()>
-    where
-        S: storage::ReadFile,
-        D: storage::MkDir + storage::CreateFile,
-    {
-        let path = metadata.path();
-        debug_assert!(path.is_absolute() && !path.is_root());
-        debug_assert!(metadata.is_file());
-        let total = metadata.size().unwrap_or(0);
-        let progress2 = progress.clone();
-
-        let read = src.read_file(path.to_owned(), Some(progress)).await?;
-        log::debug!("read {path}");
-        let read = read.report_progress(Duration::from_millis(50), move |prog| {
-            log::debug!("progress: {} of {}", prog, total);
-            progress2.set(fsync::Progress::Progress {
-                progress: prog as _,
-                total,
-            });
-        });
-        log::debug!("reporting progress on {path}");
-
-        self.do_ensure_parents(path, dest, dir.dest(), progress)
-            .await?;
-
-        let metadata = dest
-            .create_file(&metadata, read, Some(progress))
-            .await
-            .unwrap();
-        let is_conflict = self
-            .tree
-            .add_to_storage_check_conflict(path, metadata, dir.dest());
-        self.check_conflict(path, is_conflict).await;
         Ok(())
     }
 
@@ -344,13 +429,16 @@ impl<L, R> Service<L, R> {
         }
         let node = node.unwrap();
         let local_path = match node.entry() {
-            tree::Entry::Local(path) => Some(path.path()), 
+            tree::Entry::Local(path) => Some(path.path()),
             tree::Entry::Sync { local, .. } => Some(local.path()),
             _ => None,
         };
         if local_path.is_none() {
-            return Err(Error::Path(PathError::NotFound(path.to_owned(), Some(fsync::Location::Local))));
-        } 
+            return Err(Error::Path(PathError::NotFound(
+                path.to_owned(),
+                Some(fsync::Location::Local),
+            )));
+        }
         let local_path = local_path.unwrap();
         Ok(self.local_root.join(local_path.without_root().as_str()))
     }
@@ -429,7 +517,7 @@ where
 
 impl<L, R> Service<L, R>
 where
-    L: storage::Storage,
+    L: storage::LocalStorage,
     R: storage::Storage,
 {
     async fn sync_unit(
@@ -444,14 +532,7 @@ where
                     self.do_mkdir(metadata, &self.remote, StorageLoc::Remote, progress)
                         .await
                 } else {
-                    self.do_clone(
-                        metadata,
-                        &self.local,
-                        &self.remote,
-                        StorageDir::LocalToRemote,
-                        progress,
-                    )
-                    .await
+                    self.do_sync_local_file_to_remote(metadata, progress).await
                 }
             }
             tree::Entry::Remote(metadata) => {
@@ -459,14 +540,7 @@ where
                     self.do_mkdir(metadata, &self.local, StorageLoc::Local, progress)
                         .await
                 } else {
-                    self.do_clone(
-                        metadata,
-                        &self.remote,
-                        &self.local,
-                        StorageDir::RemoteToLocal,
-                        progress,
-                    )
-                    .await
+                    self.do_sync_remote_file_to_local(metadata, progress).await
                 }
             }
             tree::Entry::Sync { conflict: None, .. } => Ok(()),
@@ -787,7 +861,7 @@ pub struct RpcService<L, R> {
 
 impl<L, R> RpcService<L, R>
 where
-    L: storage::Storage,
+    L: storage::LocalStorage,
     R: storage::Storage,
 {
     pub async fn new(service: Arc<Service<L, R>>, abort_handle: AbortHandle) -> Self {
@@ -842,7 +916,7 @@ where
 
 impl<L, R> Fsync for RpcService<L, R>
 where
-    L: storage::Storage,
+    L: storage::LocalStorage,
     R: storage::Storage,
 {
     async fn conflicts(
@@ -871,7 +945,6 @@ where
         let res = self.inner.local_path(path.as_deref()).await;
         log::trace!(target: "RPC", "Fsync::local_path(path: {path:?}) -> {res:#?}");
         res
-
     }
 
     async fn operate(self, _: Context, operation: fsync::Operation) -> fsync::Result<Progress> {

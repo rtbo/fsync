@@ -33,7 +33,7 @@ async fn harness<D: Into<Dataset>>(dataset: D) -> CacheHarness {
 
     let (local, remote) = dataset.create_fs(&root).await;
 
-    let service = Arc::new(Service::new(local, remote).await.unwrap());
+    let service = Arc::new(Service::new(local, remote, root).await.unwrap());
 
     Harness { service }
 }

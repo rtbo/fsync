@@ -62,6 +62,17 @@ impl Metadata {
         }
     }
 
+    pub fn with_path(&self, path: PathBuf) -> Self {
+        match self {
+            Self::Directory { stat, .. } => Self::Directory { path, stat: *stat },
+            Self::Regular { size, mtime, .. } => Self::Regular {
+                path,
+                size: *size,
+                mtime: *mtime,
+            },
+        }
+    }
+
     pub fn name(&self) -> &str {
         self.path().file_name().unwrap_or("")
     }
