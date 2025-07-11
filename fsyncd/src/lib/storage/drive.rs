@@ -313,6 +313,7 @@ where
         dest_path: &Path,
         progress: Option<&SharedProgress>,
     ) -> fsync::Result<(IdBuf, fsync::Metadata)> {
+        // FIXME: assert path.parent() must have dest_parent_id
         let dest_file = api::File {
             id: None,
             name: Some(
