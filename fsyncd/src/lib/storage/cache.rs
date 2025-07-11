@@ -67,7 +67,10 @@ where
         let entries = if let Some(path) = persist.try_load_path() {
             match load_from_disk(path).await {
                 Ok(entries) => entries,
-                Err(LoadError::Io(_)) => populate_from_storage(storage.clone()).await?,
+                Err(LoadError::Io(e)) => {
+                    log::warn!("Could not load from disk: {e}. Loading from storage");
+                    populate_from_storage(storage.clone()).await?
+                },
                 Err(LoadError::Bincode(err)) => Err(err)?,
             }
         } else {
