@@ -4,7 +4,7 @@ use fsync::Progress;
 use futures::prelude::*;
 use oauth2::{basic::BasicClient, HttpRequest, HttpResponse, TokenResponse};
 pub use oauth2::{AccessToken, RefreshToken, Scope};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 mod pkce;
 mod server;
@@ -24,6 +24,7 @@ pub trait GetToken: Send + Sync + 'static {
 #[derive(Debug)]
 struct Inner {
     cache: RwLock<TokenCache>,
+    lock: Mutex<()>,
     http: reqwest::Client,
     oauth2: BasicClient,
 }
@@ -48,10 +49,12 @@ impl Client {
             Some(secret.token_url),
         );
         let http = http.unwrap_or_else(|| reqwest::Client::new());
+        let lock = Mutex::new(());
 
         Ok(Self {
             inner: Arc::new(Inner {
                 cache,
+                lock,
                 http,
                 oauth2,
             }),
@@ -141,6 +144,8 @@ impl GetToken for Client {
         scopes: Vec<Scope>,
         progress: Option<&SharedProgress>,
     ) -> fsync::Result<AccessToken> {
+        log::trace!("getting token for scopes {scopes:?}");
+        let _lock = self.inner.lock.lock().await;
         let cache = self.inner.cache.read().await.check(&scopes);
         match cache {
             CacheResult::Ok(access_token) => Ok(access_token),
